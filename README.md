@@ -1,53 +1,56 @@
-# tomahawk
+# Tomahawk 战斧
 
 ## Overview
 
-tomahawk is a renamed local project formerly known as "tomahawk". This repository contains the project's source, configuration, and documentation. The README provides installation, usage, contribution guidance, and contact information.
+Tomahawk is a local project (previously known by the same name). This repository contains the project's source code, configuration files, and documentation. The README includes installation instructions, usage guidelines, contribution information, and contact details.
 
 ## Features
 
-- Clear, modular structure
-- Easy setup and development workflow
-- Contribution guidelines and coding conventions described below
+- Clean and modular project structure
+- Straightforward setup and development workflow
+- Well-defined contribution guidelines and coding standards
 
 ## Installation
 
 1. Clone the repository:
-
+   ```bash
    git clone https://github.com/<your-username>/tomahawk.git
-
-2. Change into the project directory:
-
+   ```
+2. Navigate into the project directory:
+   ```bash
    cd tomahawk
-
-3. Follow any language- or platform-specific README files in the repo (e.g., src/ or docs/).
+   ```
+3. Follow any language- or platform-specific instructions in the repository (see `src/` or `docs/` folders).
 
 ## Usage
 
-- Read and follow any scripts in the repository (look for scripts/, Makefile, or package.json).
-- Run the primary entry-point or development commands described in the project-specific docs.
+- Explore and run scripts in the repository (check `scripts/`, `Makefile`, or `package.json`).
+- Use the main entry point or development commands described in the project documentation.
 
 ## Development
 
-- Create a branch for each feature or bugfix: `git checkout -b feat/my-feature`.
-- Keep commits small and focused.
-- Add tests for new functionality where applicable.
+- Create a new branch for each feature or bug fix:
+  ```bash
+  git checkout -b feat/my-feature
+  ```
+- Keep commits small, focused, and meaningful.
+- Add tests for new functionality whenever possible.
 
 ## Contribution
 
-Contributions are welcome. Please:
+Contributions are welcome! Please follow these steps:
 
-1. Open an issue to discuss large changes.
-2. Create a fork and a feature branch.
-3. Submit a pull request with a clear description of changes.
+1. Open an issue to discuss significant changes.
+2. Fork the repository and create a feature branch.
+3. Submit a pull request with a clear description of your changes.
 
 ## License
 
-Include or replace this section with the project license (e.g., MIT, Apache-2.0).
+This project is licensed under the [MIT License](LICENSE).
 
 ## Contact
 
-For questions or help, open an issue or contact the maintainers.
+If you have any questions or need help, feel free to open an issue or reach out to the maintainers.
 
 ---
 
@@ -55,50 +58,46 @@ For questions or help, open an issue or contact the maintainers.
 
 ## 概要
 
-tomahawk 是本地项目（原名 “tomahawk”）的重命名。本仓库包含项目源码、配置和文档。README 提供安装、使用、贡献指南和联系方式。
-
-## 特性
-
-- 清晰、模块化的结构
-- 简单的搭建与开发流程
-- 下文包含贡献指南与代码规范
+Tomahawk战斧 是一个本地项目，本仓库包含项目的源代码、配置文件和文档。本 README 提供了安装、使用、贡献指南以及联系方式。
 
 ## 安装
 
 1. 克隆仓库：
-
+   ```bash
    git clone https://github.com/<your-username>/tomahawk.git
-
+   ```
 2. 进入项目目录：
-
+   ```bash
    cd tomahawk
-
-3. 按照仓库中语言或平台相关的 README 文件操作（例如 src/ 或 docs/ 下的说明）。
+   ```
+3. 按照仓库中语言或平台相关的说明进行操作（参阅 `src/` 或 `docs/` 目录下的 README）。
 
 ## 使用
 
-- 阅读并执行仓库中的脚本（查找 scripts/、Makefile 或 package.json）。
-- 运行项目说明的主入口或开发命令。
+- 阅读并运行仓库中的脚本（查看 `scripts/`、Makefile 或 package.json）。
+- 执行项目文档中描述的主入口或开发命令。
 
 ## 开发
 
-- 为每个功能或修复创建分支：`git checkout -b feat/my-feature`。
-- 保持提交小且有针对性。
-- 新功能尽量添加测试。
+- 为每个新功能或 Bug 修复创建独立分支：
+  ```bash
+  git checkout -b feat/my-feature
+  ```
+- 保持提交内容小而专注。
+- 新功能请尽量添加对应的测试。
 
 ## 贡献
 
-欢迎贡献。请：
+欢迎大家贡献代码！请按以下步骤操作：
 
-1. 提交 issue 讨论重大更改。
-2. Fork 仓库并创建功能分支。
-3. 提交包含清晰更改说明的 PR。
+1. 提交 Issue 讨论较大的改动。
+2. Fork 本仓库并创建功能分支。
+3. 提交 Pull Request，并附上清晰的更改说明。
 
 ## 许可证
 
-在此处填写或替换为项目使用的许可证（例如 MIT、Apache-2.0）。
+本项目采用 [MIT 许可证](LICENSE)。
 
 ## 联系方式
 
-如有问题或需要帮助，请提交 issue 或联系维护者。
-
+如有任何问题或需要帮助，请随时提交 Issue 或联系我。
