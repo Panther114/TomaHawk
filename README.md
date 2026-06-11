@@ -18,8 +18,6 @@ This repository currently ships as a lightweight JavaScript application with no 
 - **Primary entry points:** `./index.html`, `./src/app.js`, `./src/sim.js`
 - **Server address:** `http://127.0.0.1:4173`
 
-> Note: some documents under `docs/` contain forward-looking `v0.2+` design notes. Those are roadmap/architecture notes, while the current formal repository version is `v0.1`.
-
 ### 2. Project overview
 
 TomaHawk models a compact but technically structured naval engagement sandbox:
@@ -217,7 +215,7 @@ The current test suite covers deterministic behavior, loadout validation, tracki
 - `./docs/DATA_MODEL.md` — object shapes, unit conventions, missile and ship fields.
 - `./docs/SIMULATION_ASSUMPTIONS.md` — modeling assumptions and abstraction policy.
 - `./docs/SOURCES.md` — public-source references and data policy.
-- `./docs/ROADMAP.md` — future upgrade ideas and longer-term direction.
+- `./docs/ROADMAP.md` — current capability summary and completed implementation notes.
 - `./CHANGELOG.md` — formal release history beginning with `v0.1`.
 
 ### 12. Limitations and modeling policy
@@ -226,7 +224,7 @@ The current test suite covers deterministic behavior, loadout validation, tracki
 - Public-source estimates are preferred over exact or sensitive values.
 - The current implementation is intentionally single-process and local.
 - There is no backend persistence layer beyond exported JSON files.
-- Some docs describe future work (`v0.2+`) that is not the same thing as the current release label.
+- The docs describe the current implementation and release label only.
 
 ### 13. Contribution notes
 
@@ -252,8 +250,6 @@ No standalone license file is currently present in the repository root. Add one 
 - **运行方式：** 由 Node.js 提供本地静态服务的浏览器应用
 - **主要入口：** `./index.html`、`./src/app.js`、`./src/sim.js`
 - **默认地址：** `http://127.0.0.1:4173`
-
-> 说明：`docs/` 目录中的部分文档包含 `v0.2+` 的前瞻性设计记录，它们更接近路线图/架构笔记；当前正式版本仍然是 `v0.1`。
 
 ### 2. 项目概述
 
@@ -448,7 +444,7 @@ npm test
 - `./docs/DATA_MODEL.md`：对象结构、单位规范、舰艇与导弹字段。
 - `./docs/SIMULATION_ASSUMPTIONS.md`：建模假设与抽象原则。
 - `./docs/SOURCES.md`：公开来源与数据政策。
-- `./docs/ROADMAP.md`：后续方向与扩展计划。
+- `./docs/ROADMAP.md`：当前能力摘要与已完成实现说明。
 - `./CHANGELOG.md`：从 `v0.1` 开始的正式版本记录。
 
 ### 12. 限制与建模原则
@@ -457,7 +453,7 @@ npm test
 - 参数应优先使用公开来源与明确的不确定性说明。
 - 当前实现刻意保持单进程、本地运行。
 - 除导出的 JSON 外，没有后端持久化层。
-- 文档中的 `v0.2+` 内容属于前瞻设计，不等同于当前版本号。
+- 文档仅描述当前实现，不包含前瞻性设计记录。
 
 ### 13. 贡献建议
 

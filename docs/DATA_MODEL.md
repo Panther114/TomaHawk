@@ -1,6 +1,6 @@
 # TomaHawk Data Model
 
-The current implementation keeps data as plain JavaScript objects in `src/sim.js`. These objects are intentionally shaped so they can later move to JSON, TOML, or a Rust data layer without changing the game design.
+The current implementation keeps data as plain JavaScript objects in `src/sim.js`. These objects are intentionally shaped for straightforward JSON persistence without changing the game design.
 
 ## Ship
 
@@ -72,7 +72,7 @@ Important fields:
 Radar detection is not generic across all missiles. The simulation derives a per-missile
 detection envelope from an approximate flight profile: higher-flying air-defense
 missiles such as `SM-6` are visible much earlier, while very low-altitude cruise
-weapons such as `TomahawkBlockV` stay horizon-limited and appear later.
+weapons such as `TomahawkBlockV` stay horizon-limited and appear at shorter ranges.
 
 `cellCost` supports quad-packed missiles. For example, ESSM uses `0.25` cells.
 
@@ -250,7 +250,7 @@ false; `selfDestructOnTargetLoss` sets the in-flight target-loss policy;
 
 ---
 
-## Ship Classes (v0.2+)
+## Ship Classes
 
 Four ship classes are modelled, each with per-class physics, sensors, magazine capacity, damage resilience, and combat systems:
 
@@ -289,10 +289,10 @@ Every ship has a `subsystems` object with six fields initialised to `1.0`:
 Each anti-ship hit degrades 2-3 randomly selected subsystems by 15-45%. Effects:
 - **radar** — reduces track quality multiplier in `scanSensors`
 - **propulsion** — reduces effective max speed in `moveShips`
-- **vls** — (tracked, combat effect reserved for future)
-- **fireControl** — (tracked, combat effect reserved for future)
+- **vls** — tracked; no separate combat effect beyond magazine state
+- **fireControl** — tracked; no separate combat effect beyond combat resolution inputs
 - **ciws** — reduces CIWS PK in `pointDefense`
-- **cic** — (tracked, combat effect reserved for future)
+- **cic** — tracked; no separate combat effect beyond command and sensing state
 
 ## Missile Detection and Defense
 

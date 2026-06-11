@@ -2,7 +2,7 @@
 
 TomaHawk is a local 2D modern naval sandbox inspired by the tactical density of the DCS World F10/map view, not the 3D cockpit or external camera view. The current implementation is a dependency-light browser app served locally with Node so the project is playable immediately in this environment.
 
-The original plan preferred Rust, but Rust is not installed in the current workspace environment. The implemented stack therefore uses static HTML, CSS, and JavaScript with a deterministic simulation core. This keeps the project local, fast to run, and easy to replace with a Rust core later.
+The implemented stack uses static HTML, CSS, and JavaScript with a deterministic simulation core. This keeps the project local, fast to run, and easy to inspect.
 
 ## Runtime Shape
 
@@ -65,7 +65,7 @@ This is not a clone of DCS UI assets or icons.
 
 ---
 
-## v0.2+ Architecture Changes
+## Current Architecture Notes
 
 ### New Modules
 - `SHIP_CLASSES` — exported catalogue of per-class parameters (kinematics, sensors, magazine, CIWS, damage resilience)

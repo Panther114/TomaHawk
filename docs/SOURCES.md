@@ -13,7 +13,7 @@ Useful public references:
 
 ## Naval Data References
 
-Initial public references for later data refinement:
+Current public references used by the simulation:
 
 - U.S. Navy AEGIS Weapon System fact file: `https://www.navy.mil/Resources/Fact-Files/Display-FactFiles/Article/2166739/aegis/aegis-weapon-system/`
 - U.S. Navy Standard Missile fact file: `https://www.navy.mil/Resources/Fact-Files/Display-FactFiles/Article/2169011/standard-missile/standard-missile/`
@@ -30,7 +30,7 @@ Do not add classified, leaked, or operationally sensitive data. If a parameter i
 
 ---
 
-## v0.2+ Additional References
+## Current Additional References
 
 ### Ship Classes
 - Arleigh Burke Flight IIA: public US Navy factsheets, displacement ~9,200 t, 96-cell Mk 41 VLS

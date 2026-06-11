@@ -123,7 +123,7 @@ This is a plausible simulation abstraction, not a real-world tactical procedure.
 
 ---
 
-## v0.2+ Additions
+## Current Additions
 
 ### Ship Classes
 Four ship classes are now modelled (see DATA_MODEL.md for full table): DDG (Burke destroyer), CCG (Ticonderoga cruiser), BBG (Trump arsenal battleship), FFG (Constellation frigate). Each has per-class kinematics (max speed, acceleration, turn rate, turnRateFlank), sensor fit (radar range, scan interval), magazine capacity (VLS cells, strike-length cells), CIWS mounts/ammo/cycle parameters, defence channels, damage resilience, and damage degradation. The compact setup rail includes a hull selector for newly placed Blue and Red ships.
