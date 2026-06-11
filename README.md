@@ -172,6 +172,8 @@ Then open:
 http://127.0.0.1:4173
 ```
 
+On Windows, you can also double-click `quickrun.bat` in the repository root. It stops any process already listening on port `4173`, starts a fresh local server, and opens the browser automatically.
+
 ### 9. Testing
 
 Run the existing automated test suite:
@@ -400,6 +402,8 @@ npm start
 ```text
 http://127.0.0.1:4173
 ```
+
+在 Windows 上，也可以直接双击仓库根目录下的 `quickrun.bat`。它会先停止占用 `4173` 端口的现有进程，再启动新的本地服务器并自动打开浏览器。
 
 ### 9. 测试
 
