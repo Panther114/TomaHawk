@@ -1,4 +1,4 @@
-# TIDES Data Model
+# TomaHawk Data Model
 
 The current implementation keeps data as plain JavaScript objects in `src/sim.js`. These objects are intentionally shaped so they can later move to JSON, TOML, or a Rust data layer without changing the game design.
 

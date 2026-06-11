@@ -873,10 +873,10 @@ function downloadJson(name, data) {
 }
 
 document.querySelector("#save").addEventListener("click", () => {
-  downloadJson(`tides-scenario-${Math.floor(sim.time)}.json`, serializeScenario(sim));
+  downloadJson(`tomahawk-scenario-${Math.floor(sim.time)}.json`, serializeScenario(sim));
 });
 document.querySelector("#aar").addEventListener("click", () => {
-  downloadJson(`tides-aar-${Math.floor(sim.time)}.json`, exportAfterAction(sim));
+  downloadJson(`tomahawk-aar-${Math.floor(sim.time)}.json`, exportAfterAction(sim));
 });
 document.querySelector("#copy-log").addEventListener("click", async () => {
   await copyLogToClipboard();

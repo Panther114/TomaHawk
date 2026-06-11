@@ -1,8 +1,8 @@
-# Tomahawk / TIDES Naval Sandbox
+# TomaHawk / 战斧 Naval Sandbox
 
 **Current release:** `v0.1` (`package.json` version `0.1.0`)
 
-Tomahawk is the repository name for a local-first naval combat sandbox whose in-app/runtime identity is **TIDES**. The project is a deterministic 2D browser simulation of modern surface warfare, centered on task-group missile combat, imperfect radar tracks, coordinated force-level decision-making, and compact tactical-map presentation inspired by the practical density of DCS-style map views.
+TomaHawk is the repository name for a local-first naval combat sandbox whose in-app/runtime identity is **战斧**. The project is a deterministic 2D browser simulation of modern surface warfare, centered on task-group missile combat, imperfect radar tracks, coordinated force-level decision-making, and compact tactical-map presentation inspired by the practical density of DCS-style map views.
 
 This repository currently ships as a lightweight JavaScript application with no frontend build pipeline. A small Node.js static server hosts the app locally, while the simulation core runs in plain ES modules and is validated with Node's built-in test runner.
 
@@ -22,7 +22,7 @@ This repository currently ships as a lightweight JavaScript application with no 
 
 ### 2. Project overview
 
-TIDES models a compact but technically structured naval engagement sandbox:
+TomaHawk models a compact but technically structured naval engagement sandbox:
 
 - deterministic seeded simulation,
 - force-on-force Blue/Red surface combat,
@@ -257,7 +257,7 @@ No standalone license file is currently present in the repository root. Add one 
 
 ### 2. 项目概述
 
-Tomahawk 是仓库名，应用内部与运行时名称为 **TIDES**。它是一个本地优先、二维、确定性海战战术沙盘，核心关注点包括：现代水面舰艇对抗、导弹攻防、带不确定性的雷达航迹、协同交战、以及高信息密度的战术地图界面。
+TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一个本地优先、二维、确定性海战战术沙盘，核心关注点包括：现代水面舰艇对抗、导弹攻防、带不确定性的雷达航迹、协同交战、以及高信息密度的战术地图界面。
 
 项目刻意保持轻量：
 

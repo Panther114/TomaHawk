@@ -1,6 +1,6 @@
 # Simulation Assumptions
 
-TIDES uses open-source approximate military data. Values are not authoritative and are not represented as classified, exact, or operationally complete.
+TomaHawk uses open-source approximate military data. Values are not authoritative and are not represented as classified, exact, or operationally complete.
 
 ## Current Ship
 

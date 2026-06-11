@@ -5,7 +5,7 @@ All notable changes to this repository will be documented in this file.
 ## v0.1
 
 ### Release summary
-- Establishes the current public baseline for the Tomahawk / TIDES local naval sandbox.
+- Establishes the current public baseline for the TomaHawk / 战斧 local naval sandbox.
 - Formalizes the repository's current release line as `v0.1`.
 - Captures the lightweight Node.js + browser runtime and deterministic simulation core already present in the repository.
 
