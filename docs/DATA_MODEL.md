@@ -1,6 +1,6 @@
 # TomaHawk Data Model
 
-The current implementation keeps data as plain JavaScript objects in `src/sim.js`. These objects are intentionally shaped for straightforward JSON persistence without changing the game design.
+The current implementation keeps data as plain JavaScript objects defined across the `src/sim/` modules (ship shape in `src/sim/ships.js`, missile catalogue in `src/sim/missiles.js`, scenario/track shapes in `src/sim/scenario.js` and `src/sim/sensors.js`). These objects are intentionally shaped for straightforward JSON persistence without changing the game design.
 
 ## Ship
 

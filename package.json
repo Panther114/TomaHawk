@@ -2,6 +2,8 @@
   "name": "tomahawk",
   "version": "0.1.0",
   "private": true,
+  "description": "战斧 / TomaHawk — a deterministic, local-first 2D naval combat sandbox (browser + Node, no build step).",
+  "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",

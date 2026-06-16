@@ -1,4 +1,9 @@
-# Progress
+# Development Notes
+
+> Historical development scratch notes. Not authoritative for current behavior —
+> see `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, and the tests for that.
+
+## Fleet strategy pass
 
 Original prompt: reevaluate fleet strategy so the sim models saturation attacks, side-wide aggressiveness, and target prioritization from only what each commander can actually observe.
 

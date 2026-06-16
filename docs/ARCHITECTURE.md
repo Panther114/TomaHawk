@@ -6,9 +6,9 @@ The implemented stack uses static HTML, CSS, and JavaScript with a deterministic
 
 ## Runtime Shape
 
-- `src/sim.js` owns deterministic simulation state, doctrine, movement, sensors, tracks, missile flight, defenses, and damage.
+- The simulation core owns deterministic state, doctrine, movement, sensors, tracks, missile flight, defenses, and damage. It is split into focused modules under `src/sim/` (constants, math, events, missiles, ships, sensors, command, movement, combat, scenario, step) behind the `src/sim.js` re-export barrel. See `src/README.md` for the module map.
 - `src/app.js` owns canvas rendering, map interactions, UI panels, loadout editing, and sim controls.
-- Scenario setup, save/load, copyable logs, and after-action export are handled through helpers in `src/sim.js`.
+- Scenario setup, save/load, copyable logs, and after-action export are handled through helpers in `src/sim/scenario.js` and `src/sim/events.js`.
 - `server.mjs` serves the app at `http://127.0.0.1:4173`.
 - `tests/sim.test.mjs` verifies deterministic and rules-level behavior with Node's built-in test runner.
 - `docs/DATA_MODEL.md` records the current object shapes and unit conventions.
@@ -67,15 +67,14 @@ This is not a clone of DCS UI assets or icons.
 
 ## Current Architecture Notes
 
-### New Modules
-- `SHIP_CLASSES` — exported catalogue of per-class parameters (kinematics, sensors, magazine, CIWS, damage resilience)
-- `makeShip(side, x, y, hull)` — generic ship factory parameterised by hull type
-- `scanSensors(sim, dt)` — ship radar detection, including per-missile-profile detection envelopes so high-altitude air-defense missiles and low-altitude cruise missiles are not treated as equally visible
-- `applySubsystemDamage(sim, ship)` — random subsystem degradation on hit
-- `radarHorizonM()` / `radarHeightM()` — 4/3 Earth-radius horizon model
-- `usedCells()` / `vlsCapacity()` — per-class VLS cell accounting
-- `computeFleetCommand(sim)` — side-wide command posture from the force picture; derives smoothed aggressiveness, persistent strike mode, target breadth, and raid depth from observed enemy strength and missile pressure
-- `planOffensiveFires(sim)` — force-level anti-ship planning that concentrates on the most valuable observed targets first, then saturates them according to posture, offensive commit windows, strike mode, per-cycle strike allocation limits, and coordinated release windows across multiple shooters
+### Key functions (and their home module)
+- `SHIP_CLASSES` / `makeShip(side, x, y, hull)` (`src/sim/ships.js`) — per-class parameter catalogue and the generic hull-parameterised ship factory
+- `usedCells()` / `vlsCapacity()` (`src/sim/ships.js`) — per-class VLS cell accounting
+- `scanSensors(sim, dt)` (`src/sim/sensors.js`) — radar detection with per-missile-profile detection envelopes so high-altitude air-defense missiles and low-altitude cruise missiles are not equally visible; also holds the 4/3 Earth-radius `radarHorizonM()`/`radarHeightM()` horizon model
+- `buildForcePicture(sim)` (`src/sim/command.js`) — fuses each side's tracks into one CEC composite picture
+- `computeFleetCommand(sim)` (`src/sim/command.js`) — side-wide command posture from the force picture; derives smoothed aggressiveness, persistent strike mode, target breadth, and raid depth from observed enemy strength and missile pressure
+- `planOffensiveFires(sim)` (`src/sim/combat.js`) — force-level anti-ship planning that concentrates on the most valuable observed targets first, then saturates them according to posture, offensive commit windows, strike mode, per-cycle strike allocation limits, and coordinated release windows across multiple shooters
+- `applySubsystemDamage(sim, ship)` (`src/sim/combat.js`) — random subsystem degradation on hit
 
 ### Performance
 - Pre-computed indexes in `stepSim`: `_missilesByTarget`, `_shipsBySide`, `_aliveShips`, `_aliveMissiles`, `_missilesBySide`

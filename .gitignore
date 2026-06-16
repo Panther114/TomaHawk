@@ -1,0 +1,18 @@
+# Dependencies (none are committed; the project is dependency-light)
+node_modules/
+
+# Local scenario / after-action exports produced at runtime
+*.save.json
+*.aar.json
+
+# Logs and debug output
+*.log
+npm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp

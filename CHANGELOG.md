@@ -2,6 +2,20 @@
 
 All notable changes to this repository will be documented in this file.
 
+## Unreleased
+
+### Added
+- `LICENSE` — the project is now released under the **PolyForm Noncommercial License 1.0.0** (free for any noncommercial use; commercial use, including resale, is not permitted). `package.json` declares `LicenseRef-PolyForm-Noncommercial-1.0.0`.
+- `.gitignore` for `node_modules`, runtime export files, and OS/editor cruft.
+- `src/README.md` — source layout and `src/sim/` module map.
+- `docs/REFERENCE.md` — the full bilingual product manual moved out of `README.md`.
+
+### Changed
+- **Modularized the simulation core.** `src/sim.js` is now a re-export barrel; the implementation lives in focused modules under `src/sim/` (`constants`, `math`, `events`, `missiles`, `ships`, `sensors`, `command`, `movement`, `combat`, `scenario`, `step`). No behavior change — the public API and all 55 tests are unchanged, and deterministic output is byte-identical.
+- Slimmed `README.md` to a concise bilingual overview; detailed reference content lives in `docs/REFERENCE.md`. The Chinese section is preserved in full.
+- Updated `AGENTS.md`, `docs/ARCHITECTURE.md`, and `docs/DATA_MODEL.md` to route to the new `src/sim/` modules.
+- Relocated the historical dev scratch notes from `progress.md` to `docs/NOTES.md`.
+
 ## v0.1
 
 ### Release summary
