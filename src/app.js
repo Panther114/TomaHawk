@@ -284,7 +284,9 @@ function drawScaledShip(ship) {
     ctx.fillStyle = color;
     ctx.font = canvasFont(VISUAL_CONFIG.shipLabelPx);
     const roleTag = ship.isOTC ? " ◈OTC" : ship.fleetRole === "AAWC" ? " ·AAWC" : "";
-    ctx.fillText(`${hullLabel(ship.hull)}${roleTag}`, p.x + len * 0.48 + 3, p.y - 5);
+    const displayHull = hullLabel(ship.hull);
+    const seqNum = ship.id.replace(ship.hull + '-', '');
+    ctx.fillText(`${displayHull}-${seqNum}${roleTag}`, p.x + len * 0.48 + 3, p.y - 5);
     ctx.restore();
   }
   if (ship.alive && ship.waypoint) {
@@ -565,13 +567,15 @@ function renderPanels() {
   document.querySelectorAll('[data-tool="blue"], [data-tool="red"], #ship-class').forEach((el) => {
     el.disabled = !placementEnabled;
   });
-  eventLog.innerHTML = sim.events.map((e) => `
-    <div class="${eventSeverity(e.text)}">
+  eventLog.innerHTML = sim.events.map((e) => {
+    const sideChar = e.side === 'BLUE' ? 'B' : e.side === 'RED' ? 'R' : 'S';
+    const sideClass = e.side === 'BLUE' ? 'blue' : e.side === 'RED' ? 'red' : '';
+    return `<div class="${eventSeverity(e.text)}">
       <span class="event-time">${formatTime(e.t)}</span>
-      <b class="event-side">${e.side}</b>
+      <b class="event-side ${sideClass}">${sideChar}</b>
       <span class="event-text">${e.text}</span>
-    </div>
-  `).join("");
+    </div>`;
+  }).join("");
 }
 
 function setFeedCollapsed(nextCollapsed) {

@@ -640,7 +640,7 @@ small,
 #event-console {
   left: 8px;
   bottom: 40px;
-  width: min(320px, calc(100vw - 280px));
+  width: min(368px, calc(100vw - 280px));
   max-height: 90px;
   overflow: hidden;
   border-color: rgba(142, 193, 205, 0.18);
@@ -672,7 +672,7 @@ small,
 
 #event-log div {
   display: grid;
-  grid-template-columns: 28px 18px minmax(0, 1fr);
+  grid-template-columns: 34px 12px minmax(0, 1fr);
   gap: 3px;
   padding: 1px 0;
   border-bottom: 1px solid rgba(142, 193, 205, 0.04);
@@ -681,7 +681,11 @@ small,
   text-overflow: ellipsis;
 }
 
-#event-log .event-time,
+#event-log .event-time {
+  min-width: 0;
+  white-space: nowrap;
+}
+
 #event-log .event-side,
 #event-log .event-text {
   min-width: 0;
@@ -727,6 +731,9 @@ small,
   font-weight: 400;
 }
 
+#event-log .event-side.blue { color: var(--blue); }
+#event-log .event-side.red { color: var(--red); }
+
 #event-log .launch {
   color: #dceff5;
 }
@@ -752,7 +759,7 @@ small,
   border-radius: 3px;
   background: rgba(8, 22, 29, 0.94);
   color: #a9c6ce;
-  font: 400 3px/1.04 var(--font-ui);
+  font: 400 2.1px/1.04 var(--font-ui);
   letter-spacing: 0.05em;
 }
 
@@ -767,7 +774,7 @@ small,
 
 .ship-detail-heading b {
   color: var(--ship-accent);
-  font-size: 4.5px;
+  font-size: 3.2px;
   font-weight: 650;
   letter-spacing: 0.09em;
 }
@@ -789,7 +796,7 @@ small,
 
 .ship-detail-grid > span {
   color: #8fc7d7;
-  font-size: 2.8px;
+  font-size: 2px;
   letter-spacing: 0.04em;
 }
 
@@ -797,12 +804,12 @@ small,
   color: #d3e8ed;
   font-weight: 500;
   text-align: right;
-  font-size: 2.8px;
+  font-size: 2px;
 }
 
 .subsystem-meter {
   display: block;
-  width: 100%;
+  width: 50%;
   height: 1.5px;
   overflow: hidden;
   border-radius: 1px;
