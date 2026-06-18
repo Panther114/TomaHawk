@@ -11,6 +11,7 @@ All notable changes to this repository will be documented in this file.
 - A wired-up **RULER** tool (button + `R` shortcut) for on-map range/bearing measurement.
 
 ### Changed
+- Reworked the dense tactical UI again to remove the top metrics bar, switch the operational display font to Lato, tighten the top-left command corner, and make the tactical feed retractable without increasing the base type scale.
 - Hot-path lookups in `src/sim/combat.js` now use per-tick id indexes (`_shipById`, `_missileById`, and the existing `_missilesByTarget`) instead of repeated linear `find`/`filter` scans. Pure lookup change — deterministic output is byte-identical (verified against the pre-change core across multiple seeds and 8-ship battles).
 - `src/app.js` slimmed: presentation helpers moved to `src/ui/view.js`; the duplicated `eventSeverity` now comes from the `sim.js` barrel.
 

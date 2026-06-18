@@ -41,10 +41,11 @@ const shipClassSelect = document.querySelector("#ship-class");
 const clock = document.querySelector("#clock");
 const cursor = document.querySelector("#cursor");
 const status = document.querySelector("#status");
+const eventConsole = document.querySelector("#event-console");
 const eventLog = document.querySelector("#event-log");
+const toggleFeed = document.querySelector("#toggle-feed");
 const copyFireLog = document.querySelector("#copy-fire-log");
 const unitTab = document.querySelector("#unit-tab");
-const focusStrip = document.querySelector("#focus-strip");
 const shipDetailOverlay = document.createElement("div");
 shipDetailOverlay.id = "ship-detail-overlay";
 document.body.appendChild(shipDetailOverlay);
@@ -66,7 +67,10 @@ let selectionBox = null;
 let selectedIds = new Set([sim.selectedId]);
 let last = performance.now();
 let labelBoxes = [];
+let feedCollapsed = false;
 const TACTICAL_SYMBOL_SCALE = 26;
+const CANVAS_FONT_FAMILY = '"Lato", "Segoe UI", Arial, sans-serif';
+const canvasFont = (px) => `${px}px ${CANVAS_FONT_FAMILY}`;
 const RUN_STATUS = {
   ready: "SETUP READY",
   invalid: "SETUP NEEDS BLUE+RED",
@@ -134,7 +138,7 @@ function reserveLabel(text, x, y, font, critical = false) {
 function drawGrid() {
   ctx.fillStyle = "#07141b";
   ctx.fillRect(0, 0, innerWidth, innerHeight);
-  if (!filters.grid.checked) return;
+  if (!filters.grid.classList.contains("active")) return;
   const minor = 10 * NM;
   const major = 50 * NM;
   const leftTop = screenToWorld(0, 0);
@@ -171,7 +175,7 @@ function drawGrid() {
 }
 
 function drawRadarRings() {
-  if (!filters.radar.checked) return;
+  if (!filters.radar.classList.contains("active")) return;
   for (const ship of sim.ships) {
     if (!ship.alive || !ship.radarActive) continue;
     if (!selectedIds.has(ship.id)) continue;
@@ -191,7 +195,7 @@ function ringDash(style) {
 }
 
 function drawWeaponRangeRings(ship) {
-  if (!filters.ranges.checked || !ship.alive) return;
+  if (!filters.ranges.classList.contains("active") || !ship.alive) return;
   if (filters.rangesMode.value === "off") return;
   const p = worldToScreen(ship);
   const selected = ship.id === sim.selectedId;
@@ -216,7 +220,7 @@ function drawWeaponRangeRings(ship) {
       ctx.setLineDash([]);
       ctx.globalAlpha = selected ? labelAlpha(true) * 0.86 : 0.74;
       ctx.fillStyle = entry.category === "anti_ship" ? "#f7e7a1" : sideColor(ship.side);
-      ctx.font = `${VISUAL_CONFIG.rangeLabelPx}px Bahnschrift, 'Segoe UI Variable', Arial Narrow, sans-serif`;
+      ctx.font = canvasFont(VISUAL_CONFIG.rangeLabelPx);
       const labelX = Math.max(54, Math.min(innerWidth - 48, p.x + radius + 3));
       const antiAirOffset = entry.id === "ESSM" ? 8 : entry.id === "SM-2MR" ? -2 : 0;
       const labelY = Math.max(78, Math.min(innerHeight - 48, p.y - 3 + antiAirOffset));
@@ -275,7 +279,7 @@ function drawScaledShip(ship) {
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.fillStyle = color;
-    ctx.font = `${VISUAL_CONFIG.shipLabelPx}px Bahnschrift, 'Segoe UI Variable', Arial Narrow, sans-serif`;
+    ctx.font = canvasFont(VISUAL_CONFIG.shipLabelPx);
     const roleTag = ship.isOTC ? " ◈OTC" : ship.fleetRole === "AAWC" ? " ·AAWC" : "";
     ctx.fillText(`${ship.hull || ship.id}${roleTag}`, p.x + len * 0.48 + 3, p.y - 5);
     ctx.restore();
@@ -355,7 +359,7 @@ function drawTracks() {
         const contact = sim.ships.find((s) => s.id === track.id);
         const label = contact?.hull ?? (track.classification?.includes("combatant") ? "SURF" : track.classification);
         const text = `${label} Q${Math.round(track.quality * 100)}`;
-        const font = `${VISUAL_CONFIG.shipLabelPx}px Bahnschrift, 'Segoe UI Variable', Arial Narrow, sans-serif`;
+        const font = canvasFont(VISUAL_CONFIG.shipLabelPx);
         ctx.font = font;
         if (reserveLabel(text, p.x + mark + 4, p.y + 11, font, track.quality > 0.88)) {
           ctx.fillText(text, p.x + mark + 4, p.y + 11);
@@ -367,7 +371,7 @@ function drawTracks() {
 }
 
 function drawMissiles() {
-  if (!filters.missiles.checked) return;
+  if (!filters.missiles.classList.contains("active")) return;
   for (const missile of sim.missiles) {
     const p = worldToScreen(missile);
     const spec = MISSILES[missile.missileId];
@@ -429,7 +433,7 @@ function drawMissiles() {
     ctx.globalAlpha = labelAlpha(missile.terminal) * 0.95;
     if (ctx.globalAlpha > 0.04) {
       const text = spec?.shortLabel ?? missile.missileId;
-      const font = `${VISUAL_CONFIG.missileLabelPx}px Bahnschrift, 'Segoe UI Variable', Arial Narrow, sans-serif`;
+      const font = canvasFont(VISUAL_CONFIG.missileLabelPx);
       const labelX = p.x + size + 2 + (((missile.launchSequence ?? 0) % 3) - 1) * 4;
       const labelY = p.y - 2 + labelOffset;
       if (!reserveLabel(text, labelX, labelY, font, missile.terminal)) {
@@ -462,7 +466,7 @@ function drawRuler() {
   ctx.lineTo(b.x, b.y);
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.font = "8px ui-monospace, Consolas, monospace";
+  ctx.font = canvasFont(8);
   ctx.fillText(`${dNm.toFixed(1)} nm / ${bearing.toFixed(0)}°`, (a.x + b.x) / 2 + 8, (a.y + b.y) / 2 - 8);
 }
 
@@ -480,25 +484,6 @@ function drawSelectionBox() {
   ctx.fillRect(x, y, w, h);
   ctx.restore();
 }
-
-function renderFocusStrip(ship) {
-  const blueMissiles = sim.missiles.filter((m) => m.side === SIDE.BLUE).length;
-  const redMissiles = sim.missiles.filter((m) => m.side === SIDE.RED).length;
-  const inbound = ship ? sim.missiles.filter((m) => m.alive && m.side !== ship.side && m.targetId === ship.id).length : 0;
-  const terminal = sim.missiles.filter((m) => m.alive && m.terminal).length;
-  const role = ship ? (ship.isOTC ? "OTC" : ship.fleetRole || "UNIT") : "—";
-  const roe = ship?.roe?.weaponState ? ship.roe.weaponState.toUpperCase() : "—";
-  focusStrip.innerHTML = `
-    <div><span>B MSL</span><b class="blue">${blueMissiles}</b></div>
-    <div><span>R MSL</span><b class="red">${redMissiles}</b></div>
-    <div><span>THREAT</span><b class="${inbound ? "amber" : ""}">${inbound}</b></div>
-    <div><span>TERM</span><b class="${terminal ? "amber" : ""}">${terminal}</b></div>
-    <div><span>ROLE</span><b>${role}</b></div>
-    <div><span>ROE</span><b class="${roe === "HOLD" ? "amber" : ""}">${roe}</b></div>
-    <div><span>AMBER</span><b>TERMINAL</b></div>
-  `;
-}
-
 
 function renderShipDetails() {
   // Build compact detail cards for selected ships (right-click+drag selected)
@@ -533,22 +518,19 @@ function renderShipDetails() {
       const c = mode === "load"
         ? (val >= 0.8 ? '#5a9' : val >= 0.4 ? '#f7b955' : '#f66')
         : (val > 0.6 ? '#5a9' : val > 0.3 ? '#f7b955' : '#f66');
-      return `<span style="display:block;width:100%;height:3px;background:rgba(142,193,205,.14);border-radius:2px;overflow:hidden"><i style="display:block;width:${w}%;height:100%;background:${c}"></i></span>`;
+      return `<span class="subsystem-meter"><i style="width:${w}%;background:${c}"></i></span>`;
     };
     const row = (label, val, detail, mode = "health") => `
       <span>${label}</span>
       ${subBar(val, mode)}
-      <b style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${detail}</b>
+      <b>${detail}</b>
     `;
-    return `<div class="ship-detail-card" style="
-      background:#0a1620;border:1px solid ${color}44;border-radius:3px;padding:4px 6px;
-      margin-bottom:0;font:3.4px Bahnschrift,'Segoe UI Variable',sans-serif;color:#bcd;min-width:${cardWidth}px;max-width:${cardWidth}px;font-weight:250;
-    ">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-        <b style="color:${color};font-size:4.4px;font-weight:450">${s.hull||'DDG'} ${s.id}</b>
+    return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
+      <div class="ship-detail-heading">
+        <b>${s.hull||'DDG'} ${s.id}</b>
         <span style="color:${hp.currentHp < hp.maxHp ? '#f7b955' : ''}">HP ${hp.currentHp}/${hp.maxHp}</span>
       </div>
-      <div style="display:grid;grid-template-columns:24px minmax(38px, 1fr) 42px;gap:1px 2px;align-items:center;line-height:1.04">
+      <div class="ship-detail-grid">
         ${row("RADAR", rdr, `${Math.round(rdr*100)}%`)}
         ${row("PROP", prop, `${Math.round(prop*100)}% ${(s.maxSpeed*(prop-hp.damage*(s.damageDegrade??0.22))/0.514444).toFixed(0)}kn`)}
         ${row("VLS", vls.fill, `${Math.round(vls.fill*100)}% ${vls.used}/${vls.cap}c`, "load")}
@@ -567,11 +549,9 @@ function renderShipDetails() {
 
 
 function renderPanels() {
-  const ship = sim.ships.find((candidate) => candidate.id === sim.selectedId && selectedIds.has(candidate.id)) ?? null;
   clock.textContent = formatTime(sim.time);
   play.textContent = sim.mode === SCENARIO_MODE.SETUP || sim.paused ? "▶" : "Ⅱ";
   status.innerHTML = renderBattleStatus(sim);
-  renderFocusStrip(ship);
   const orderedShips = [...sim.ships].sort((a, b) => a.side.localeCompare(b.side) || a.id.localeCompare(b.id));
   unitTab.innerHTML = inventoryHtml(orderedShips, (id) => selectedIds.has(id));
   const placementEnabled = canAddAssets(sim);
@@ -587,6 +567,17 @@ function renderPanels() {
   `).join("");
 }
 
+function setFeedCollapsed(nextCollapsed) {
+  feedCollapsed = nextCollapsed;
+  eventConsole.classList.toggle("collapsed", feedCollapsed);
+  const svg = toggleFeed.querySelector("svg");
+  if (svg) {
+    svg.style.transform = feedCollapsed ? "rotate(-90deg)" : "rotate(0deg)";
+    svg.style.transition = "transform 140ms ease-out";
+  }
+  toggleFeed.setAttribute("aria-expanded", String(!feedCollapsed));
+}
+
 function render() {
   labelBoxes = [];
   drawGrid();
@@ -594,7 +585,7 @@ function render() {
   drawRadarRings();
   const focus = sim.ships.find((candidate) => candidate.id === sim.selectedId && selectedIds.has(candidate.id));
   if (focus) drawSectorResponsibility(focus);
-  if (filters.tracks.checked) drawTracks();
+  if (filters.tracks.classList.contains("active")) drawTracks();
   for (const ship of sim.ships) drawScaledShip(ship);
   drawMissiles();
   drawRuler();
@@ -780,6 +771,18 @@ document.querySelector("#copy-log").addEventListener("click", async () => {
 copyFireLog.addEventListener("click", async () => {
   await copyLogToClipboard();
 });
+toggleFeed.addEventListener("click", () => {
+  setFeedCollapsed(!feedCollapsed);
+});
+
+
+// Toggle button click handlers for map-options filters
+document.querySelectorAll("#map-options .toggle-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    btn.classList.toggle("active");
+  });
+});
+
 
 async function copyLogToClipboard() {
   const text = formatLogLines(sim.events);
@@ -864,5 +867,6 @@ document.body.addEventListener("input", (event) => {
   if (ship && event.target.dataset.doc) ship.doctrine[event.target.dataset.doc] = Number(event.target.value);
 });
 
+setFeedCollapsed(false);
 resize();
 requestAnimationFrame(tick);

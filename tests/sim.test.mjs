@@ -521,8 +521,9 @@ test("right panel renderer is fleet inventory focused", () => {
   assert.match(app, /cardsPerColumn/);
   assert.match(app, /availableHeight/);
   assert.match(ui, /agg-meter/);
-  assert.match(app, /AMBER/);
   assert.match(app, /copyLogToClipboard/);
+  assert.match(app, /setFeedCollapsed/);
+  assert.match(app, /toggle-feed/);
   assert.match(app, /entry\.category === "anti_air"/);
   assert.doesNotMatch(ui, /<span>Class<\/span>|<span>Scenario<\/span>|<span>Heading<\/span>/);
   assert.doesNotMatch(ui, /LAST LAUNCH|LAST EFFECT/);

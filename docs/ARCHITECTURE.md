@@ -46,6 +46,13 @@ The WEZ layer defaults to all-unit rings and can be changed to selected-only or 
 
 The lower-left footer shows a one-line side summary for ship counts, hitpoints, and in-air missile roles. Ship addition is a setup-only action; the BLUE/RED placement controls are disabled once the scenario is running.
 
+### UI hierarchy and typography
+
+- The UI uses Lato for both the operational display text and the compact TomaHawk wordmark. There are no bundled local font assets in the repo now.
+- The interface deliberately retains small, dense type. Hierarchy comes from surface contrast, weight, grouping, dividers, and selective amber/side-color emphasis rather than globally increasing font sizes.
+- The top command deck separates brand, scenario tools, map layers, and inventory. The bottom deck separates simulation transport, tactical readout, and save/export actions.
+- The tactical feed is a distinct lower-left console with its copy action and retract toggle attached to the feed header.
+
 ## DCS Map Reference
 
 The UI follows the DCS map-view idea at a pragmatic level:
@@ -55,7 +62,6 @@ The UI follows the DCS map-view idea at a pragmatic level:
 - Side-colored symbols instead of decorative ship art.
 - Category-coded missile symbols: squares for anti-ship, triangles for anti-air.
 - Thin low-alpha weapon range rings for every visible ship by default.
-- Combat focus strip for active missiles, selected-unit threat count, terminal missiles, and amber color meaning.
 - Compact fleet inventory and bottom control strip.
 - Dense event log for tactical interpretation.
 - Copyable event log for after-action review outside the UI.

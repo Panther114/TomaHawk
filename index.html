@@ -9,6 +9,10 @@
   <body>
     <main id="app">
       <canvas id="map" aria-label="TomaHawk tactical map"></canvas>
+      <header id="brand-panel" class="panel" aria-label="TomaHawk naval sandbox">
+        <div class="brand-wordmark">TOMAHAWK<span class="brand-version">v0.1</span></div>
+
+      </header>
       <section id="left-rail" class="panel">
         <button data-tool="blue" class="tool blue" title="Add blue DDG">BLUE</button>
         <button data-tool="red" class="tool red" title="Add red DDG">RED</button>
@@ -22,36 +26,54 @@
         <button id="reset" class="tool" title="Revert scenario">REV</button>
       </section>
       <section id="map-options" class="panel">
-        <label><input id="filter-grid" type="checkbox" checked /> GRID</label>
-        <label><input id="filter-tracks" type="checkbox" checked /> TRACKS</label>
-        <label><input id="filter-radar" type="checkbox" /> RADAR</label>
-        <label><input id="filter-ranges" type="checkbox" checked /> WEZ</label>
+        <button id="filter-grid" class="toggle-btn active">GRID</button>
+        <button id="filter-tracks" class="toggle-btn active">TRACKS</button>
+        <button id="filter-radar" class="toggle-btn">RADAR</button>
+        <button id="filter-ranges" class="toggle-btn active">WEZ</button>
         <select id="ranges-mode" title="Weapon range ring mode">
           <option value="all" selected>ALL</option>
           <option value="selected">SEL</option>
           <option value="off">OFF</option>
         </select>
-        <label><input id="filter-missiles" type="checkbox" checked /> WEAPONS</label>
+        <button id="filter-missiles" class="toggle-btn active">WEAPONS</button>
       </section>
-      <section id="focus-strip" class="panel"></section>
       <section id="right-panel" class="panel">
+        <div class="panel-heading"><span>FORCE INVENTORY</span><span>LIVE ORDER</span></div>
         <div id="unit-tab" class="tab-body"></div>
       </section>
       <section id="bottom-bar" class="panel">
-        <button id="play">▶</button>
-        <button id="step">STEP</button>
-        <label>SPD <input id="speed" type="range" min="1" max="60" value="8" /></label>
-        <span id="clock">00:00</span>
-        <span id="cursor">0.0, 0.0 nm</span>
-        <span id="status">Place one blue and one red ship, then press play.</span>
-        <button id="save">SAVE</button>
-        <button id="load">LOAD</button>
-        <button id="aar">AAR</button>
-        <button id="copy-log">COPY LOG</button>
+        <div class="transport-controls">
+          <button id="play" aria-label="Play or pause simulation">▶</button>
+          <button id="step">STEP</button>
+          <label>SPD <input id="speed" type="range" min="1" max="60" value="8" /></label>
+          <span id="clock">00:00</span>
+        </div>
+        <div class="tactical-readout">
+          <span id="cursor">0.0, 0.0 nm</span>
+          <span id="status">Place one blue and one red ship, then press play.</span>
+        </div>
+        <div class="data-actions">
+          <button id="save">SAVE</button>
+          <button id="load">LOAD</button>
+          <button id="aar">AAR</button>
+          <button id="copy-log">COPY LOG</button>
+        </div>
         <input id="load-file" type="file" accept="application/json" hidden />
       </section>
-      <button id="copy-fire-log" class="panel">COPY FIRE LOG</button>
-      <section id="event-log" class="panel"></section>
+      <section id="event-console" class="panel">
+        <div class="console-heading">
+          <span>TACTICAL FEED</span>
+          <div class="console-actions">
+            <button id="toggle-feed" aria-expanded="true" title="Toggle tactical feed">
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                <path d="M1 3L4 6L7 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button id="copy-fire-log">COPY FEED</button>
+          </div>
+        </div>
+        <div id="event-log"></div>
+      </section>
     </main>
     <script type="module" src="src/app.js"></script>
   </body>
