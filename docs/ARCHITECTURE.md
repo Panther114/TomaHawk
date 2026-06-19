@@ -9,7 +9,7 @@ The implemented stack uses static HTML, CSS, and JavaScript with a deterministic
 - The simulation core owns deterministic state, doctrine, movement, sensors, tracks, missile flight, defenses, and damage. It is split into focused modules under `src/sim/` (constants, math, events, missiles, ships, sensors, command, movement, combat, scenario, step) behind the `src/sim.js` re-export barrel. See `src/README.md` for the module map.
 - `src/app.js` owns canvas rendering, map interactions, UI panels, loadout editing, and sim controls.
 - Scenario setup, save/load, copyable logs, and after-action export are handled through helpers in `src/sim/scenario.js` and `src/sim/events.js`.
-- `server.mjs` serves the app at `http://127.0.0.1:4173`.
+- `server.mjs` serves the app locally at `http://127.0.0.1:4173`, binds to Railway's injected host/port in deployment, and exposes `/health` for platform checks.
 - `tests/sim.test.mjs` verifies deterministic and rules-level behavior with Node's built-in test runner.
 - `docs/DATA_MODEL.md` records the current object shapes and unit conventions.
 
