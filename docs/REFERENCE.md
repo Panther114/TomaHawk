@@ -55,7 +55,7 @@ desired.
 - Grid, tracks, radar, WEZ, and missile visibility filters.
 - Ship-class placement controls.
 - Fleet inventory panel and compact event log.
-- Save, load, AAR export, and copy-log actions.
+- Save, load, AAR export, and tactical-feed copy actions.
 - Right-click selection and multi-ship detail overlays.
 - Ship detail rows show a localized subsystem name, a centered status bar, and a percentage only.
 - Tactical-feed and ship-detail headings and rows render at an effective 10px in Chrome and Edge; other DOM labels use a 14px source minimum so Chrome matches Edge profiles configured with a 14px minimum font size.
@@ -117,7 +117,7 @@ transition, guidance style, and reserve behavior.
 
 - **Imperfect information:** ships fight from track files, not exact enemy truth.
 - **CEC-style abstraction:** ship tracks are fused into a side-wide composite picture for engage-on-remote behavior.
-- **Force command:** the simulation designates OTC/AAWC-style roles and assigns anti-air sectors.
+- **Force command:** the simulation designates OTC/AAWC-style roles and assigns anti-air sectors. The Chinese label for AAWC is `防空指挥`.
 - **Layered defense:** long-range intercept, point defense, then CIWS.
 - **Coordinated raids:** offensive release windows can align multiple launchers into one tactical wave.
 - **Determinism:** same seed, same inputs, same rules path.
@@ -147,7 +147,7 @@ transition, guidance style, and reserve behavior.
 - `SAVE` exports scenario JSON.
 - `LOAD` imports scenario JSON.
 - `AAR` exports after-action JSON.
-- `COPY LOG` / `COPY FIRE LOG` copies formatted event output.
+- `COPY FIRE LOG` copies formatted event output in the active language.
 
 ### 7. Limitations and modeling policy
 
@@ -211,7 +211,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - 网格、航迹、雷达、武器射程圈、导弹图层过滤。
 - 支持按舰型投放单位。
 - 编队库存面板与事件日志面板。
-- 场景保存、读取、AAR 导出、日志复制。
+- 场景保存、读取、AAR 导出、战术日志复制。
 - 右键选中与多舰详情卡片。
 
 ### 3. 技术架构
@@ -268,7 +268,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 
 - **非完美信息：** 舰艇决策基于航迹，不基于敌方真实坐标。
 - **CEC 式协同图景：** 同阵营单位可融合航迹并实现类似 engage-on-remote 的行为。
-- **编队指挥：** 仿真会指定 OTC/AAWC 类角色并划分防空责任扇区。
+- **编队指挥：** 仿真会指定 OTC/AAWC 类角色并划分防空责任扇区。AAWC 的中文标签为 `防空指挥`。
 - **分层防御：** 远程拦截、近程点防御、最后由 CIWS 兜底。
 - **协同饱和打击：** 多个平台可以对齐释放窗口形成战术波次。
 - **确定性：** 相同 seed 与输入将走同一规则路径。
@@ -302,7 +302,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - `SAVE` 导出场景 JSON。
 - `LOAD` 导入场景 JSON。
 - `AAR` 导出战后 JSON。
-- `COPY LOG` / `COPY FIRE LOG` 复制格式化日志。
+- `COPY FIRE LOG` 会按当前语言复制格式化日志。
 
 ### 7. 限制与建模原则
 

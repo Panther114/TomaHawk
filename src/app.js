@@ -795,9 +795,6 @@ document.querySelector("#save").addEventListener("click", () => {
 document.querySelector("#aar").addEventListener("click", () => {
   downloadJson(`tomahawk-aar-${Math.floor(sim.time)}.json`, exportAfterAction(sim));
 });
-document.querySelector("#copy-log").addEventListener("click", async () => {
-  await copyLogToClipboard();
-});
 copyFireLog.addEventListener("click", async () => {
   await copyLogToClipboard();
 });

@@ -105,6 +105,7 @@ The simulation core is split into small `src/sim/*` modules behind the `src/sim.
 - Use `tests/sim.test.mjs` to confirm whether behavior is intentional, especially for determinism, defense logic, loadouts, serialization, and UI defaults.
 - Keep changes deterministic; this is a core repository expectation.
 - If you change behavior in a `src/sim/*` module, check whether a nearby test already exists before adding anything new.
+- For UI edits, keep English and Chinese text in sync, and verify the result in both Edge and Chrome at 100% browser scale before wrapping up.
 
 ## Runtime and validation
 

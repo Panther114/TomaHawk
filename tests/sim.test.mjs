@@ -531,9 +531,9 @@ test("right panel renderer is fleet inventory focused", () => {
 
 test("fleet inventory styling stays compact with cross-browser font parity", () => {
   const css = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
-  assert.match(css, /grid-template-columns:\s*minmax\(50px, 1\.4fr\) minmax\(34px, 0\.9fr\) minmax\(59px, 1\.25fr\) repeat\(5, minmax\(31px, 0\.85fr\)\);/);
-  assert.match(css, /font:\s*500 14px var\(--font-mono\);/);
-  assert.match(css, /font:\s*430 14px var\(--font-mono\);/);
+  assert.match(css, /grid-template-columns:\s*minmax\(44px, 1\.3fr\) minmax\(28px, 0\.82fr\) minmax\(50px, 1\.12fr\) repeat\(5, minmax\(26px, 0\.76fr\)\);/);
+  assert.match(css, /font:\s*500 12px var\(--font-mono\);/);
+  assert.match(css, /font:\s*430 12px var\(--font-mono\);/);
   assert.match(css, /justify-items:\s*center;/);
 });
 

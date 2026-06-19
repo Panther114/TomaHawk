@@ -377,8 +377,8 @@ small,
 .inventory-head,
 .inventory-row {
   display: grid;
-  grid-template-columns: minmax(50px, 1.4fr) minmax(34px, 0.9fr) minmax(59px, 1.25fr) repeat(5, minmax(31px, 0.85fr));
-  column-gap: 5px;
+  grid-template-columns: minmax(44px, 1.3fr) minmax(28px, 0.82fr) minmax(50px, 1.12fr) repeat(5, minmax(26px, 0.76fr));
+  column-gap: 4px;
   align-items: center;
   width: 100%;
   min-width: 0;
@@ -391,23 +391,23 @@ small,
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 1px 6px;
+  padding: 1px 4px;
   background: rgba(5, 14, 19, 0.96);
   color: var(--muted);
-  font: 500 14px var(--font-mono);
+  font: 500 12px var(--font-mono);
   line-height: 1;
 }
 
 .inventory-row {
   min-height: 8px;
   margin: 0;
-  padding: 1px 6px;
+  padding: 1px 4px;
   border: 0;
   border-bottom: 1px solid rgba(142, 193, 205, 0.07);
   background: transparent;
   color: var(--text);
   text-align: center;
-  font: 430 14px var(--font-mono);
+  font: 430 12px var(--font-mono);
   line-height: 1;
 }
 
@@ -432,7 +432,7 @@ small,
 }
 
 .inventory-row span:first-child {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.08em;
 }

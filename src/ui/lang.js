@@ -37,7 +37,6 @@ const strings = {
   "btn.save":    { en: "SAVE",    zh: "保存" },
   "btn.load":    { en: "LOAD",    zh: "加载" },
   "btn.aar":     { en: "AAR",     zh: "战报" },
-  "btn.copyLog": { en: "COPY LOG", zh: "复制日志" },
   "btn.speed":   { en: "SPD",     zh: "速度" },
   "btn.playPause": { en: "Play or pause simulation", zh: "开始或暂停推演" },
 
@@ -137,7 +136,7 @@ const strings = {
 
   // Map role tags
   "role.otc":  { en: "OTC",  zh: "总指挥" },
-  "role.aawc": { en: "AAWC", zh: "防空指" },
+  "role.aawc": { en: "AAWC", zh: "防空指挥" },
 
   // Event log side labels
   "side.blue":   { en: "B",   zh: "蓝" },
