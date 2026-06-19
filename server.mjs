@@ -26,7 +26,7 @@ createServer(async (req, res) => {
     }
     const rel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
     const file = resolve(root, rel);
-    if (file !== root && !file.startsWith(`${root}${sep}`)) {
+    if (!file.startsWith(`${root}${sep}`)) {
       res.writeHead(403);
       res.end("Forbidden");
       return;
