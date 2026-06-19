@@ -529,11 +529,11 @@ test("right panel renderer is fleet inventory focused", () => {
   assert.doesNotMatch(ui, /LAST LAUNCH|LAST EFFECT/);
 });
 
-test("fleet inventory styling is compact", () => {
+test("fleet inventory styling stays compact with cross-browser font parity", () => {
   const css = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(css, /grid-template-columns:\s*minmax\(50px, 1\.4fr\) minmax\(34px, 0\.9fr\) minmax\(59px, 1\.25fr\) repeat\(5, minmax\(31px, 0\.85fr\)\);/);
-  assert.match(css, /font:\s*500 4\.3px var\(--font-mono\);/);
-  assert.match(css, /font:\s*430 4\.6px var\(--font-mono\);/);
+  assert.match(css, /font:\s*500 14px var\(--font-mono\);/);
+  assert.match(css, /font:\s*430 14px var\(--font-mono\);/);
   assert.match(css, /justify-items:\s*center;/);
 });
 

@@ -12,7 +12,6 @@ import {
   distance,
   eventSeverity,
   exportAfterAction,
-  formatLogLines,
   formatTime,
   placeShip,
   restoreScenario,
@@ -31,7 +30,7 @@ import {
   worldToScreen as projectWorldToScreen,
   screenToWorld as projectScreenToWorld
 } from "./ui/view.js";
-import { t, toggleLang, getLang, hullLabel, roleLabel, sideLabel, translateEventText } from "./ui/lang.js";
+import { t, toggleLang, getLang, hullLabel, roleLabel, sideLabel, translateEventText, formatLocalizedEventLines } from "./ui/lang.js";
 
 const canvas = document.querySelector("#map");
 const ctx = canvas.getContext("2d");
@@ -64,7 +63,8 @@ let sim = createScenario();
 let tool = "select";
 let camera = { x: 0, y: 0, scale: 0.0022 };
 let drag = null;
-let ruler = null;
+let activeRuler = null;
+let rulers = [];
 let selectionBox = null;
 let selectedIds = new Set([sim.selectedId]);
 let last = performance.now();
@@ -457,22 +457,23 @@ function drawMissiles() {
 }
 
 function drawRuler() {
-  if (!ruler) return;
-  const a = worldToScreen(ruler.a);
-  const b = worldToScreen(ruler.b);
-  const dNm = distance(ruler.a, ruler.b) / NM;
-  const bearing = (Math.atan2(ruler.b.x - ruler.a.x, ruler.a.y - ruler.b.y) * 180 / Math.PI + 360) % 360;
-  ctx.strokeStyle = "#f7e7a1";
-  ctx.fillStyle = "#f7e7a1";
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([8, 4]);
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.font = canvasFont(8);
-  ctx.fillText(`${dNm.toFixed(1)} nm / ${bearing.toFixed(0)}°`, (a.x + b.x) / 2 + 8, (a.y + b.y) / 2 - 8);
+  for (const ruler of [...rulers, activeRuler].filter(Boolean)) {
+    const a = worldToScreen(ruler.a);
+    const b = worldToScreen(ruler.b);
+    const dNm = distance(ruler.a, ruler.b) / NM;
+    const bearing = (Math.atan2(ruler.b.x - ruler.a.x, ruler.a.y - ruler.b.y) * 180 / Math.PI + 360) % 360;
+    ctx.strokeStyle = "#f7e7a1";
+    ctx.fillStyle = "#f7e7a1";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 4]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = canvasFont(8);
+    ctx.fillText(`${dNm.toFixed(1)} nm / ${bearing.toFixed(0)}°`, (a.x + b.x) / 2 + 8, (a.y + b.y) / 2 - 8);
+  }
 }
 
 function drawSelectionBox() {
@@ -517,10 +518,10 @@ function renderShipDetails() {
         : (val > 0.6 ? '#5a9' : val > 0.3 ? '#f7b955' : '#f66');
       return `<span class="subsystem-meter"><i style="width:${w}%;background:${c}"></i></span>`;
     };
-    const row = (label, val, detail, mode = "health") => `
+    const row = (label, val, mode = "health") => `
       <span>${label}</span>
       ${subBar(val, mode)}
-      <b>${detail}</b>
+      <b>${Math.round(val * 100)}%</b>
     `;
     return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
       <div class="ship-detail-heading">
@@ -528,12 +529,12 @@ function renderShipDetails() {
         <span style="color:${hp.currentHp < hp.maxHp ? '#f7b955' : ''}">HP ${hp.currentHp}/${hp.maxHp}</span>
       </div>
       <div class="ship-detail-grid">
-        ${row(t('detail.radar'), rdr, `${Math.round(rdr*100)}%`)}
-        ${row(t('detail.prop'), prop, `${Math.round(prop*100)}% ${(s.maxSpeed*(prop-hp.damage*(s.damageDegrade??0.22))/0.514444).toFixed(0)}kn`)}
-        ${row(t('detail.vls'), vls.fill, `${Math.round(vls.fill*100)}% ${vls.used}/${vls.cap}c`, "load")}
-        ${row(t('detail.fcs'), fc, `ch:${Math.round((s.defenseChannels?.area??2)*fc)}/${Math.round((s.defenseChannels?.point??2)*fc)}`)}
-        ${row(t('detail.ciws'), ciws, `${Math.round(ciws*100)}% ${s.ciwsAmmo??0}`)}
-        ${row(t('detail.cic'), cic, `${Math.round(cic*100)}%`)}
+        ${row(t('detail.radar'), rdr)}
+        ${row(t('detail.prop'), prop)}
+        ${row(t('detail.vls'), vls.fill, "load")}
+        ${row(t('detail.fcs'), fc)}
+        ${row(t('detail.ciws'), ciws)}
+        ${row(t('detail.cic'), cic)}
       </div>
     </div>`;
   };
@@ -547,6 +548,9 @@ function applyI18n() {
   });
   document.querySelectorAll('[data-i18n-title]').forEach((el) => {
     el.title = t(el.getAttribute('data-i18n-title'));
+  });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
   });
   const invHead = unitTab.querySelector('.inventory-head');
   if (invHead) {
@@ -674,7 +678,7 @@ canvas.addEventListener("pointerdown", (event) => {
     return;
   }
   if (tool === "ruler") {
-    ruler = { a: world, b: world };
+    activeRuler = { a: world, b: world };
     drag = { type: "ruler" };
     return;
   }
@@ -690,8 +694,8 @@ canvas.addEventListener("pointermove", (event) => {
   const world = screenToWorld(event.clientX, event.clientY);
   cursor.textContent = `${(world.x / NM).toFixed(1)}, ${(world.y / NM).toFixed(1)} nm`;
   if (drag) {
-    if (drag.type === "ruler" && ruler) {
-      ruler.b = world;
+    if (drag.type === "ruler" && activeRuler) {
+      activeRuler.b = world;
     } else if (drag.type === "ship") {
       const ship = sim.ships.find((candidate) => candidate.id === drag.shipId);
       if (ship) {
@@ -710,6 +714,10 @@ canvas.addEventListener("pointermove", (event) => {
   }
 });
 canvas.addEventListener("pointerup", (event) => {
+  if (drag?.type === "ruler" && activeRuler) {
+    rulers.push(activeRuler);
+    activeRuler = null;
+  }
   if (drag?.type === "box-select" && selectionBox) {
     const minX = Math.min(selectionBox.x0, selectionBox.x1);
     const maxX = Math.max(selectionBox.x0, selectionBox.x1);
@@ -730,6 +738,14 @@ canvas.addEventListener("pointerup", (event) => {
 
 document.querySelectorAll("[data-tool]").forEach((button) => {
   button.addEventListener("click", () => {
+    if (button.dataset.tool === "ruler" && tool === "ruler") {
+      tool = "select";
+      activeRuler = null;
+      rulers = [];
+      document.querySelectorAll(".tool").forEach((b) => b.classList.remove("active"));
+      button.blur();
+      return;
+    }
     tool = button.dataset.tool;
     document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b === button));
   });
@@ -760,6 +776,8 @@ step.addEventListener("click", () => {
 document.querySelector("#reset").addEventListener("click", () => {
   sim = createScenario();
   selectedIds = new Set([sim.selectedId]);
+  activeRuler = null;
+  rulers = [];
 });
 
 function downloadJson(name, data) {
@@ -797,7 +815,7 @@ document.querySelectorAll("#map-options .toggle-btn").forEach((btn) => {
 
 
 async function copyLogToClipboard() {
-  const text = formatLogLines(sim.events);
+  const text = formatLocalizedEventLines(sim.events, formatTime);
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -851,11 +869,18 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape") {
     tool = "select";
-    ruler = null;
+    activeRuler = null;
+    rulers = [];
     document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
   }
   if (event.key === "r" || event.key === "R") {
-    tool = "ruler";
+    if (tool === "ruler") {
+      tool = "select";
+      activeRuler = null;
+      rulers = [];
+    } else {
+      tool = "ruler";
+    }
     document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
   }
   if (event.key === "Tab") {

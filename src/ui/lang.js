@@ -14,6 +14,7 @@ const strings = {
   // Console
   "console.tacticalFeed": { en: "TACTICAL FEED",    zh: "战术日志" },
   "console.copyFeed":     { en: "COPY FEED",        zh: "复制日志" },
+  "console.toggleFeed":   { en: "Toggle tactical feed", zh: "展开或收起战术动态" },
 
   // Left rail tools
   "tool.blue":   { en: "BLUE",   zh: "蓝方" },
@@ -38,6 +39,7 @@ const strings = {
   "btn.aar":     { en: "AAR",     zh: "战报" },
   "btn.copyLog": { en: "COPY LOG", zh: "复制日志" },
   "btn.speed":   { en: "SPD",     zh: "速度" },
+  "btn.playPause": { en: "Play or pause simulation", zh: "开始或暂停推演" },
 
   // Status messages
   "status.ready":    { en: "SETUP READY",           zh: "部署就绪" },
@@ -68,8 +70,8 @@ const strings = {
   "ship.desc.ffg":  { en: "Frigate",                   zh: "护卫舰" },
 
   // Battle status bar
-  "status.ships": { en: "Ships", zh: "舰" },
-  "status.hp":    { en: "HP",    zh: "血" },
+  "status.ships": { en: "Ships", zh: "舰艇" },
+  "status.hp":    { en: "HP",    zh: "耐久" },
   "status.agg":   { en: "AGG",   zh: "攻势" },
 
   // Inventory header columns
@@ -83,8 +85,8 @@ const strings = {
   "inv.tlam":  { en: "TLAM",  zh: "TLAM" },
 
   // Placement / setup
-  "place.addBlue": { en: "Add blue DDG", zh: "添加蓝方" },
-  "place.addRed":  { en: "Add red DDG",  zh: "添加红方" },
+  "place.addBlue": { en: "Add blue ship", zh: "添加蓝方舰艇" },
+  "place.addRed":  { en: "Add red ship",  zh: "添加红方舰艇" },
   "place.class":   { en: "Ship class for placement", zh: "选择舰型" },
   "place.measure": { en: "Measure range/bearing (R)", zh: "测距/测向 (R)" },
   "place.revert":  { en: "Revert scenario",          zh: "重置想定" },
@@ -128,6 +130,7 @@ const strings = {
   "tip.wzAll":   { en: "All ships",     zh: "全部舰艇" },
   "tip.wzSel":   { en: "Selected only", zh: "仅选中" },
   "tip.wzOff":   { en: "Hide rings",    zh: "隐藏" },
+  "tip.wzMode":  { en: "Weapon range ring mode", zh: "武器射程圈显示模式" },
 
   // Language toggle
   "lang.toggle": { en: "中", zh: "EN" },
@@ -215,7 +218,44 @@ export function sideLabel(side) {
 /** Translate an event log text string to the current language.
  *  Uses pattern-based replacement so the sim core stays untouched. */
 export function translateEventText(text) {
+  const normalizeTarget = (value) => value.replaceAll(
+    "Arleigh Burke Flight IIA approx.",
+    currentLang === "zh" ? "敌方 DDG" : "enemy DDG"
+  );
+  text = normalizeTarget(text);
   if (currentLang === "en") return text;
+  const localizeSides = (value) => value
+    .replaceAll("BLUE", "蓝方")
+    .replaceAll("Blue", "蓝方")
+    .replaceAll("RED", "红方")
+    .replaceAll("Red", "红方");
+  const normalizeChineseEvent = (value) => localizeSides(value)
+    .replaceAll(" salvo", " 齐射")
+    .replaceAll("approx.", "（近似）")
+    .replaceAll("approx", "（近似）")
+    .replaceAll(" 齐射 攻击", " 齐射攻击")
+    .replaceAll("（近似） 发射", "（近似）发射")
+    .replaceAll(".。", "。");
+  const sentencePatterns = [
+    [/^(.*?) launched (.*?) at (.*?)\.?$/, "$1 向 $3 发射 $2。"],
+    [/^(.*?) queued (.*?) at (.*?)\.?$/, "$1 已安排使用 $2 攻击 $3。"],
+    [/^(.*?) intercepted incoming (.*?) with (.*?)\.?$/, "$1 使用 $3 拦截来袭的 $2。"],
+    [/^(.*?) failed to intercept incoming (.*?)\.?$/, "$1 未能拦截来袭的 $2。"],
+    [/^(.*?) hit by (.*?)\. Damage: (.*?)\.?$/, "$1 被 $2 命中。损伤：$3。"],
+    [/^(.*?) CIWS destroyed incoming (.*?)\.?$/, "$1 的近防系统击毁来袭的 $2。"],
+    [/^(.*?) CIWS failed against (.*?)\.?$/, "$1 的近防系统未能拦截 $2。"],
+    [/^(.*?) missed (.*?)\.?$/, "$1 未命中 $2。"],
+    [/^(.*?) placed\.$/, "$1 已部署。"],
+    [/^(.*?) duplicated from (.*?)\.$/, "$1 已复制自 $2。"],
+    [/^(.*?) removed from scenario\.$/, "$1 已从想定中移除。"],
+    [/^(BLUE|RED) side cleared from scenario\.$/, "$1舰艇已从想定中清除。"],
+    [/^(BLUE|RED) side controls the battlespace\. Simulation ended\.$/, "$1控制战场，推演结束。"],
+  ];
+  for (const [pattern, replacement] of sentencePatterns) {
+    if (pattern.test(text)) {
+      return normalizeChineseEvent(text.replace(pattern, replacement));
+    }
+  }
   let out = text;
   // Ordered longest-match-first to avoid partial replacements
   const pairs = [
@@ -244,9 +284,14 @@ export function translateEventText(text) {
     ["placed.", "evt.placed"],
   ];
   for (const [en, key] of pairs) {
-    if (out.includes(en)) {
-      out = out.replace(en, t(key));
-    }
+    out = out.replaceAll(en, t(key));
   }
-  return out;
+  return normalizeChineseEvent(out);
+}
+
+/** Format clipboard log lines in the active UI language without duplicating side labels. */
+export function formatLocalizedEventLines(events, formatEventTime) {
+  return events
+    .map((event) => `${formatEventTime(event.t)} ${translateEventText(event.text)}`)
+    .join("\n");
 }

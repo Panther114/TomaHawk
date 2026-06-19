@@ -14,23 +14,23 @@
         <button id="lang-toggle" class="tool" title="中/EN">中</button>
       </header>
       <section id="left-rail" class="panel">
-        <button data-tool="blue" class="tool blue" title="Add blue DDG" data-i18n-title="place.addBlue">BLUE</button>
-        <button data-tool="red" class="tool red" title="Add red DDG" data-i18n-title="place.addRed">RED</button>
+        <button data-tool="blue" class="tool blue" title="Add blue ship" data-i18n="tool.blue" data-i18n-title="place.addBlue">BLUE</button>
+        <button data-tool="red" class="tool red" title="Add red ship" data-i18n="tool.red" data-i18n-title="place.addRed">RED</button>
         <select id="ship-class" class="tool" title="Ship class for placement" data-i18n-title="place.class">
           <option value="DDG" data-i18n="ship.ddg">DDG</option>
           <option value="CCG" data-i18n="ship.ccg">CCG</option>
           <option value="BBG" data-i18n="ship.bbg">BBG</option>
           <option value="FFG" data-i18n="ship.ffg">FFG</option>
         </select>
-        <button data-tool="ruler" class="tool" title="Measure range/bearing (R)" data-i18n-title="place.measure">RULER</button>
-        <button id="reset" class="tool" title="Revert scenario" data-i18n-title="place.revert">REV</button>
+        <button data-tool="ruler" class="tool" title="Measure range/bearing (R)" data-i18n="tool.ruler" data-i18n-title="place.measure">RULER</button>
+        <button id="reset" class="tool" title="Revert scenario" data-i18n="tool.rev" data-i18n-title="place.revert">REV</button>
       </section>
       <section id="map-options" class="panel">
         <button id="filter-grid" class="toggle-btn active" data-i18n="opt.grid">GRID</button>
         <button id="filter-tracks" class="toggle-btn active" data-i18n="opt.tracks">TRACKS</button>
         <button id="filter-radar" class="toggle-btn" data-i18n="opt.radar">RADAR</button>
         <button id="filter-ranges" class="toggle-btn active" data-i18n="opt.wez">WEZ</button>
-        <select id="ranges-mode" title="Weapon range ring mode">
+        <select id="ranges-mode" title="Weapon range ring mode" data-i18n-title="tip.wzMode">
           <option value="all" selected data-i18n="opt.all">ALL</option>
           <option value="selected" data-i18n="opt.sel">SEL</option>
           <option value="off" data-i18n="opt.off">OFF</option>
@@ -43,9 +43,9 @@
       </section>
       <section id="bottom-bar" class="panel">
         <div class="transport-controls">
-          <button id="play" aria-label="Play or pause simulation">▶</button>
+          <button id="play" aria-label="Play or pause simulation" data-i18n-aria-label="btn.playPause">▶</button>
           <button id="step" data-i18n="btn.step">STEP</button>
-          <label data-i18n="btn.speed">SPD <input id="speed" type="range" min="1" max="60" value="8" /></label>
+          <label><span data-i18n="btn.speed">SPD</span> <input id="speed" type="range" min="1" max="60" value="8" /></label>
           <span id="clock">00:00</span>
         </div>
         <div class="tactical-readout">
@@ -64,7 +64,7 @@
         <div class="console-heading">
           <span data-i18n="console.tacticalFeed">TACTICAL FEED</span>
           <div class="console-actions">
-            <button id="toggle-feed" aria-expanded="true" title="Toggle tactical feed">
+            <button id="toggle-feed" aria-expanded="true" title="Toggle tactical feed" data-i18n-title="console.toggleFeed" data-i18n-aria-label="console.toggleFeed">
               <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
                 <path d="M1 3L4 6L7 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>

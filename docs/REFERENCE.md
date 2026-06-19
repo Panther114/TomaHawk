@@ -57,6 +57,10 @@ desired.
 - Fleet inventory panel and compact event log.
 - Save, load, AAR export, and copy-log actions.
 - Right-click selection and multi-ship detail overlays.
+- Ship detail rows show a localized subsystem name, a centered status bar, and a percentage only.
+- Tactical-feed and ship-detail headings and rows render at an effective 10px in Chrome and Edge; other DOM labels use a 14px source minimum so Chrome matches Edge profiles configured with a 14px minimum font size.
+- Tactical-feed display and clipboard exports use the active language, avoid duplicate side labels, and describe approximate opposing destroyers as `enemy DDG` / `敌方 DDG`.
+- The ruler supports multiple measurements; clicking `RULER` again clears all measurements and exits ruler mode.
 
 ### 3. Technical architecture
 
@@ -279,6 +283,10 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - 右键舰艇进行选择。
 - 右键拖动/右键选择可叠加详情卡选择。
 - 在空白区域右键拖动可框选。
+- 舰艇详情行仅显示本地化子系统名称、居中状态条和百分比。
+- 战术动态与舰艇详情的标题和行文字在 Chrome 与 Edge 中均以等效 10px 显示；其他 DOM 标签使用 14px 源字号下限，使 Chrome 与最小字号设为 14px 的 Edge 配置一致。
+- 战术动态显示与剪贴板导出均使用当前语言，避免重复阵营名称，并将近似敌方驱逐舰简写为 `enemy DDG` / `敌方 DDG`。
+- 标尺支持保留多条测量线；再次点击 `标尺` 会清除全部测量线并退出标尺模式。
 - `Delete` / `Backspace` 可删除 `setup` 模式下的选中单位。
 - `REV` 重置场景。
 
