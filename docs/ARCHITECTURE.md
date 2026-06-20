@@ -32,8 +32,8 @@ Scenarios move through three modes:
 
 The canvas renderer draws the tactical map in this order:
 
-- ocean grid and scenario bounds,
-- selected presentation terrain (currently Open Sea or East China Sea coastlines),
+- full-viewport 20 km ocean grid,
+- selected presentation terrain (Open Sea or projected Natural Earth 1:10m East China Sea coastlines),
 - all-ship weapon engagement-zone rings from actual nonzero loadout,
 - radar rings when enabled,
 - selected-unit perceived tracks and uncertainty,
@@ -49,12 +49,12 @@ The lower-left footer shows a one-line side summary for ship counts, hitpoints, 
 
 ### UI hierarchy and typography
 
-- The UI uses Lato for both the operational display text and the compact TomaHawk wordmark. There are no bundled local font assets in the repo now.
+- The UI uses the system Segoe UI stack for operational text and the bundled Rationale face for the compact TomaHawk wordmark. It has no runtime web-font dependency.
 - The interface deliberately retains small, dense type. Hierarchy comes from surface contrast, weight, grouping, dividers, and selective amber/side-color emphasis rather than globally increasing font sizes.
 - The top command deck separates brand, scenario tools, map layers, and inventory. The bottom deck separates simulation transport, tactical readout, and save/export actions.
 - The tactical feed is a distinct lower-left console with its copy action and retract toggle attached to the feed header.
 
-Terrain definitions live in `src/ui/maps.js` as presentation polygons. The module also exposes `isLandPoint()` as the future integration boundary for placement, path planning, and collision checks. The deterministic simulation movement code does not consume terrain yet, so land avoidance is deliberately not claimed as current behavior.
+Terrain definitions live in `src/ui/maps.js`; generated East China Sea geometry lives in `src/ui/data/`. WGS84 Natural Earth land and coastline data is projected with a regional azimuthal-equidistant projection and rendered across the full viewport at meter-accurate scale without stretching or an artificial outer border. `docs/MAP_DATA.md` records provenance and regeneration. The module also exposes `isLandPoint()` as the future integration boundary for placement, path planning, and collision checks. The deterministic simulation movement code does not consume terrain yet, so land avoidance is deliberately not claimed as current behavior.
 
 ## DCS Map Reference
 

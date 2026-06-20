@@ -31,7 +31,15 @@ import {
   screenToWorld as projectScreenToWorld
 } from "./ui/view.js";
 import { t, toggleLang, getLang, hullLabel, roleLabel, sideLabel, translateEventText, formatLocalizedEventLines } from "./ui/lang.js";
-import { tacticalMap } from "./ui/maps.js";
+import {
+  GRID_MAJOR_M,
+  GRID_MINOR_M,
+  KM,
+  formatDistanceKm,
+  niceScaleDistanceM,
+  shouldShowWeaponLabels,
+  tacticalMap
+} from "./ui/maps.js";
 
 const canvas = document.querySelector("#map");
 const ctx = canvas.getContext("2d");
@@ -49,6 +57,9 @@ const copyFireLog = document.querySelector("#copy-fire-log");
 const unitTab = document.querySelector("#unit-tab");
 const langToggle = document.querySelector("#lang-toggle");
 const mapSelect = document.querySelector("#map-select");
+const scaleDistance = document.querySelector("#scale-distance");
+const scaleGrid = document.querySelector("#scale-grid");
+const scaleRule = document.querySelector(".scale-rule");
 const shipDetailOverlay = document.createElement("div");
 shipDetailOverlay.id = "ship-detail-overlay";
 document.body.appendChild(shipDetailOverlay);
@@ -63,7 +74,7 @@ const filters = {
 
 let sim = createScenario();
 let tool = "select";
-let camera = { x: 0, y: 0, scale: 0.0022 };
+let camera = { x: 0, y: 0, scale: 0.00125 };
 let drag = null;
 let activeRuler = null;
 let rulers = [];
@@ -74,8 +85,9 @@ let labelBoxes = [];
 let feedCollapsed = false;
 let aboutOpen = false;
 const TACTICAL_SYMBOL_SCALE = 26;
-const CANVAS_FONT_FAMILY = '"Lato", "Segoe UI", Arial, sans-serif';
+const CANVAS_FONT_FAMILY = '"Segoe UI", Arial, sans-serif';
 const canvasFont = (px) => `${px}px ${CANVAS_FONT_FAMILY}`;
+const terrainPathCache = new WeakMap();
 const RUN_STATUS = {
   get ready() { return t('status.ready'); },
   get invalid() { return t('status.invalid'); },
@@ -113,6 +125,11 @@ function screenToWorld(x, y) {
   return projectScreenToWorld(x, y, camera, innerWidth, innerHeight);
 }
 
+function drawSceneBase() {
+  ctx.fillStyle = "#07141b";
+  ctx.fillRect(0, 0, innerWidth, innerHeight);
+}
+
 function worldSize(meters, minPx = 2, maxPx = 24, multiplier = TACTICAL_SYMBOL_SCALE) {
   return Math.max(minPx, Math.min(maxPx, meters * camera.scale * multiplier));
 }
@@ -141,17 +158,13 @@ function reserveLabel(text, x, y, font, critical = false) {
 }
 
 function drawGrid() {
-  ctx.fillStyle = "#07141b";
-  ctx.fillRect(0, 0, innerWidth, innerHeight);
   if (!filters.grid.classList.contains("active")) return;
-  const minor = 10 * NM;
-  const major = 50 * NM;
   const leftTop = screenToWorld(0, 0);
   const rightBottom = screenToWorld(innerWidth, innerHeight);
 
-  for (let x = Math.floor(leftTop.x / minor) * minor; x < rightBottom.x; x += minor) {
+  for (let x = Math.floor(leftTop.x / GRID_MINOR_M) * GRID_MINOR_M; x < rightBottom.x; x += GRID_MINOR_M) {
     const sx = worldToScreen({ x, y: 0 }).x;
-    const isMajor = Math.abs(x % major) < 1;
+    const isMajor = Math.abs(x % GRID_MAJOR_M) < 1;
     ctx.strokeStyle = isMajor ? "rgba(95,139,154,.36)" : "rgba(95,139,154,.14)";
     ctx.lineWidth = isMajor ? 1.2 : 1;
     ctx.beginPath();
@@ -159,9 +172,9 @@ function drawGrid() {
     ctx.lineTo(sx, innerHeight);
     ctx.stroke();
   }
-  for (let y = Math.floor(leftTop.y / minor) * minor; y < rightBottom.y; y += minor) {
+  for (let y = Math.floor(leftTop.y / GRID_MINOR_M) * GRID_MINOR_M; y < rightBottom.y; y += GRID_MINOR_M) {
     const sy = worldToScreen({ x: 0, y }).y;
-    const isMajor = Math.abs(y % major) < 1;
+    const isMajor = Math.abs(y % GRID_MAJOR_M) < 1;
     ctx.strokeStyle = isMajor ? "rgba(95,139,154,.36)" : "rgba(95,139,154,.14)";
     ctx.lineWidth = isMajor ? 1.2 : 1;
     ctx.beginPath();
@@ -170,13 +183,6 @@ function drawGrid() {
     ctx.stroke();
   }
 
-  const bounds = [
-    worldToScreen({ x: -sim.widthM / 2, y: -sim.heightM / 2 }),
-    worldToScreen({ x: sim.widthM / 2, y: sim.heightM / 2 })
-  ];
-  ctx.strokeStyle = "rgba(172, 213, 225, .45)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(bounds[0].x, bounds[0].y, bounds[1].x - bounds[0].x, bounds[1].y - bounds[0].y);
 }
 
 function drawRadarRings() {
@@ -220,7 +226,9 @@ function drawWeaponRangeRings(ship) {
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
     ctx.stroke();
-    const showRingLabel = radius > 10 && (selected || entry.category === "anti_air");
+    const showRingLabel = shouldShowWeaponLabels(camera.scale)
+      && radius > 10
+      && (selected || entry.category === "anti_air");
     if (showRingLabel) {
       ctx.setLineDash([]);
       ctx.globalAlpha = selected ? labelAlpha(true) * 0.86 : 0.74;
@@ -229,7 +237,7 @@ function drawWeaponRangeRings(ship) {
       const labelX = Math.max(54, Math.min(innerWidth - 48, p.x + radius + 3));
       const antiAirOffset = entry.id === "ESSM" ? 8 : entry.id === "SM-2MR" ? -2 : 0;
       const labelY = Math.max(78, Math.min(innerHeight - 48, p.y - 3 + antiAirOffset));
-      ctx.fillText(entry.shortLabel, labelX, labelY);
+      ctx.fillText(`${entry.shortLabel} ${formatDistanceKm(entry.rangeM)}`, labelX, labelY);
       ctx.globalAlpha = 1;
     }
   }
@@ -279,18 +287,15 @@ function drawScaledShip(ship) {
   ctx.restore();
   ctx.restore();
 
-  const alpha = labelAlpha(selected);
-  if (alpha > 0.05) {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = color;
-    ctx.font = canvasFont(VISUAL_CONFIG.shipLabelPx);
-    const roleTag = ship.isOTC ? ` ◈${roleLabel('OTC')}` : ship.fleetRole === "AAWC" ? ` ·${roleLabel('AAWC')}` : "";
-    const displayHull = hullLabel(ship.hull);
-    const seqNum = ship.id.replace(ship.hull + '-', '');
-    ctx.fillText(`${displayHull}-${seqNum}${roleTag}`, p.x + len * 0.48 + 3, p.y - 5);
-    ctx.restore();
-  }
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = color;
+  ctx.font = canvasFont(VISUAL_CONFIG.shipLabelPx);
+  const roleTag = ship.isOTC ? ` ◈${roleLabel('OTC')}` : ship.fleetRole === "AAWC" ? ` ·${roleLabel('AAWC')}` : "";
+  const displayHull = hullLabel(ship.hull);
+  const seqNum = ship.id.replace(ship.hull + '-', '');
+  ctx.fillText(`${displayHull}-${seqNum}${roleTag}`, p.x + len * 0.48 + 3, p.y - 5);
+  ctx.restore();
   if (ship.alive && (ship.speed > 0.1 || ship.desiredSpeed > 0.1)) {
     const hasVelocity = Math.hypot(ship.vx ?? 0, ship.vy ?? 0) > 0.1;
     const direction = hasVelocity ? Math.atan2(ship.vy, ship.vx) : (Number.isFinite(ship.heading) ? ship.heading : 0);
@@ -444,7 +449,7 @@ function drawMissiles() {
     ctx.stroke();
     ctx.restore();
     ctx.save();
-    ctx.globalAlpha = labelAlpha(missile.terminal) * 0.95;
+    ctx.globalAlpha = shouldShowWeaponLabels(camera.scale) ? labelAlpha(missile.terminal) * 0.95 : 0;
     if (ctx.globalAlpha > 0.04) {
       const text = spec?.shortLabel ?? missile.missileId;
       const font = canvasFont(VISUAL_CONFIG.missileLabelPx);
@@ -469,7 +474,7 @@ function drawRuler() {
   for (const ruler of [...rulers, activeRuler].filter(Boolean)) {
     const a = worldToScreen(ruler.a);
     const b = worldToScreen(ruler.b);
-    const dNm = distance(ruler.a, ruler.b) / NM;
+    const dKm = distance(ruler.a, ruler.b) / KM;
     const bearing = (Math.atan2(ruler.b.x - ruler.a.x, ruler.a.y - ruler.b.y) * 180 / Math.PI + 360) % 360;
     ctx.strokeStyle = "#f7e7a1";
     ctx.fillStyle = "#f7e7a1";
@@ -481,7 +486,7 @@ function drawRuler() {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.font = canvasFont(8);
-    ctx.fillText(`${dNm.toFixed(1)} nm / ${bearing.toFixed(0)}°`, (a.x + b.x) / 2 + 8, (a.y + b.y) / 2 - 8);
+    ctx.fillText(`${dKm.toFixed(1)} km / ${bearing.toFixed(0)}°`, (a.x + b.x) / 2 + 8, (a.y + b.y) / 2 - 8);
   }
 }
 
@@ -572,23 +577,39 @@ function applyI18n() {
 
 function drawTerrain() {
   const map = tacticalMap(mapSelect?.value);
-  ctx.save();
-  ctx.fillStyle = "#111b1f";
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1.8;
-  ctx.setLineDash([]);
-  for (const polygon of map.land) {
-    ctx.beginPath();
-    polygon.forEach((point, index) => {
-      const p = worldToScreen(point);
-      if (index === 0) ctx.moveTo(p.x, p.y);
-      else ctx.lineTo(p.x, p.y);
-    });
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+  let paths = terrainPathCache.get(map);
+  if (!paths) {
+    paths = {
+      land: map.landRings.map((ring) => {
+        const path = new Path2D();
+        ring.forEach(([x, y], index) => index === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
+        path.closePath();
+        return path;
+      }),
+      coast: new Path2D()
+    };
+    for (const coastline of map.coastlines) {
+      coastline.forEach(([x, y], index) => index === 0 ? paths.coast.moveTo(x, y) : paths.coast.lineTo(x, y));
+    }
+    terrainPathCache.set(map, paths);
   }
+  ctx.save();
+  ctx.translate(innerWidth / 2 - camera.x * camera.scale, innerHeight / 2 - camera.y * camera.scale);
+  ctx.scale(camera.scale, camera.scale);
+  ctx.fillStyle = "#111b1f";
+  ctx.setLineDash([]);
+  for (const landPath of paths.land) ctx.fill(landPath);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 1.8 / camera.scale;
+  ctx.stroke(paths.coast);
   ctx.restore();
+}
+
+function renderScaleBar() {
+  const scale = niceScaleDistanceM(camera.scale, 72);
+  scaleDistance.textContent = formatDistanceKm(scale.meters);
+  scaleRule.style.width = `${scale.pixels.toFixed(1)}px`;
+  scaleGrid.textContent = t('scale.grid').replace('{n}', String(GRID_MINOR_M / KM));
 }
 
 function renderPanels() {
@@ -598,6 +619,7 @@ function renderPanels() {
   const orderedShips = [...sim.ships].sort((a, b) => a.side.localeCompare(b.side) || a.id.localeCompare(b.id));
   unitTab.innerHTML = inventoryHtml(orderedShips, (id) => selectedIds.has(id));
   applyI18n();
+  renderScaleBar();
   const placementEnabled = canAddAssets(sim);
   document.querySelectorAll('[data-tool="blue"], [data-tool="red"], #ship-class').forEach((el) => {
     el.disabled = !placementEnabled;
@@ -627,6 +649,7 @@ function setFeedCollapsed(nextCollapsed) {
 
 function render() {
   labelBoxes = [];
+  drawSceneBase();
   drawGrid();
   drawTerrain();
   for (const ship of sim.ships) drawWeaponRangeRings(ship);
@@ -724,7 +747,7 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 canvas.addEventListener("pointermove", (event) => {
   const world = screenToWorld(event.clientX, event.clientY);
-  cursor.textContent = `${(world.x / NM).toFixed(1)}, ${(world.y / NM).toFixed(1)} nm`;
+  cursor.textContent = `${(world.x / KM).toFixed(1)}, ${(world.y / KM).toFixed(1)} km`;
   if (drag) {
     if (drag.type === "ruler" && activeRuler) {
       activeRuler.b = world;

@@ -1,17 +1,72 @@
 import { NM } from "../sim.js";
+import { EAST_CHINA_SEA_DATA } from "./data/east-china-sea-data.js";
 
-const nmPoint = (x, y) => ({ x: x * NM, y: y * NM });
+export const KM = 1000;
+export const GRID_MINOR_M = 20 * KM;
+export const GRID_MAJOR_M = 100 * KM;
+export const WEAPON_LABEL_MIN_SCALE = 0.0012;
+export const MAP_WIDTH_M = 720 * NM;
+export const MAP_HEIGHT_M = 360 * NM;
+export const EAST_CHINA_SEA_CENTER = Object.freeze({ lon: 125, lat: 28.2 });
+const EARTH_RADIUS_M = 6371008.8;
+
+export function projectLonLat(lon, lat, center = EAST_CHINA_SEA_CENTER) {
+  const toRad = Math.PI / 180;
+  const lambda = lon * toRad;
+  const phi = lat * toRad;
+  const lambda0 = center.lon * toRad;
+  const phi0 = center.lat * toRad;
+  const delta = lambda - lambda0;
+  const cosC = Math.max(-1, Math.min(1,
+    Math.sin(phi0) * Math.sin(phi) + Math.cos(phi0) * Math.cos(phi) * Math.cos(delta)
+  ));
+  const c = Math.acos(cosC);
+  const k = c < 1e-12 ? 1 : c / Math.sin(c);
+  const x = EARTH_RADIUS_M * k * Math.cos(phi) * Math.sin(delta);
+  const north = EARTH_RADIUS_M * k * (
+    Math.cos(phi0) * Math.sin(phi) - Math.sin(phi0) * Math.cos(phi) * Math.cos(delta)
+  );
+  return { x, y: -north };
+}
+
+export function formatDistanceKm(meters) {
+  const km = Math.max(0, meters) / KM;
+  return `${km >= 10 ? Math.round(km) : km.toFixed(1)} km`;
+}
+
+export function niceScaleDistanceM(scale, targetPx = 100) {
+  const rawMeters = targetPx / Math.max(scale, Number.EPSILON);
+  const magnitude = 10 ** Math.floor(Math.log10(rawMeters));
+  const candidates = [1, 2, 5, 10].map((factor) => factor * magnitude);
+  const meters = candidates.reduce((best, candidate) => (
+    Math.abs(candidate * scale - targetPx) < Math.abs(best * scale - targetPx) ? candidate : best
+  ));
+  return { meters, pixels: meters * scale };
+}
+
+export function shouldShowWeaponLabels(scale) {
+  return scale >= WEAPON_LABEL_MIN_SCALE;
+}
+
+const emptyData = Object.freeze({ landRings: [], coastlines: [] });
 
 export const TACTICAL_MAPS = {
-  openSea: { id: "openSea", land: [] },
+  openSea: {
+    id: "openSea",
+    projection: null,
+    geographicExtent: null,
+    ...emptyData
+  },
   eastChinaSea: {
     id: "eastChinaSea",
-    land: [
-      [nmPoint(-300, -220), nmPoint(-168, -220), nmPoint(-151, -176), nmPoint(-158, -132), nmPoint(-136, -90), nmPoint(-147, -42), nmPoint(-122, 4), nmPoint(-132, 48), nmPoint(-111, 92), nmPoint(-124, 136), nmPoint(-101, 180), nmPoint(-112, 230), nmPoint(-300, 230)],
-      [nmPoint(80, 112), nmPoint(95, 98), nmPoint(108, 111), nmPoint(112, 144), nmPoint(103, 178), nmPoint(89, 194), nmPoint(79, 168), nmPoint(76, 136)],
-      [nmPoint(58, -230), nmPoint(170, -230), nmPoint(163, -190), nmPoint(141, -159), nmPoint(128, -125), nmPoint(98, -112), nmPoint(76, -134), nmPoint(67, -174)],
-      [nmPoint(172, -154), nmPoint(208, -140), nmPoint(235, -118), nmPoint(222, -91), nmPoint(192, -101), nmPoint(164, -126)]
-    ]
+    projection: {
+      type: "azimuthal-equidistant",
+      center: EAST_CHINA_SEA_CENTER,
+      sourceCrs: "EPSG:4326"
+    },
+    geographicExtent: { west: 118.2, east: 131.8, south: 25.2, north: 31.2 },
+    landRings: EAST_CHINA_SEA_DATA.landRings,
+    coastlines: EAST_CHINA_SEA_DATA.coastlines
   }
 };
 
@@ -20,13 +75,13 @@ export function tacticalMap(id) {
 }
 
 export function isLandPoint(point, map = TACTICAL_MAPS.openSea) {
-  return map.land.some((polygon) => {
+  return map.landRings.some((polygon) => {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const a = polygon[i];
-      const b = polygon[j];
-      const crosses = (a.y > point.y) !== (b.y > point.y)
-        && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+      const [ax, ay] = polygon[i];
+      const [bx, by] = polygon[j];
+      const crosses = (ay > point.y) !== (by > point.y)
+        && point.x < ((bx - ax) * (point.y - ay)) / (by - ay) + ax;
       if (crosses) inside = !inside;
     }
     return inside;

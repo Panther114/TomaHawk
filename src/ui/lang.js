@@ -35,6 +35,8 @@ const strings = {
   "map.select":       { en: "Tactical map", zh: "战术地图" },
   "map.eastChinaSea": { en: "EAST CHINA SEA", zh: "东海" },
   "map.openSea":      { en: "OPEN SEA", zh: "开放海域" },
+  "scale.aria":       { en: "Map scale", zh: "地图比例尺" },
+  "scale.grid":       { en: "GRID {n} km", zh: "网格 {n} 公里" },
 
   // Bottom bar buttons
   "btn.step":    { en: "STEP",    zh: "步进" },
