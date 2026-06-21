@@ -77,7 +77,7 @@ weapons such as `TomahawkBlockV` stay horizon-limited and appear at shorter rang
 
 `cellCost` supports quad-packed missiles. For example, ESSM uses `0.25` cells.
 
-`category` is currently `anti_ship`, `anti_air`, or `dual_role`. Rendering maps anti-ship missiles to square symbols, anti-air missiles to triangle symbols, and SM-6 dual-role missiles to diamond symbols. `shortLabel` is the tactical map label, such as `SM2`, `SM6`, `ESSM`, `MSTK`, or `TLAM`.
+`category` is currently `anti_ship`, `anti_air`, or `dual_role`. Each launched missile stores an immutable `launchRole`; anti-ship launches render as squares and anti-air launches as triangles. An SM-6 therefore receives its symbol from its launch role rather than a separate dual-role diamond. `shortLabel` is the tactical map label, such as `SM2`, `SM6`, `ESSM`, `MSTK`, or `TLAM`.
 
 `launchIntervalS` is the minimum interval between actual launches from a ship for that missile type. `salvoSpacingS` controls how a queued salvo is released over time so multiple missiles do not spawn at the same map coordinate.
 
@@ -298,7 +298,7 @@ Ships spawn with a full default magazine for their hull class, with the loadout 
 - `category: "dual_role"`, `symbol: "diamond"`, `target: "dual"`
 - 200 NM range, Mach 3.5 (1190 m/s), PK 0.55
 - Can engage both missiles (area defence) and ships (anti-surface strike)
-- At launch, target type is determined at runtime — SM-6 against a ship flies an anti-surface terminal profile; against a missile flies an intercept profile
+- At launch, `launchRole` is fixed to `anti_ship` or `anti_air`; guidance, hit resolution, summaries, and the square/triangle icon use that role for the missile's lifetime
 - Used offensively only when magazine depth exceeds 12 rounds (reserve for AAW)
 
 ## Subsystem Damage

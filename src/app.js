@@ -16,6 +16,7 @@ import {
   exportAfterAction,
   formatTime,
   isShipPositionOnWater,
+  missileDisplayRole,
   placeShip,
   restoreScenario,
   serializeScenario,
@@ -489,7 +490,7 @@ function drawMissiles(label) {
     const p = worldToScreen(missile);
     const iconVisible = screenPointVisible(p, 24);
     const spec = MISSILES[missile.missileId];
-    const isAntiAir = spec?.category === "anti_air";
+    const isAntiAir = missileDisplayRole(missile) === "anti_air";
     const size = worldSize(
       isAntiAir ? 34 : 52,
       Math.max(2.2, VISUAL_CONFIG.missileMinPx * (isAntiAir ? 0.85 : 1)),
@@ -497,7 +498,7 @@ function drawMissiles(label) {
       19
     );
     const iconColor = missile.terminal ? "#f7b955" : sideColor(missile.side);
-    const targetCandidate = spec?.target === "missile"
+    const targetCandidate = isAntiAir
       ? (sim._missileById?.get(missile.targetId) ?? sim.missiles.find((m) => m.id === missile.targetId))
       : (sim._shipById?.get(missile.targetId) ?? sim.ships.find((s) => s.id === missile.targetId));
     const target = targetCandidate?.alive ? targetCandidate : null;
@@ -527,17 +528,10 @@ function drawMissiles(label) {
       ctx.shadowBlur = 3;
     }
     ctx.beginPath();
-    if (spec?.category === "anti_air") {
+    if (isAntiAir) {
       ctx.moveTo(size, 0);
       ctx.lineTo(-size * 0.65, -size * 0.72);
       ctx.lineTo(-size * 0.65, size * 0.72);
-      ctx.closePath();
-    } else if (spec?.category === "dual_role") {
-      // Diamond for dual-role (SM-6)
-      ctx.moveTo(size * 0.65, 0);
-      ctx.lineTo(0, -size * 0.65);
-      ctx.lineTo(-size * 0.65, 0);
-      ctx.lineTo(0, size * 0.65);
       ctx.closePath();
     } else {
       ctx.rect(-size * 0.58, -size * 0.58, size * 1.16, size * 1.16);

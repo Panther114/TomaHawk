@@ -151,6 +151,8 @@ export function missileDisplayRole(missile) {
   if (!spec) return null;
   if (spec.category === "anti_air") return "anti_air";
   if (spec.category === "anti_ship") return "anti_ship";
+  if (missile.launchRole === "anti_air" || missile.launchRole === "anti_ship") return missile.launchRole;
+  // Legacy saves did not persist the role; their non-retargetable target is the launch intent.
   const targetId = String(missile.targetId ?? "");
   return targetId.startsWith("M-") ? "anti_air" : "anti_ship";
 }

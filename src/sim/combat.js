@@ -4,7 +4,7 @@
 
 import { NM, SIDE, FLEET_ROLE, WEAPON_STATE } from "./constants.js";
 import { clamp, distance, angleTo, wrapAngle, interceptPoint, entityVelocity } from "./math.js";
-import { MISSILES } from "./missiles.js";
+import { MISSILES, missileDisplayRole } from "./missiles.js";
 import { availableCount, setAvailableCount, defaultLoadout, defaultRoe } from "./ships.js";
 import { addEvent } from "./events.js";
 import { currentTrack, markContactDead } from "./sensors.js";
@@ -128,6 +128,7 @@ function launchMissile(sim, launcher, order) {
     launcherId: launcher.id,
     targetId: order.targetId,
     missileId: order.missileId,
+    launchRole: spec.category === "dual_role" ? (order.defensive ? "anti_air" : "anti_ship") : spec.category,
     x: launchPos.x,
     y: launchPos.y,
     heading: wrapAngle(heading + lane * 0.006),
@@ -808,33 +809,26 @@ export function updateMissiles(sim, dt) {
     if (!missile.alive) continue;
     const spec = missile._spec ?? MISSILES[missile.missileId];
     if (!missile._spec) Object.defineProperty(missile, "_spec", { value: spec, writable: true, configurable: true });
-    // Dual-role missiles (SM-6) can target either ships or missiles
-    const isDual = spec.target === "dual";
-    let target = spec.target === "missile"
+    const launchRole = missileDisplayRole(missile);
+    const isInterceptor = launchRole === "anti_air";
+    let target = spec.target === "missile" || isInterceptor
       ? aliveMissileById(sim, missile.targetId)
-      : isDual
-        ? (aliveShipById(sim, missile.targetId) ||
-           aliveMissileById(sim, missile.targetId))
-        : aliveShipById(sim, missile.targetId);
+      : aliveShipById(sim, missile.targetId);
 
     // Target killed in flight (sunk, or threat intercepted by someone else):
     // abort or self-destruct — never coast on a dead datum.
     if (!target) {
       if (!handleTargetLoss(sim, missile, spec)) continue;
-      target = spec.target === "missile"
+      target = spec.target === "missile" || isInterceptor
         ? sim.missiles.find((m) => m.id === missile.targetId && m.alive)
-        : isDual
-          ? (sim.ships.find((s) => s.id === missile.targetId && s.alive) ||
-             sim.missiles.find((m) => m.id === missile.targetId && m.alive))
         : sim.ships.find((s) => s.id === missile.targetId && s.alive);
       if (!target) { deactivateMissile(sim, missile); continue; }
     }
 
     const distToTarget = distance(missile, target);
     missile.timeToImpactEstimate = timeToImpact(missile, target);
-    // Terminal phase determination: dual-role uses target type to decide
-    const isAntiShipTarget = spec.category === "anti_ship" || (isDual && target.speed !== undefined && target.id?.startsWith && !target.id.startsWith("M-"));
-    const isInterceptorTarget = spec.target === "missile" || (isDual && target.speed !== undefined && target.id?.startsWith && target.id.startsWith("M-"));
+    const isAntiShipTarget = launchRole === "anti_ship";
+    const isInterceptorTarget = launchRole === "anti_air";
     if (isAntiShipTarget && distToTarget < spec.seekerRangeM) {
       missile.terminal = true;
       missile.phase = "terminal";
@@ -855,7 +849,7 @@ export function updateMissiles(sim, dt) {
     let aimVx;
     let aimVy;
     // Mid-course: use CEC datalink for surface targets (ship or dual vs ship)
-    const aimIsShip = spec.target === "ship" || (isDual && isAntiShipTarget);
+    const aimIsShip = isAntiShipTarget;
     if (aimIsShip && !missile.terminal) {
       const fused = forceTrack(sim, missile.controllerSide ?? missile.side, missile.targetId);
       if (fused) {
@@ -894,9 +888,8 @@ export function updateMissiles(sim, dt) {
     missile.x += Math.cos(missile.heading) * travel;
     missile.y += Math.sin(missile.heading) * travel;
     missile.flownM += travel;
-    // Hit resolution: determine target type for dual-role missiles
-    const targetIsMissile = spec.target === "missile" || (isDual && isInterceptorTarget);
-    const targetIsShip = spec.target === "ship" || (isDual && isAntiShipTarget);
+    const targetIsMissile = isInterceptorTarget;
+    const targetIsShip = isAntiShipTarget;
     if (target && targetIsMissile && distance(missile, target) < 850) {
       // Interceptor PK: base PK modified by target kinematics and defense saturation
       // Sea-skimming targets are harder to engage; supersonic targets reduce engagement window

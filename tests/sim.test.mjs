@@ -26,6 +26,7 @@ import {
   exportAfterAction,
   interceptPoint,
   missileSymbol,
+  missileDisplayRole,
   missileDetectionEnvelope,
   placeShip,
   restoreScenario,
@@ -403,6 +404,12 @@ test("missile definitions include tactical display metadata", () => {
   assert.equal(missileSymbol("MaritimeStrike"), "square");
   assert.equal(missileSymbol("SM-2MR"), "triangle");
   assert.equal(missileSymbol("SM-6"), "diamond");
+});
+
+test("SM-6 display role is fixed at launch", () => {
+  assert.equal(missileDisplayRole({ missileId: "SM-6", launchRole: "anti_air", targetId: "S-ship", alive: true }), "anti_air");
+  assert.equal(missileDisplayRole({ missileId: "SM-6", launchRole: "anti_ship", targetId: "M-threat", alive: true }), "anti_ship");
+  assert.doesNotMatch(fs.readFileSync(new URL("../src/app.js", import.meta.url), "utf8"), /Diamond for dual-role/);
 });
 
 test("SM-6 is detectable materially earlier than Tomahawk on ship radar", () => {

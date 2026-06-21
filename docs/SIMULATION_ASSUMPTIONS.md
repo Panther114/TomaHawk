@@ -26,7 +26,7 @@ The current missile set is intentionally abstract:
 
 Ranges, speeds, and kill probabilities are gameplay/simulation envelopes. They should be refined only with public sources and explicit uncertainty notes.
 
-Missile symbols are tactical categories rather than exact body shapes: anti-ship weapons render as squares, anti-air weapons render as triangles, and SM-6 dual-role weapons render as diamonds.
+Missile symbols are tactical categories rather than exact body shapes: anti-ship launches render as squares and anti-air launches render as triangles. An SM-6's role and symbol are fixed when it leaves the launcher.
 
 ## Imperfect Information
 
@@ -142,7 +142,7 @@ This is a plausible simulation abstraction, not a real-world tactical procedure.
 Four ship classes are now modelled (see DATA_MODEL.md for full table): DDG (Burke destroyer), CCG (Ticonderoga cruiser), BBG (Trump arsenal battleship), FFG (Constellation frigate). Each has per-class kinematics (max speed, acceleration, turn rate, turnRateFlank), sensor fit (radar range, scan interval), magazine capacity (VLS cells, strike-length cells), CIWS mounts/ammo/cycle parameters, defence channels, damage resilience, and damage degradation. The compact setup rail includes a hull selector for newly placed Blue and Red ships.
 
 ### SM-6 Dual-Role
-SM-6 (RIM-174 ERAM) fills the gap between area air defence and anti-surface strike. It has 200 NM range, Mach 3.5 speed, PK 0.55, and `target: "dual"`. The sim resolves target type at runtime: against ships it uses an anti-surface terminal profile; against missiles it uses an intercept profile. SM-6 is preferred for long-range/high-threat defensive engagements and can be used offensively when magazine depth permits (>12 rounds).
+SM-6 (RIM-174 ERAM) fills the gap between area air defence and anti-surface strike. It has 200 NM range, Mach 3.5 speed, PK 0.55, and `target: "dual"`. Its launch order permanently assigns either the anti-surface profile and square icon or the interceptor profile and triangle icon. SM-6 is preferred for long-range/high-threat defensive engagements and can be used offensively when magazine depth permits (>12 rounds).
 
 ### Subsystem Damage
 Each anti-ship hit degrades 2-3 of six subsystems (radar, VLS, propulsion, fireControl, CIWS, CIC) by 15-45%. Combat effects: radar damage reduces track quality, propulsion damage reduces max speed, CIWS damage reduces PK. Subsystem state is visible in the ship detail popup with colour-coded health bars.
