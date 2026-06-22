@@ -15,7 +15,7 @@ import {
 } from "./ships.js";
 import { addEvent } from "./events.js";
 import { MAP_HEIGHT_M, MAP_WIDTH_M } from "../world/terrain.js";
-import { isWaterPoint, normalizeMapId, tacticalMap } from "../world/terrain.js";
+import { isLandPoint, isWaterPoint, normalizeMapId, tacticalMap } from "../world/terrain.js";
 import { currentTrack } from "./sensors.js";
 import DEFAULT_SCENARIO_TEMPLATE from "./default-scenario.json" with { type: "json" };
 
@@ -69,6 +69,18 @@ export function isShipPositionOnWater(sim, ship) {
   return canOccupyWater(sim, ship, ship);
 }
 
+// Fixed ground emplacements must sit on land. Maps with no terrain (open sea)
+// have no coastline to violate, so any point is acceptable there.
+function canEmplaceOnLand(sim, point) {
+  const map = tacticalMap(sim.mapId);
+  if (!map.landRings?.length) return true;
+  return isLandPoint(clampShipToBounds(sim, { ...point }), map);
+}
+
+export function isShipPositionOnLand(sim, ship) {
+  return canEmplaceOnLand(sim, ship);
+}
+
 function findNearestOpenWater(sim, point, ship) {
   const bounded = clampShipToBounds(sim, { ...point });
   if (canOccupyWater(sim, bounded, ship)) return bounded;
@@ -89,7 +101,9 @@ function assignFleetWaterPositions(sim, ships) {
   const occupied = [];
   for (const side of [SIDE.BLUE, SIDE.RED]) {
     const sideShips = ships
-      .filter((ship) => ship.side === side)
+      // Fixed ground emplacements keep their placed position; only sea units
+      // are seated into open water.
+      .filter((ship) => ship.side === side && !ship.isFixed)
       .sort((a, b) => a.id.localeCompare(b.id));
     const anchor = waterAnchor(side);
     sideShips.forEach((ship, index) => {
@@ -127,6 +141,8 @@ function assignFleetWaterPositions(sim, ships) {
 
 export function ensureShipInOpenWater(sim, ship, { fallbackToFormation = false } = {}) {
   clampShipToBounds(sim, ship);
+  // Fixed ground emplacements live on land — never relocate them to water.
+  if (ship.isFixed) return ship;
   if (canOccupyWater(sim, ship, ship)) return ship;
   const recovered = findNearestOpenWater(sim, ship, ship);
   if (recovered) {
@@ -231,6 +247,8 @@ export function restoreScenario(data) {
       return {
         ...ship,
         hull,
+        domain: ship.domain ?? cls.domain ?? "sea",
+        isFixed: ship.isFixed ?? cls.isFixed ?? false,
         className: ship.className || cls.className,
         tracks: new Map((ship.tracks || []).map((track) => [track.id, track])),
         loadout: normalizeLoadout({ ...defaultLoadout(hull), ...(ship.loadout || {}) }),
@@ -355,7 +373,9 @@ export function exportAfterAction(sim) {
 
 export function placeShip(sim, side, x, y, hull = "DDG") {
   const ship = clampShipToBounds(sim, makeShip(side, x, y, hull));
-  if (!canOccupyWater(sim, ship, ship)) return null;
+  // Sea units require open water; fixed ground emplacements require land
+  // (except on the terrain-less open-sea map, where any point is allowed).
+  if (ship.isFixed ? !canEmplaceOnLand(sim, ship) : !canOccupyWater(sim, ship, ship)) return null;
   sim.ships.push(ship);
   sim._entityIndexesDirty = true;
   sim.selectedId = ship.id;
@@ -375,7 +395,14 @@ export function duplicateShip(sim, shipId) {
   copy.doctrine = { ...original.doctrine };
   copy.defenseDoctrine = { ...original.defenseDoctrine };
   copy.offenseDoctrine = { ...original.offenseDoctrine };
-  if (!ensureShipInOpenWater(sim, copy)) {
+  if (copy.isFixed) {
+    // A fixed emplacement's offset copy must stay on land; if the offset spills
+    // into water, overlap the original (the user can drag it clear).
+    if (!canEmplaceOnLand(sim, copy)) {
+      copy.x = original.x;
+      copy.y = original.y;
+    }
+  } else if (!ensureShipInOpenWater(sim, copy)) {
     assignFleetWaterPositions(sim, [copy]);
   }
   sim.ships.push(copy);

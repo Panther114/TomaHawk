@@ -120,6 +120,12 @@ function applyWaterCollisionGuard(sim, ship, nextPosition) {
 export function moveShips(sim, dt) {
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
+    // Fixed ground emplacements never move; only keep their CIWS cycle ticking.
+    if (ship.isFixed) {
+      ship.speed = 0;
+      ship.ciwsCooldown = Math.max(0, ship.ciwsCooldown - dt);
+      continue;
+    }
     const steeringTarget = resolveNavigationTarget(sim, ship);
     if (ship.waypoint) {
       const d = distance(ship, ship.waypoint);
@@ -157,6 +163,9 @@ export function decideShip(sim, ship) {
   if (!ship.alive || sim.time < ship.nextDecision) return;
   ship.nextDecision = sim.time + 1;
   if (sim.mode !== SCENARIO_MODE.RUNNING) return;
+  // Fixed emplacements have no movement decision (no retreat, station, patrol).
+  // They still sense and fire through the shared planning pipeline.
+  if (ship.isFixed) return;
   let nearestEnemy = null;
   let nearestEnemyRange = Infinity;
   for (const track of iterateTracksForShip(sim, ship)) {

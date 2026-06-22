@@ -16,6 +16,7 @@ import {
   exportAfterAction,
   formatTime,
   isShipPositionOnWater,
+  isShipPositionOnLand,
   missileDisplayRole,
   placeShip,
   restoreScenario,
@@ -423,7 +424,54 @@ function drawWeaponRangeRings() {
   ctx.restore();
 }
 
+// Fixed ground emplacements render as static map symbols (no hull, heading,
+// wake, or velocity arrow): SAM = up-triangle, EWR = diamond with a radar
+// sweep, battery/other = square bunker.
+function drawGroundUnit(ship, label) {
+  const p = worldToScreen(ship);
+  if (!screenPointVisible(p, 48)) return;
+  const color = sideColor(ship.side);
+  const selected = ship.id === sim.selectedId;
+  const s = 6;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.globalAlpha = ship.alive ? 1 : 0.35;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(5, 12, 16, .78)";
+  ctx.lineWidth = selected ? 1.2 : 0.8;
+  ctx.beginPath();
+  if (ship.hull === "SAM") {
+    ctx.moveTo(0, -s); ctx.lineTo(s, s); ctx.lineTo(-s, s); ctx.closePath();
+  } else if (ship.hull === "EWR") {
+    ctx.moveTo(0, -s); ctx.lineTo(s, 0); ctx.lineTo(0, s); ctx.lineTo(-s, 0); ctx.closePath();
+  } else {
+    ctx.rect(-s, -s, 2 * s, 2 * s);
+  }
+  ctx.fill();
+  ctx.stroke();
+  ctx.globalAlpha = ship.alive ? 0.8 : 0.4;
+  ctx.strokeStyle = "rgba(255,255,255,.7)";
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  if (ship.hull === "EWR") {
+    ctx.arc(0, 0, s * 0.55, -Math.PI * 0.78, -Math.PI * 0.08);
+  } else {
+    ctx.moveTo(-s * 0.4, 0); ctx.lineTo(s * 0.4, 0);
+    ctx.moveTo(0, -s * 0.4); ctx.lineTo(0, s * 0.4);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
+  ctx.fillStyle = color;
+  ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+  ctx.fillText(shipDisplayName(ship, "-"), p.x + s + 4, p.y - 4);
+  ctx.restore();
+}
+
 function drawScaledShip(ship, label) {
+  if (ship.isFixed || ship.domain === "ground") return drawGroundUnit(ship, label);
   const p = worldToScreen(ship);
   if (!screenPointVisible(p, 48)) return;
   const color = sideColor(ship.side);
@@ -768,12 +816,11 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
     el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
   });
-  const invHead = unitTab.querySelector('.inventory-head');
-  if (invHead) {
-    const spans = invHead.querySelectorAll('span');
-    const keys = ['inv.ship','inv.hp','inv.vls','inv.sm2','inv.sm6','inv.essm','inv.mstk','inv.tlam'];
-    spans.forEach((sp, i) => { if (keys[i]) sp.textContent = t(keys[i]); });
-  }
+  document.querySelectorAll('[data-i18n-label]').forEach((el) => {
+    el.setAttribute('label', t(el.getAttribute('data-i18n-label')));
+  });
+  // Inventory column headers carry their own data-i18n keys and are localized
+  // by the generic [data-i18n] pass above, so no special-case is needed here.
 }
 
 function drawTerrain() {
@@ -1031,7 +1078,9 @@ canvas.addEventListener("pointermove", (event) => {
         ship.x = world.x + drag.ox;
         ship.y = world.y + drag.oy;
         clampShipToBounds(sim, ship);
-        if (isShipPositionOnWater(sim, ship)) {
+        // Sea units must stay on water; fixed ground emplacements must stay on
+        // land.
+        if (ship.isFixed ? isShipPositionOnLand(sim, ship) : isShipPositionOnWater(sim, ship)) {
           drag.lastValidX = ship.x;
           drag.lastValidY = ship.y;
           ship.waypoint = null;

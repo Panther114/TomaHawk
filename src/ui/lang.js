@@ -89,6 +89,22 @@ const strings = {
   "inv.mstk":  { en: "MSTK",  zh: "MSTK" },
   "inv.tlam":  { en: "TLAM",  zh: "TLAM" },
 
+  // Ground inventory header columns
+  "inv.unit":  { en: "UNIT",  zh: "单位" },
+  "inv.rdr":   { en: "RDR",   zh: "雷达" },
+  "inv.aaw":   { en: "AAW",   zh: "防空" },
+  "inv.asuw":  { en: "ASUW",  zh: "反舰" },
+
+  // Ground unit class labels / descriptions
+  "ground.sam": { en: "SAM", zh: "防空" },
+  "ground.cdb": { en: "CDB", zh: "岸舰" },
+  "ground.ewr": { en: "EWR", zh: "预警" },
+  "ground.group": { en: "Ground", zh: "陆基" },
+  "naval.group":  { en: "Naval",  zh: "海上" },
+  "ship.sam":  { en: "SAM", zh: "防空" },
+  "ship.cdb":  { en: "CDB", zh: "岸舰" },
+  "ship.ewr":  { en: "EWR", zh: "预警" },
+
   // Placement / setup
   "place.addBlue": { en: "Add blue ship", zh: "添加蓝方舰艇" },
   "place.addRed":  { en: "Add red ship",  zh: "添加红方舰艇" },

@@ -453,6 +453,12 @@ small,
   justify-items: center;
 }
 
+/* Ground emplacement sub-table: fewer, ground-specific columns. */
+.inventory-head.ground,
+.inventory-row.ground {
+  grid-template-columns: minmax(42px, 1.4fr) minmax(25px, 0.8fr) minmax(30px, 0.9fr) minmax(28px, 0.8fr) minmax(30px, 0.85fr);
+}
+
 .inventory-head {
   position: sticky;
   top: 0;

@@ -114,6 +114,29 @@ The simulation core is split into small `src/sim/*` modules behind the `src/sim.
 
 There is no frontend build pipeline and no separate lint script in the current repo.
 
+## Performance verification (required after backend-sim changes)
+
+After **any** change that touches the simulation core (`src/sim/*`, the tick path,
+sensors, combat, command, movement, or entity counts/structures), you **must**
+verify and report the performance impact before wrapping up. Do not assume a
+change is free.
+
+- **Measure:** run `npm test` (the `tests/performance-regressions.test.mjs`
+  "tick cost scales near-linearly with force size" case prints and asserts a
+  **complexity score**), or `npm run bench` for the full human-readable report
+  (throughput, determinism, and the same score).
+- **What the score means:** it is a machine-independent ratio of per-tick cost at
+  two force sizes (`scripts/perf-harness.mjs`). **1.0 = linear**, **5.0 = quadratic**;
+  the test fails above **2.5**. A jump toward the quadratic value means an O(n)
+  loop over ships/missiles became O(n²) — find and fix it before continuing.
+- **Report:** in your final summary, explicitly state the complexity score (and,
+  for larger changes, the before/after) and confirm determinism still holds
+  (`npm run bench` prints `determinism … OK`). State the number even when it is
+  unchanged — "no perf regression" must be backed by the measured score, not an
+  assumption.
+- If a regression is intended/unavoidable, say so explicitly and justify it
+  rather than silently letting the score rise.
+
 ## High-signal file routing by problem type
 
 | Problem | Read first | Then read if needed |

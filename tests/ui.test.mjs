@@ -18,8 +18,11 @@ import {
   inventoryHeadHtml,
   inventoryRowHtml,
   inventoryHtml,
+  groundRowHtml,
+  isGroundUnit,
   clusterProximityLabels
 } from "../src/ui/view.js";
+import { placeShip, clearSide, NM } from "../src/sim.js";
 import { setLang, t } from "../src/ui/lang.js";
 
 const camera = { x: 1000, y: -500, scale: 0.0022 };
@@ -165,6 +168,48 @@ test("inventoryHtml inserts a divider between sides and a row per ship", () => {
   const rows = (html.match(/inventory-row/g) || []).length;
   assert.equal(rows, sim.ships.length);
   assert.match(html, /inventory-divider/);
+});
+
+test("ground inventory header exposes the ground-specific columns", () => {
+  const head = inventoryHeadHtml("ground");
+  for (const col of ["UNIT", "HP", "RDR", "AAW", "ASUW"]) {
+    assert.match(head, new RegExp(`>${col}<`));
+  }
+  assert.match(head, /inventory-head ground/);
+});
+
+test("isGroundUnit recognizes domain and isFixed", () => {
+  assert.equal(isGroundUnit({ domain: "ground" }), true);
+  assert.equal(isGroundUnit({ isFixed: true }), true);
+  assert.equal(isGroundUnit({ domain: "sea" }), false);
+  assert.equal(isGroundUnit({}), false);
+});
+
+test("groundRowHtml is a selectable row with the unit tag, radar reach, and effector counts", () => {
+  const sim = createScenario(7, "openSea");
+  clearSide(sim, SIDE.BLUE);
+  const sam = placeShip(sim, SIDE.BLUE, -10 * NM, 0, "SAM");
+  const row = groundRowHtml(sam, true);
+  assert.match(row, new RegExp(`data-select-ship="${sam.id}"`));
+  assert.match(row, /class="inventory-row ground blue[^"]*selected"/);
+  assert.match(row, /SAM-/); // unit tag
+  assert.match(row, /160</); // radar reach in nm
+});
+
+test("inventoryHtml renders a per-faction naval table then a ground table", () => {
+  const sim = createScenario(13, "openSea");
+  clearSide(sim, SIDE.BLUE);
+  clearSide(sim, SIDE.RED);
+  placeShip(sim, SIDE.BLUE, -20 * NM, 0, "DDG");
+  const sam = placeShip(sim, SIDE.BLUE, -18 * NM, 4 * NM, "SAM");
+  placeShip(sim, SIDE.RED, 20 * NM, 0, "DDG");
+  const ordered = [...sim.ships].sort((a, b) => a.side.localeCompare(b.side) || a.id.localeCompare(b.id));
+  const html = inventoryHtml(ordered, () => false);
+  assert.match(html, /inventory-head ground/); // ground sub-table header present
+  assert.match(html, new RegExp(`inventory-row ground[^"]*"[^>]*data-select-ship="${sam.id}"`));
+  assert.match(html, /inventory-divider/); // divider between the two factions
+  // The naval (sea) header precedes the ground header within the blue section.
+  assert.ok(html.indexOf('class="inventory-head"') < html.indexOf("inventory-head ground"));
 });
 
 test("tracks toggle uses 锁定 in Chinese", () => {

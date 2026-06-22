@@ -5,8 +5,14 @@
 // HTML strings. This keeps the view logic unit-testable (see tests/ui.test.mjs)
 // and is the first step of separating rendering from `src/app.js`.
 
-import { SIDE, defaultLoadout, usedCells, vlsCapacity, battleSummaryCounts } from "../sim.js";
+import { SIDE, NM, defaultLoadout, usedCells, vlsCapacity, battleSummaryCounts } from "../sim.js";
 import { t, hullLabel } from "./lang.js";
+
+// A ground emplacement is a fixed, land-based unit; it gets its own inventory
+// sub-table (different columns) and glyph rather than the naval ship layout.
+export function isGroundUnit(unit) {
+  return unit?.domain === "ground" || unit?.isFixed === true;
+}
 
 const baselineLoadoutCache = new Map();
 
@@ -185,8 +191,24 @@ export function renderBattleStatus(sim, counts = null) {
   `;
 }
 
-export function inventoryHeadHtml() {
-  return `<div class="inventory-head"><span>SHIP</span><span>HP</span><span>VLS</span><span>SM2</span><span>SM6</span><span>ESSM</span><span>MSTK</span><span>TLAM</span></div>`;
+// Column header for an inventory sub-table. Naval ("sea") and ground tables
+// expose different fields. Each column carries a data-i18n key so the generic
+// localization pass translates every head in the panel.
+export function inventoryHeadHtml(domain = "sea") {
+  if (domain === "ground") {
+    return `<div class="inventory-head ground">`
+      + `<span data-i18n="inv.unit">UNIT</span>`
+      + `<span data-i18n="inv.hp">HP</span>`
+      + `<span data-i18n="inv.rdr">RDR</span>`
+      + `<span data-i18n="inv.aaw">AAW</span>`
+      + `<span data-i18n="inv.asuw">ASUW</span>`
+      + `</div>`;
+  }
+  return `<div class="inventory-head">`
+    + `<span data-i18n="inv.ship">SHIP</span><span data-i18n="inv.hp">HP</span><span data-i18n="inv.vls">VLS</span>`
+    + `<span data-i18n="inv.sm2">SM2</span><span data-i18n="inv.sm6">SM6</span><span data-i18n="inv.essm">ESSM</span>`
+    + `<span data-i18n="inv.mstk">MSTK</span><span data-i18n="inv.tlam">TLAM</span>`
+    + `</div>`;
 }
 
 export function inventoryDividerHtml() {
@@ -218,14 +240,48 @@ export function inventoryRowHtml(ship, selected = false) {
     `;
 }
 
-// Build the full fleet inventory markup for an ordered ship list.
+// Inventory row for a ground emplacement: tag, HP, radar reach (nm), and the
+// counts of air-defence (AAW) and anti-surface (ASUW) effectors it carries. A
+// radar site shows no weapons; a SAM site shows AAW; a battery shows ASUW.
+export function groundRowHtml(unit, selected = false) {
+  const hp = shipHpState(unit);
+  const aaw = displayCount(unit, "SM-2MR") + displayCount(unit, "SM-6") + displayCount(unit, "ESSM");
+  const asuw = displayCount(unit, "MaritimeStrike") + displayCount(unit, "TomahawkBlockV");
+  const rdr = Math.round((unit.radarRangeM ?? 0) / NM);
+  const cell = (value, color) => `<b style="color:${value > 0 ? color : "#4e6972"}">${value > 0 ? value : "·"}</b>`;
+  return `
+      <button class="inventory-row ground ${unit.side.toLowerCase()} ${unit.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${unit.id}">
+        <span>${shipDisplayName(unit, "-")}</span>
+        <b style="color:${inventoryHpColor(unit)}">${hp.currentHp}/${hp.maxHp}</b>
+        <b>${rdr}</b>
+        ${cell(aaw, "#5fd58c")}
+        ${cell(asuw, "#f7e7a1")}
+      </button>
+    `;
+}
+
+// Build the full force inventory markup. Units are grouped by faction (BLUE
+// then RED), and within each faction split into a naval sub-table and a ground
+// sub-table — each with its own column header — so sea and ground assets read
+// as distinct rosters. A divider separates the two factions.
 export function inventoryHtml(orderedShips, isSelected = () => false) {
-  const rows = [];
-  let lastSide = null;
-  for (const ship of orderedShips) {
-    if (lastSide && ship.side !== lastSide) rows.push(inventoryDividerHtml());
-    rows.push(inventoryRowHtml(ship, isSelected(ship.id)));
-    lastSide = ship.side;
+  const out = [];
+  let factionEmitted = false;
+  for (const side of [SIDE.BLUE, SIDE.RED]) {
+    const sideUnits = orderedShips.filter((unit) => unit.side === side);
+    if (!sideUnits.length) continue;
+    if (factionEmitted) out.push(inventoryDividerHtml());
+    factionEmitted = true;
+    const sea = sideUnits.filter((unit) => !isGroundUnit(unit));
+    const ground = sideUnits.filter((unit) => isGroundUnit(unit));
+    if (sea.length) {
+      out.push(inventoryHeadHtml("sea"));
+      for (const unit of sea) out.push(inventoryRowHtml(unit, isSelected(unit.id)));
+    }
+    if (ground.length) {
+      out.push(inventoryHeadHtml("ground"));
+      for (const unit of ground) out.push(groundRowHtml(unit, isSelected(unit.id)));
+    }
   }
-  return `${inventoryHeadHtml()}${rows.join("")}`;
+  return out.join("");
 }
