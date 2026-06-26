@@ -293,7 +293,7 @@ Three fixed ground emplacement classes share the same object shape but set `doma
 Key per-class fields on every ship object:
 - `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"EWR"`)
 - `domain` / `isFixed` — `"ground"` + `true` for stationary land emplacements
-- `vlsCells` / `vlsStrikeCells` — total and strike-length VLS capacity
+- `vlsCells` — total VLS capacity; every missile draws from this one pool by its `cellCost`
 - `damageResist` — whole-hit damage points before mission-kill
 - `damageDegrade` — speed/manoeuvre penalty per damage point
 - `turnRateFlank` — reduced turn rate at >75% flank speed

@@ -24,9 +24,11 @@ export function defaultLoadout(hull = "DDG") {
     "SM-6": Math.floor(16 * scale),
     ESSM: Math.floor(32 * scale),
     MaritimeStrike: Math.floor(16 * scale),
-    TomahawkBlockV: Math.min(Math.floor(12 * scale), cls.vlsStrikeCells || 12)
+    TomahawkBlockV: Math.floor(12 * scale)
   };
-  const remaining = Math.max(0, cls.vlsCells - usedCells(loadout));
+  // Fill remaining capacity with SM-2MR. Floor it so quarter-cell ESSM costs
+  // can't leave a fractional missile count (e.g. FFG would otherwise show 15.5).
+  const remaining = Math.max(0, Math.floor(cls.vlsCells - usedCells(loadout)));
   loadout["SM-2MR"] += remaining;
   return loadout;
 }
@@ -118,24 +120,54 @@ export function setLoadout(ship, missileId, count) {
   return result;
 }
 
-// Ship class catalogue
-const SHIP_CLASSES = Object.freeze({
-  DDG: { hull:"DDG",className:"Arleigh Burke Flight IIA approx.",prefix:"DDG",lengthM:155,beamM:20,draftM:9.3,displacementT:9200,cruiseSpeedKt:16,maxSpeedKt:31,accelMps2:0.12,decelMps2:0.22,turnRateDps:2.6,turnRateFlankDps:1.8,radarRangeNm:190,radarIntervalS:4,vlsCells:96,vlsStrikeCells:12,ciwsCount:1,ciwsAmmo:1550,ciwsBurstRounds:180,ciwsBurstS:1.4,ciwsCycleS:5.5,defenseChannels:{area:2,point:2,ciws:1},damageResist:2,damageDegrade:0.30 },
-  CCG: { hull:"CCG",className:"Ticonderoga-class Cruiser approx.",prefix:"CG",lengthM:173,beamM:16.8,draftM:10.2,displacementT:9600,cruiseSpeedKt:18,maxSpeedKt:32.5,accelMps2:0.11,decelMps2:0.20,turnRateDps:2.2,turnRateFlankDps:1.5,radarRangeNm:210,radarIntervalS:3.5,vlsCells:122,vlsStrikeCells:18,ciwsCount:2,ciwsAmmo:3100,ciwsBurstRounds:200,ciwsBurstS:1.6,ciwsCycleS:4.8,defenseChannels:{area:4,point:3,ciws:2},damageResist:3,damageDegrade:0.24 },
-  BBG: { hull:"BBG",className:"Trump-class Arsenal Battleship approx.",prefix:"BBG",lengthM:262,beamM:32,draftM:12.5,displacementT:28000,cruiseSpeedKt:16,maxSpeedKt:24,accelMps2:0.06,decelMps2:0.12,turnRateDps:1.2,turnRateFlankDps:0.7,radarRangeNm:250,radarIntervalS:3.0,vlsCells:288,vlsStrikeCells:96,ciwsCount:5,ciwsAmmo:6200,ciwsBurstRounds:300,ciwsBurstS:1.8,ciwsCycleS:3.5,defenseChannels:{area:6,point:4,ciws:4},damageResist:5,damageDegrade:0.14 },
-  FFG: { hull:"FFG",className:"Constellation-class Frigate approx.",prefix:"FFG",lengthM:151,beamM:19.7,draftM:7.9,displacementT:7300,cruiseSpeedKt:16,maxSpeedKt:26,accelMps2:0.14,decelMps2:0.25,turnRateDps:3.2,turnRateFlankDps:2.4,radarRangeNm:150,radarIntervalS:5,vlsCells:32,vlsStrikeCells:8,ciwsCount:1,ciwsAmmo:800,ciwsBurstRounds:150,ciwsBurstS:1.2,ciwsCycleS:6.0,defenseChannels:{area:1,point:1,ciws:1},damageResist:1,damageDegrade:0.45 },
+// Ship class catalogue. A live registry (not frozen): the modding system
+// registers custom naval/ground unit types into it at runtime via
+// registerShipClass. Consumers access it as SHIP_CLASSES[hull], so registered
+// entries are visible everywhere with no further wiring. Built-in ids are
+// captured below and can never be removed.
+const SHIP_CLASSES = {
+  DDG: { hull:"DDG",className:"Arleigh Burke Flight IIA approx.",prefix:"DDG",lengthM:155,beamM:20,draftM:9.3,displacementT:9200,cruiseSpeedKt:16,maxSpeedKt:31,accelMps2:0.12,decelMps2:0.22,turnRateDps:2.6,turnRateFlankDps:1.8,radarRangeNm:190,radarIntervalS:4,vlsCells:96,ciwsCount:1,ciwsAmmo:1550,ciwsBurstRounds:180,ciwsBurstS:1.4,ciwsCycleS:5.5,defenseChannels:{area:2,point:2,ciws:1},damageResist:2,damageDegrade:0.30 },
+  CCG: { hull:"CCG",className:"Ticonderoga-class Cruiser approx.",prefix:"CG",lengthM:173,beamM:16.8,draftM:10.2,displacementT:9600,cruiseSpeedKt:18,maxSpeedKt:32.5,accelMps2:0.11,decelMps2:0.20,turnRateDps:2.2,turnRateFlankDps:1.5,radarRangeNm:210,radarIntervalS:3.5,vlsCells:122,ciwsCount:2,ciwsAmmo:3100,ciwsBurstRounds:200,ciwsBurstS:1.6,ciwsCycleS:4.8,defenseChannels:{area:4,point:3,ciws:2},damageResist:3,damageDegrade:0.24 },
+  BBG: { hull:"BBG",className:"Trump-class Arsenal Battleship approx.",prefix:"BBG",lengthM:262,beamM:32,draftM:12.5,displacementT:28000,cruiseSpeedKt:16,maxSpeedKt:24,accelMps2:0.06,decelMps2:0.12,turnRateDps:1.2,turnRateFlankDps:0.7,radarRangeNm:250,radarIntervalS:3.0,vlsCells:288,ciwsCount:5,ciwsAmmo:6200,ciwsBurstRounds:300,ciwsBurstS:1.8,ciwsCycleS:3.5,defenseChannels:{area:6,point:4,ciws:4},damageResist:5,damageDegrade:0.14 },
+  FFG: { hull:"FFG",className:"Constellation-class Frigate approx.",prefix:"FFG",lengthM:151,beamM:19.7,draftM:7.9,displacementT:7300,cruiseSpeedKt:16,maxSpeedKt:26,accelMps2:0.14,decelMps2:0.25,turnRateDps:3.2,turnRateFlankDps:2.4,radarRangeNm:150,radarIntervalS:5,vlsCells:32,ciwsCount:1,ciwsAmmo:800,ciwsBurstRounds:150,ciwsBurstS:1.2,ciwsCycleS:6.0,defenseChannels:{area:1,point:1,ciws:1},damageResist:1,damageDegrade:0.45 },
 
   // --- Fixed ground emplacements (domain:"ground", speed 0) ----------------
   // Modeled as stationary ship-entities so they flow through the existing
   // sensor/CEC/engagement pipeline unchanged. They are placed on land, never
   // re-seated to water, and never maneuver. Each is a distinct unit type.
-  SAM: { hull:"SAM",className:"Coastal SAM Battery approx.",prefix:"SAM",domain:"ground",isFixed:true,lengthM:55,beamM:55,draftM:12,displacementT:6000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:160,radarIntervalS:3.5,vlsCells:64,vlsStrikeCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:4,point:3,ciws:0},damageResist:2,damageDegrade:0.30,baseLoadout:{ "SM-2MR":32,"SM-6":8,ESSM:16 } },
+  SAM: { hull:"SAM",className:"Coastal SAM Battery approx.",prefix:"SAM",domain:"ground",isFixed:true,glyph:"sam",lengthM:55,beamM:55,draftM:12,displacementT:6000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:160,radarIntervalS:3.5,vlsCells:64,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:4,point:3,ciws:0},damageResist:2,damageDegrade:0.30,baseLoadout:{ "SM-2MR":32,"SM-6":8,ESSM:16 } },
   // Coastal battery carries an over-the-horizon targeting radar so its long
   // anti-ship missiles are usable at range rather than blind beyond a short
   // radar (its own radar must out-reach its primary MaritimeStrike envelope).
-  CDB: { hull:"CDB",className:"Coastal Defense Battery approx.",prefix:"CDB",domain:"ground",isFixed:true,lengthM:50,beamM:50,draftM:10,displacementT:5000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:250,radarIntervalS:4,vlsCells:48,vlsStrikeCells:48,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:2,damageDegrade:0.34,baseLoadout:{ MaritimeStrike:32,TomahawkBlockV:8 } },
-  EWR: { hull:"EWR",className:"Early-Warning Radar approx.",prefix:"EWR",domain:"ground",isFixed:true,lengthM:40,beamM:40,draftM:14,displacementT:2500,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:400,radarIntervalS:5,vlsCells:0,vlsStrikeCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:1,damageDegrade:0.5,baseLoadout:{} }
-});
+  CDB: { hull:"CDB",className:"Coastal Defense Battery approx.",prefix:"CDB",domain:"ground",isFixed:true,glyph:"bunker",lengthM:50,beamM:50,draftM:10,displacementT:5000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:250,radarIntervalS:4,vlsCells:48,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:2,damageDegrade:0.34,baseLoadout:{ MaritimeStrike:32,TomahawkBlockV:8 } },
+  EWR: { hull:"EWR",className:"Early-Warning Radar approx.",prefix:"EWR",domain:"ground",isFixed:true,glyph:"radar",lengthM:40,beamM:40,draftM:14,displacementT:2500,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:400,radarIntervalS:5,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:1,damageDegrade:0.5,baseLoadout:{} }
+};
+
+// Built-in hull ids captured at module load. Protected from deletion and
+// re-seeded to canonical values on every boot.
+const BUILTIN_SHIP_IDS = new Set(Object.keys(SHIP_CLASSES));
+
+/** True when `hull` is a vanilla (non-removable) ship/ground class. */
+export function isBuiltinShipClass(hull) {
+  return BUILTIN_SHIP_IDS.has(hull);
+}
+
+/** Register (or replace) a ship/ground class under its `hull` key. */
+export function registerShipClass(cls) {
+  if (!cls || typeof cls.hull !== "string" || !cls.hull) {
+    throw new Error("registerShipClass: cls.hull is required");
+  }
+  SHIP_CLASSES[cls.hull] = cls;
+  return cls.hull;
+}
+
+/** Remove a custom ship/ground class. Built-in classes are never removed. */
+export function unregisterShipClass(hull) {
+  if (BUILTIN_SHIP_IDS.has(hull)) return false;
+  if (!(hull in SHIP_CLASSES)) return false;
+  delete SHIP_CLASSES[hull];
+  return true;
+}
 
 export { SHIP_CLASSES };
 
@@ -146,7 +178,7 @@ export function makeShip(side, x, y, hull = "DDG") {
   const cruise = cls.cruiseSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER;
   return {
     id, name: `${side} ${cls.prefix} ${seq}`, side, hull, className: cls.className, x, y,
-    domain: cls.domain ?? "sea", isFixed: cls.isFixed ?? false,
+    domain: cls.domain ?? "sea", isFixed: cls.isFixed ?? false, glyph: cls.glyph ?? null,
     heading: side === SIDE.BLUE ? Math.PI : 0, speed: 0,
     cruiseSpeed: cruise, desiredSpeed: cruise,
     maxSpeed: cls.maxSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER,
@@ -160,7 +192,7 @@ export function makeShip(side, x, y, hull = "DDG") {
     waypoint: null,
     navigationWaypoint: null,
     loadout: normalizeLoadout(defaultLoadout(hull)),
-    vlsCells: cls.vlsCells, vlsStrikeCells: cls.vlsStrikeCells,
+    vlsCells: cls.vlsCells,
     tracks: new Map(),
     doctrine: { aggression: 0.65, standoffNm: 70, defensiveRangeNm: 22, conserveWeapons: 0.25 },
     defenseDoctrine: { sm2EarlyTtiS: 38, essmPreferredMaxNm: 24, saturationThreshold: 3, maxAssignedInterceptors: 2 },

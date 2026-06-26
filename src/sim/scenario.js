@@ -254,7 +254,6 @@ export function restoreScenario(data) {
         loadout: normalizeLoadout({ ...defaultLoadout(hull), ...(ship.loadout || {}) }),
         editable: ship.editable ?? true,
         vlsCells: ship.vlsCells ?? cls.vlsCells,
-        vlsStrikeCells: ship.vlsStrikeCells ?? cls.vlsStrikeCells,
         lengthM: ship.lengthM ?? cls.lengthM,
         beamM: ship.beamM ?? cls.beamM,
         draftM: ship.draftM ?? cls.draftM,

@@ -3,7 +3,12 @@
 
 import { NM } from "./constants.js";
 
-export const MISSILES = Object.freeze({
+// The missile catalogue is a live registry, not a frozen object: the modding
+// system registers custom "ammo" units into it at runtime via registerMissile.
+// Every consumer accesses it as MISSILES[id], so newly registered entries are
+// visible everywhere without any further wiring. Built-in ids are captured
+// below and can never be removed.
+export const MISSILES = {
   "SM-2MR": {
     name: "SM-2MR",
     displayName: "Standard Missile 2 MR",
@@ -139,7 +144,34 @@ export const MISSILES = Object.freeze({
     retargetable: false,
     selfDestructOnLoss: true
   }
-});
+};
+
+// Built-in ammo ids captured at module load. These are protected from deletion
+// and are re-seeded to canonical values on every boot, so a corrupted custom
+// record can never shadow a vanilla weapon.
+const BUILTIN_MISSILE_IDS = new Set(Object.keys(MISSILES));
+
+/** True when `id` is a vanilla (non-removable) missile/ammo type. */
+export function isBuiltinMissile(id) {
+  return BUILTIN_MISSILE_IDS.has(id);
+}
+
+/** Register (or replace) a missile/ammo spec under its `name` key. */
+export function registerMissile(spec) {
+  if (!spec || typeof spec.name !== "string" || !spec.name) {
+    throw new Error("registerMissile: spec.name is required");
+  }
+  MISSILES[spec.name] = spec;
+  return spec.name;
+}
+
+/** Remove a custom missile/ammo type. Built-in types are never removed. */
+export function unregisterMissile(id) {
+  if (BUILTIN_MISSILE_IDS.has(id)) return false;
+  if (!(id in MISSILES)) return false;
+  delete MISSILES[id];
+  return true;
+}
 
 export function missileSymbol(missileId) {
   return MISSILES[missileId]?.symbol ?? "unknown";

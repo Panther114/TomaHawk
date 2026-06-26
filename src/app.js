@@ -40,6 +40,7 @@ import {
   screenToWorld as projectScreenToWorld
 } from "./ui/view.js";
 import { t, toggleLang, getLang, sideLabel, translateEventText, formatLocalizedEventLines } from "./ui/lang.js";
+import { createModEditor } from "./mods/editor.js";
 import {
   GRID_MAJOR_M,
   GRID_MINOR_M,
@@ -439,10 +440,13 @@ function drawGroundUnit(ship, label) {
   ctx.strokeStyle = color;
   ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(5, 12, 16, .78)";
   ctx.lineWidth = selected ? 1.2 : 0.8;
+  // Glyph drives the ground symbol so custom (modded) ground units can pick a
+  // shape independent of their hull id: sam=triangle, radar=diamond, bunker=square.
+  const glyph = ship.glyph || (ship.hull === "SAM" ? "sam" : ship.hull === "EWR" ? "radar" : "bunker");
   ctx.beginPath();
-  if (ship.hull === "SAM") {
+  if (glyph === "sam") {
     ctx.moveTo(0, -s); ctx.lineTo(s, s); ctx.lineTo(-s, s); ctx.closePath();
-  } else if (ship.hull === "EWR") {
+  } else if (glyph === "radar") {
     ctx.moveTo(0, -s); ctx.lineTo(s, 0); ctx.lineTo(0, s); ctx.lineTo(-s, 0); ctx.closePath();
   } else {
     ctx.rect(-s, -s, 2 * s, 2 * s);
@@ -453,7 +457,7 @@ function drawGroundUnit(ship, label) {
   ctx.strokeStyle = "rgba(255,255,255,.7)";
   ctx.lineWidth = 0.5;
   ctx.beginPath();
-  if (ship.hull === "EWR") {
+  if (glyph === "radar") {
     ctx.arc(0, 0, s * 0.55, -Math.PI * 0.78, -Math.PI * 0.08);
   } else {
     ctx.moveTo(-s * 0.4, 0); ctx.lineTo(s * 0.4, 0);
@@ -821,6 +825,32 @@ function applyI18n() {
   });
   // Inventory column headers carry their own data-i18n keys and are localized
   // by the generic [data-i18n] pass above, so no special-case is needed here.
+}
+
+// Rebuild the placement dropdown from the live SHIP_CLASSES registry so custom
+// (modded) naval/ground units appear alongside vanilla hulls. Ammo is never
+// listed here — it only populates loadout pickers in the Unit Workshop.
+function spawnOptionLabel(hull, cls) {
+  const key = `ship.${hull.toLowerCase()}`;
+  const localized = t(key);
+  return localized !== key ? localized : (cls.prefix || hull);
+}
+function populateSpawnDropdown() {
+  if (!shipClassSelect) return;
+  const prev = shipClassSelect.value;
+  const naval = [];
+  const ground = [];
+  for (const [hull, cls] of Object.entries(SHIP_CLASSES)) {
+    (cls.domain === "ground" ? ground : naval).push([hull, cls]);
+  }
+  const escAttr = (s) => String(s).replace(/"/g, "&quot;");
+  const optHtml = (arr) => arr
+    .map(([hull, cls]) => `<option value="${escAttr(hull)}">${escAttr(spawnOptionLabel(hull, cls))}</option>`)
+    .join("");
+  shipClassSelect.innerHTML =
+    `<optgroup label="${escAttr(t("naval.group"))}">${optHtml(naval)}</optgroup>` +
+    `<optgroup label="${escAttr(t("ground.group"))}">${optHtml(ground)}</optgroup>`;
+  if ([...shipClassSelect.options].some((o) => o.value === prev)) shipClassSelect.value = prev;
 }
 
 function drawTerrain() {
@@ -1243,6 +1273,10 @@ if (mapSelect) {
 
 window.addEventListener("keydown", (event) => {
   if (event.target instanceof HTMLInputElement) return;
+  if (modEditor.isOpen()) {
+    if (event.key === "Escape") { event.preventDefault(); modEditor.close(); }
+    return;
+  }
   if (aboutOpen) {
     if (event.key === "Escape" || event.code === "Space") {
       event.preventDefault();
@@ -1342,11 +1376,37 @@ function toggleAbout() {
 }
 
 document.querySelector("#brand-panel").addEventListener("click", (e) => {
-  if (e.target.closest("#lang-toggle")) return;
+  if (e.target.closest("#lang-toggle") || e.target.closest("#mods-toggle")) return;
   toggleAbout();
 });
 if (aboutCloseBtn) aboutCloseBtn.addEventListener("click", toggleAbout);
 aboutOverlay.addEventListener("click", (e) => { if (e.target === aboutOverlay) toggleAbout(); });
+
+// --- unit workshop (modding) ----------------------------------------------
+const modsOverlay = document.querySelector("#mods-overlay");
+const modsToggle = document.querySelector("#mods-toggle");
+const modsCloseBtn = document.querySelector("#mods-close");
+let modsPrevPaused = false;
+const modEditor = createModEditor({
+  overlay: modsOverlay,
+  // Only the placement dropdown needs an explicit refresh; the rAF tick loop
+  // redraws the map every frame, so no full render() call is needed here
+  // (and calling it re-entrantly could fault mid-frame).
+  onChange: () => { populateSpawnDropdown(); },
+  onOpenChange: (isOpen) => {
+    if (isOpen) { modsPrevPaused = sim.paused; sim.paused = true; }
+    else { sim.paused = modsPrevPaused; }
+    applyI18n();
+  }
+});
+populateSpawnDropdown();
+modEditor.preload();
+// Console diagnostics: window.tomahawkMods.dump("SM-7X") returns the stored
+// record plus whether it is registered as a usable missile.
+window.tomahawkMods = modEditor;
+if (modsToggle) modsToggle.addEventListener("click", (e) => { e.stopPropagation(); modEditor.open(); });
+if (modsCloseBtn) modsCloseBtn.addEventListener("click", () => modEditor.close());
+modsOverlay.addEventListener("click", (e) => { if (e.target === modsOverlay) modEditor.close(); });
 
 // --- language toggle -------------------------------------------------------
 if (langToggle) {
@@ -1355,6 +1415,8 @@ if (langToggle) {
     toggleLang();
     langToggle.textContent = t('lang.toggle');
     applyI18n();
+    populateSpawnDropdown();
+    modEditor.refreshLang();
     render();
   });
 }

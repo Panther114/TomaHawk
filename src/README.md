@@ -12,6 +12,9 @@ as-is and run as native ES modules in the browser and in Node.
 - `ui/view.js` — **pure** presentation helpers (coordinate transforms, panel
   HTML builders, per-ship derived state). No DOM/canvas/global access, so it is
   unit-tested directly in `tests/ui.test.mjs`. `app.js` imports from here.
+- `mods/` — the **Unit Workshop** modding system (browser): custom naval/ground/
+  ammo unit types stored as self-contained JSON in IndexedDB and registered into
+  the live `MISSILES`/`SHIP_CLASSES` catalogues at boot. See the table below.
 - `styles.css` — tactical UI layout and styling.
 - `sim.js` — **barrel only**. Re-exports the simulation core from `sim/`.
   Consumers (`app.js`, `ui/`, tests) import from here; do not move logic into it.
@@ -32,6 +35,19 @@ as-is and run as native ES modules in the browser and in Node.
 | `scenario.js` | create/serialize/restore/export, map state, setup-mode editing |
 | `step.js` | `stepSim` — the deterministic top-level tick |
 
+## `mods/` — the Unit Workshop (browser only; never imported by `sim/`)
+
+| Module | Owns |
+| --- | --- |
+| `schema.js` | curated per-type field definitions, defaults, and pure `validateUnit` (Node-tested) |
+| `registry.js` | editor-JSON ↔ internal-spec conversion (both directions, incl. NM↔m) and register/unregister into the live catalogues (pure) |
+| `store.js` | IndexedDB persistence; seeds/heals vanilla locked records, loads + registers custom units at boot |
+| `editor.js` | the popup controller: list, schema-driven form, save/clone/export/delete, drag-in import, discard-on-switch |
+
+`ships.js` and `missiles.js` expose `register*`/`unregister*`/`isBuiltin*` so the
+registry can extend the catalogues without a parallel code path. Built-in ids are
+captured at module load and can never be removed.
+
 ## Conventions
 
 - **Imports flow upward only.** A module imports from lower layers, never the
@@ -43,7 +59,9 @@ as-is and run as native ES modules in the browser and in Node.
   emplacement → `ships.js`; new sensor/track rule → `sensors.js`; AI posture →
   `command.js`; weapon logic/guidance → `combat.js`; save-format field or
   placement/terrain rule → `scenario.js`; map geometry / water-land query →
-  `world/terrain.js`.
+  `world/terrain.js`; a moddable parameter, editor field, or import/storage rule
+  → `mods/` (`schema.js` for fields, `registry.js` for conversion, `store.js` for
+  persistence, `editor.js` for the UI).
 - **Keep it deterministic.** Same seed + inputs ⇒ same result. Route all
   randomness through `sim.rng` (the seeded `Rng`), never `Math.random()`.
 - **Verify with `npm test`** after any change to `sim/` or `ui/`.

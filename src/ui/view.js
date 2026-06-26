@@ -5,13 +5,39 @@
 // HTML strings. This keeps the view logic unit-testable (see tests/ui.test.mjs)
 // and is the first step of separating rendering from `src/app.js`.
 
-import { SIDE, NM, defaultLoadout, usedCells, vlsCapacity, battleSummaryCounts } from "../sim.js";
+import { SIDE, NM, MISSILES, defaultLoadout, usedCells, vlsCapacity, battleSummaryCounts } from "../sim.js";
 import { t, hullLabel } from "./lang.js";
 
 // A ground emplacement is a fixed, land-based unit; it gets its own inventory
 // sub-table (different columns) and glyph rather than the naval ship layout.
 export function isGroundUnit(unit) {
   return unit?.domain === "ground" || unit?.isFixed === true;
+}
+
+// Canonical naval weapon columns, kept in this order when in use. Custom
+// (modded) missiles are appended after these so a new weapon adds a column.
+const VANILLA_COLUMNS = ["SM-2MR", "SM-6", "ESSM", "MaritimeStrike", "TomahawkBlockV"];
+
+// The weapon columns to show: every missile actually carried (count > 0) by the
+// given naval units — vanilla first (canonical order), then custom (sorted). So
+// a column appears automatically when a weapon is deployed, vanilla or modded.
+export function weaponColumns(navalUnits) {
+  const present = new Set();
+  for (const unit of navalUnits) {
+    for (const [id, count] of Object.entries(unit.loadout || {})) {
+      if (count > 0 && MISSILES[id]) present.add(id);
+    }
+  }
+  const vanilla = VANILLA_COLUMNS.filter((id) => present.has(id));
+  const custom = [...present].filter((id) => !VANILLA_COLUMNS.includes(id)).sort();
+  return [...vanilla, ...custom];
+}
+
+// Fixed-width naval grid: ship/HP/VLS keep their size and the weapon columns
+// share the remainder, compressing as more are added (minmax floor of 0).
+function navalGridStyle(weaponCount) {
+  const weapons = weaponCount > 0 ? ` repeat(${weaponCount}, minmax(0, 0.66fr))` : "";
+  return `grid-template-columns: minmax(42px,1.25fr) minmax(25px,0.72fr) minmax(45px,1fr)${weapons}`;
 }
 
 const baselineLoadoutCache = new Map();
@@ -194,7 +220,7 @@ export function renderBattleStatus(sim, counts = null) {
 // Column header for an inventory sub-table. Naval ("sea") and ground tables
 // expose different fields. Each column carries a data-i18n key so the generic
 // localization pass translates every head in the panel.
-export function inventoryHeadHtml(domain = "sea") {
+export function inventoryHeadHtml(domain = "sea", columns = VANILLA_COLUMNS) {
   if (domain === "ground") {
     return `<div class="inventory-head ground">`
       + `<span data-i18n="inv.unit">UNIT</span>`
@@ -204,10 +230,14 @@ export function inventoryHeadHtml(domain = "sea") {
       + `<span data-i18n="inv.asuw">ASUW</span>`
       + `</div>`;
   }
-  return `<div class="inventory-head">`
+  // Weapon headers use the missile short label directly (military nomenclature,
+  // not translated); the full id is on the title for hover/identification.
+  const weaponHeads = columns
+    .map((id) => `<span class="inv-wpn" title="${id}">${MISSILES[id]?.shortLabel ?? id}</span>`)
+    .join("");
+  return `<div class="inventory-head" style="${navalGridStyle(columns.length)}">`
     + `<span data-i18n="inv.ship">SHIP</span><span data-i18n="inv.hp">HP</span><span data-i18n="inv.vls">VLS</span>`
-    + `<span data-i18n="inv.sm2">SM2</span><span data-i18n="inv.sm6">SM6</span><span data-i18n="inv.essm">ESSM</span>`
-    + `<span data-i18n="inv.mstk">MSTK</span><span data-i18n="inv.tlam">TLAM</span>`
+    + weaponHeads
     + `</div>`;
 }
 
@@ -216,26 +246,31 @@ export function inventoryDividerHtml() {
 }
 
 export function shipDisplayName(ship, separator = "-") {
-  const hull = hullLabel(ship?.hull);
   const rawId = String(ship?.id ?? "");
-  const suffix = rawId.includes("-")
-    ? rawId.slice(rawId.indexOf("-") + 1)
-    : rawId.replace(/^[A-Z]+/, "");
-  return suffix ? `${hull}${separator}${suffix}` : hull;
+  const dash = rawId.indexOf("-");
+  const suffix = dash >= 0 ? rawId.slice(dash + 1) : rawId.replace(/^[A-Z]+/, "");
+  // Vanilla hulls have a localized label (e.g. DDG -> 驱逐舰). Custom (modded)
+  // hulls have no translation, so `hullLabel` returns the raw i18n key; fall back
+  // to the user-chosen unit tag, which is the prefix already embedded in the id.
+  const key = `ship.${(ship?.hull || "DDG").toLowerCase()}`;
+  const localized = t(key);
+  const label = localized === key
+    ? (dash >= 0 ? rawId.slice(0, dash) : rawId.replace(/[-0-9].*$/, ""))
+    : localized;
+  return suffix ? `${label}${separator}${suffix}` : label;
 }
 
-export function inventoryRowHtml(ship, selected = false) {
+export function inventoryRowHtml(ship, selected = false, columns = VANILLA_COLUMNS) {
   const hp = shipHpState(ship);
+  const weaponCells = columns
+    .map((id) => `<b style="color:${inventoryMissileColor(ship, id)}">${displayCount(ship, id)}</b>`)
+    .join("");
   return `
-      <button class="inventory-row ${ship.side.toLowerCase()} ${ship.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${ship.id}">
+      <button class="inventory-row ${ship.side.toLowerCase()} ${ship.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${ship.id}" style="${navalGridStyle(columns.length)}">
         <span>${shipDisplayName(ship, "-")}</span>
         <b style="color:${inventoryHpColor(ship)}">${hp.currentHp}/${hp.maxHp}</b>
         <b style="color:${inventoryVlsColor(ship)}">${Math.round(usedCells(ship.loadout))}/${ship.vlsCells ?? 96}</b>
-        <b style="color:${inventoryMissileColor(ship, "SM-2MR")}">${displayCount(ship, "SM-2MR")}</b>
-        <b style="color:${inventoryMissileColor(ship, "SM-6")}">${displayCount(ship, "SM-6")}</b>
-        <b style="color:${inventoryMissileColor(ship, "ESSM")}">${displayCount(ship, "ESSM")}</b>
-        <b style="color:${inventoryMissileColor(ship, "MaritimeStrike")}">${displayCount(ship, "MaritimeStrike")}</b>
-        <b style="color:${inventoryMissileColor(ship, "TomahawkBlockV")}">${displayCount(ship, "TomahawkBlockV")}</b>
+        ${weaponCells}
       </button>
     `;
 }
@@ -245,8 +280,16 @@ export function inventoryRowHtml(ship, selected = false) {
 // radar site shows no weapons; a SAM site shows AAW; a battery shows ASUW.
 export function groundRowHtml(unit, selected = false) {
   const hp = shipHpState(unit);
-  const aaw = displayCount(unit, "SM-2MR") + displayCount(unit, "SM-6") + displayCount(unit, "ESSM");
-  const asuw = displayCount(unit, "MaritimeStrike") + displayCount(unit, "TomahawkBlockV");
+  // Aggregate effectors by missile category so custom (modded) weapons count:
+  // anti-air and dual-role into AAW, anti-ship into ASUW.
+  let aaw = 0;
+  let asuw = 0;
+  for (const id of Object.keys(unit.loadout || {})) {
+    const spec = MISSILES[id];
+    if (!spec) continue;
+    if (spec.category === "anti_ship") asuw += displayCount(unit, id);
+    else aaw += displayCount(unit, id);
+  }
   const rdr = Math.round((unit.radarRangeM ?? 0) / NM);
   const cell = (value, color) => `<b style="color:${value > 0 ? color : "#4e6972"}">${value > 0 ? value : "·"}</b>`;
   return `
@@ -266,6 +309,9 @@ export function groundRowHtml(unit, selected = false) {
 // as distinct rosters. A divider separates the two factions.
 export function inventoryHtml(orderedShips, isSelected = () => false) {
   const out = [];
+  // Weapon columns are computed across all naval units (both sides) so the two
+  // sub-tables stay aligned and a deployed custom weapon shows everywhere.
+  const columns = weaponColumns(orderedShips.filter((unit) => !isGroundUnit(unit)));
   let factionEmitted = false;
   for (const side of [SIDE.BLUE, SIDE.RED]) {
     const sideUnits = orderedShips.filter((unit) => unit.side === side);
@@ -275,8 +321,8 @@ export function inventoryHtml(orderedShips, isSelected = () => false) {
     const sea = sideUnits.filter((unit) => !isGroundUnit(unit));
     const ground = sideUnits.filter((unit) => isGroundUnit(unit));
     if (sea.length) {
-      out.push(inventoryHeadHtml("sea"));
-      for (const unit of sea) out.push(inventoryRowHtml(unit, isSelected(unit.id)));
+      out.push(inventoryHeadHtml("sea", columns));
+      for (const unit of sea) out.push(inventoryRowHtml(unit, isSelected(unit.id), columns));
     }
     if (ground.length) {
       out.push(inventoryHeadHtml("ground"));

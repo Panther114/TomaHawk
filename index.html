@@ -13,6 +13,11 @@
       <header id="brand-panel" class="panel" aria-label="TomaHawk naval sandbox">
         <div class="brand-wordmark">TOMAHAWK<span class="brand-version">v0.2</span></div>
         <button id="lang-toggle" class="tool" title="中/EN">中</button>
+        <button id="mods-toggle" class="tool icon-btn" title="Unit Workshop" data-i18n-title="mods.open" aria-label="Unit Workshop">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M1.5 4.2c0-.6.5-1.1 1.1-1.1h3.1l1.2 1.3h6c.6 0 1.1.5 1.1 1.1v6.3c0 .6-.5 1.1-1.1 1.1H2.6c-.6 0-1.1-.5-1.1-1.1V4.2Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </header>
       <section id="left-rail" class="panel" aria-labelledby="spawn-heading">
         <span id="spawn-heading" data-i18n="panel.shipSpawning">SHIP SPAWNING</span>
@@ -118,6 +123,19 @@
         <p data-i18n="about.descMech2">Weapons: <b>SM-2MR</b> (area AA), <b>SM-6</b> (long-range AA/AS), <b>ESSM</b> (point defense), <b>MaritimeStrike</b> (ASuW), <b>TLAM</b> (land attack). CIWS provides a last-ditch defense against incoming missiles.</p>
         <p data-i18n="about.descMech3">The command AI assesses force balance and adjusts aggression automatically. Right-click ships to inspect subsystem details in real time.</p>
         <button class="about-close" id="about-close" data-i18n="about.close">CLOSE</button>
+      </div>
+    </div>
+    <div id="mods-overlay" class="mods-overlay" hidden>
+      <div class="mods-card">
+        <div class="mods-head">
+          <span class="mods-title" data-i18n="mods.title">UNIT WORKSHOP</span>
+          <span class="mods-hint" data-i18n="mods.hint">Drag a unit .json here to import</span>
+          <button class="mods-close" id="mods-close" data-i18n="mods.close">CLOSE</button>
+        </div>
+        <div class="mods-body">
+          <aside class="mods-list" id="mods-list"></aside>
+          <section class="mods-detail" id="mods-detail"></section>
+        </div>
       </div>
     </div>
     <script type="module" src="src/app.js"></script>

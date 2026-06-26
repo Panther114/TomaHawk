@@ -60,7 +60,6 @@
         "TomahawkBlockV": 12
       },
       "vlsCells": 96,
-      "vlsStrikeCells": 12,
       "tracks": [],
       "doctrine": {
         "aggression": 0.65,
@@ -165,7 +164,6 @@
         "TomahawkBlockV": 12
       },
       "vlsCells": 96,
-      "vlsStrikeCells": 12,
       "tracks": [],
       "doctrine": {
         "aggression": 0.65,
@@ -270,7 +268,6 @@
         "TomahawkBlockV": 12
       },
       "vlsCells": 96,
-      "vlsStrikeCells": 12,
       "tracks": [],
       "doctrine": {
         "aggression": 0.65,
@@ -375,7 +372,6 @@
         "TomahawkBlockV": 15
       },
       "vlsCells": 122,
-      "vlsStrikeCells": 18,
       "tracks": [],
       "doctrine": {
         "aggression": 0.65,
@@ -480,7 +476,6 @@
         "TomahawkBlockV": 12
       },
       "vlsCells": 96,
-      "vlsStrikeCells": 12,
       "tracks": [],
       "doctrine": {
         "aggression": 0.65,
@@ -585,7 +580,6 @@
         "TomahawkBlockV": 12
       },
       "vlsCells": 96,
-      "vlsStrikeCells": 12,
       "tracks": [],
       "doctrine": {
         "aggression": 0.65,
@@ -690,7 +684,6 @@
         "TomahawkBlockV": 12
       },
       "vlsCells": 96,
-      "vlsStrikeCells": 12,
       "tracks": [],
       "doctrine": {
         "aggression": 0.65,
@@ -795,7 +788,6 @@
         "TomahawkBlockV": 15
       },
       "vlsCells": 122,
-      "vlsStrikeCells": 18,
       "tracks": [],
       "doctrine": {
         "aggression": 0.65,

@@ -156,6 +156,12 @@ const strings = {
   // Language toggle
   "lang.toggle": { en: "中", zh: "EN" },
 
+  // Unit Workshop (modding)
+  "mods.open":  { en: "Unit Workshop",  zh: "单位工坊" },
+  "mods.title": { en: "UNIT WORKSHOP",  zh: "单位工坊" },
+  "mods.close": { en: "CLOSE",          zh: "关闭" },
+  "mods.hint":  { en: "Drag a unit .json here to import", zh: "将单位 .json 拖入此处以导入" },
+
   // Map role tags
   "role.otc":  { en: "OTC",  zh: "总指挥" },
   "role.aawc": { en: "AAWC", zh: "防空指挥" },

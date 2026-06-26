@@ -25,7 +25,7 @@ Use this file to route yourself to the smallest relevant part of the repository 
 - `math.js` — geometry, kinematics, `interceptPoint`, `Rng`.
 - `events.js` — event-log append/severity, `formatTime`/`formatLogLines`.
 - `missiles.js` — `MISSILES` catalogue, `missileSymbol`/`missileDisplayRole`, `battleSummaryCounts`.
-- `ships.js` — `SHIP_CLASSES` (four naval hulls + three fixed ground emplacements SAM/CDB/EWR with `domain`/`isFixed`), ship factory, loadout/ROE helpers, hull-id counter.
+- `ships.js` — `SHIP_CLASSES` (four naval hulls + three fixed ground emplacements SAM/CDB/EWR with `domain`/`isFixed`/`glyph`), ship factory, loadout/ROE helpers, hull-id counter. `SHIP_CLASSES`/`MISSILES` are **live registries** (not frozen): the modding system extends them via `register*`/`unregister*`; built-ins (captured at load) can never be removed.
 - `sensors.js` — radar detection, `missileDetectionEnvelope`, track ageing/pruning/sharing.
 - `command.js` — fused force picture (`buildForcePicture`/`forceTrack`) + fleet command posture.
 - `movement.js` — `moveShips`, `decideShip`.
@@ -169,6 +169,7 @@ change you happened to make this session**.
 | Radar/tracks/CEC | `src/sim/sensors.js`, `src/sim/command.js` | `docs/DATA_MODEL.md`, tests |
 | Command posture / AI aggression | `src/sim/command.js` | `tests/sim.test.mjs`, `docs/SIMULATION_ASSUMPTIONS.md` |
 | Missile or ship catalogue/stats | `src/sim/missiles.js`, `src/sim/ships.js` | `docs/DATA_MODEL.md` |
+| Modding / Unit Workshop (custom units, editor, import/storage) | `src/mods/schema.js`, `src/mods/editor.js` | `src/mods/registry.js`, `src/mods/store.js`, `tests/mods.test.mjs`, `docs/MODDING.md` |
 | Ground emplacements (SAM/CDB/EWR), `isFixed`/`domain` units | `src/sim/ships.js`, `src/sim/scenario.js` | `tests/ground-units.test.mjs`, `src/sim/command.js`, `src/sim/movement.js` |
 | Terrain, maps, land/water placement, coastal navigation | `src/world/terrain.js`, `src/sim/scenario.js`, `src/sim/movement.js` | `docs/MAP_DATA.md`, `src/world/map-spec.js` |
 | Performance / complexity score | `scripts/perf-harness.mjs`, `tests/performance-regressions.test.mjs` | `scripts/bench.mjs` |

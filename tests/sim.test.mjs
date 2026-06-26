@@ -117,14 +117,21 @@ test("loadout validation enforces 96-cell VLS capacity", () => {
   assert.equal(setLoadout(ship, "TomahawkBlockV", 97).ok, false);
 });
 
-test("default loadouts fill each hull's VLS capacity", () => {
+test("default loadouts fill each hull's VLS capacity with integer counts", () => {
   for (const hull of Object.keys(SHIP_CLASSES)) {
     // Fixed ground emplacements carry an explicit, type-specific magazine that
     // intentionally does not fill (or even use) VLS cells — only naval hulls
     // are topped off to capacity.
     if (SHIP_CLASSES[hull].domain === "ground") continue;
-    const ship = { vlsCells: SHIP_CLASSES[hull].vlsCells };
-    assert.equal(usedCells(defaultLoadout(hull)), ship.vlsCells, hull);
+    const cap = SHIP_CLASSES[hull].vlsCells;
+    const loadout = defaultLoadout(hull);
+    const used = usedCells(loadout);
+    // Every count is a whole missile (no fractional rounds like the old 15.5).
+    for (const [id, count] of Object.entries(loadout)) {
+      assert.ok(Number.isInteger(count), `${hull} ${id} count ${count} not integer`);
+    }
+    // Topped off to within a single cell of capacity (can't fit another round).
+    assert.ok(used <= cap && cap - used < 1, `${hull}: ${used}/${cap}`);
   }
 });
 

@@ -32,7 +32,13 @@ createServer(async (req, res) => {
       return;
     }
     const body = await readFile(file);
-    res.writeHead(200, { "content-type": types[extname(file)] || "application/octet-stream" });
+    // No build step: source files are served as-is and change between runs.
+    // Force revalidation so browsers never run a stale cached ES module (which
+    // otherwise makes code fixes appear to "not take effect" until a hard reload).
+    res.writeHead(200, {
+      "content-type": types[extname(file)] || "application/octet-stream",
+      "cache-control": "no-cache"
+    });
     res.end(body);
   } catch {
     res.writeHead(404);

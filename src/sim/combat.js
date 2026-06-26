@@ -472,12 +472,22 @@ function defensiveNeedProfile(sim, side, missile, track, target) {
 function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.5) {
   const rangeM = distance(ship, track);
   const hull = ship.hull || "DDG";
-  const candidates = ["SM-6", "MaritimeStrike", "TomahawkBlockV"].filter((id) => {
-    const reserve = allowReserve ? 0 : id === "SM-6" ? Math.ceil(defaultLoadout(hull)[id] * (MISSILES[id].magazineReserveRatio || 0)) : 0;
+  const baseLoad = defaultLoadout(hull);
+  // Candidates are every anti-ship-capable weapon actually in the magazine
+  // (vanilla or modded) — a fixed name list would ignore custom missiles. For a
+  // vanilla hull this yields the same [SM-6, MaritimeStrike, TomahawkBlockV] set
+  // in the same order, so existing behaviour and determinism are unchanged.
+  const candidates = Object.keys(ship.loadout).filter((id) => {
+    const spec = MISSILES[id];
+    if (!spec) return false;
+    const antiShipCapable = spec.category === "anti_ship" || spec.target === "ship" || spec.target === "dual";
+    if (!antiShipCapable) return false;
+    const dualRole = spec.category === "dual_role";
+    const reserve = allowReserve ? 0 : dualRole ? Math.ceil((baseLoad[id] ?? ship.loadout[id]) * (spec.magazineReserveRatio || 0)) : 0;
     if (!ship.loadout[id] || ship.loadout[id] <= reserve) return false;
-    if (rangeM > MISSILES[id].rangeM) return false;
-    // SM-6 dual-role: prefer using as area defense unless magazine is plentiful
-    if (id === "SM-6" && !allowReserve && ship.loadout[id] < (aggression > 0.72 ? 6 : 10)) return false;
+    if (rangeM > spec.rangeM) return false;
+    // Dual-role (e.g. SM-6): conserve for area air defence unless plentiful.
+    if (dualRole && !allowReserve && ship.loadout[id] < (aggression > 0.72 ? 6 : 10)) return false;
     return true;
   });
   if (!candidates.length) return null;
