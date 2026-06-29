@@ -13,6 +13,7 @@ import {
   defaultRoe,
   resetShipIds
 } from "./ships.js";
+import { initialAircraftState } from "./aircraft.js";
 import { addEvent } from "./events.js";
 import { MAP_HEIGHT_M, MAP_WIDTH_M } from "../world/terrain.js";
 import { isLandPoint, isWaterPoint, normalizeMapId, tacticalMap } from "../world/terrain.js";
@@ -101,9 +102,9 @@ function assignFleetWaterPositions(sim, ships) {
   const occupied = [];
   for (const side of [SIDE.BLUE, SIDE.RED]) {
     const sideShips = ships
-      // Fixed ground emplacements keep their placed position; only sea units
-      // are seated into open water.
-      .filter((ship) => ship.side === side && !ship.isFixed)
+      // Only sea units are seated into open water. Fixed ground emplacements,
+      // airfields, and air units keep their placed position.
+      .filter((ship) => ship.side === side && (ship.domain ?? "sea") === "sea")
       .sort((a, b) => a.id.localeCompare(b.id));
     const anchor = waterAnchor(side);
     sideShips.forEach((ship, index) => {
@@ -141,8 +142,9 @@ function assignFleetWaterPositions(sim, ships) {
 
 export function ensureShipInOpenWater(sim, ship, { fallbackToFormation = false } = {}) {
   clampShipToBounds(sim, ship);
-  // Fixed ground emplacements live on land — never relocate them to water.
-  if (ship.isFixed) return ship;
+  // Fixed ground emplacements live on land, airfields and air units may sit
+  // anywhere — never relocate any of them to water.
+  if (ship.isFixed || ship.domain === "air") return ship;
   if (canOccupyWater(sim, ship, ship)) return ship;
   const recovered = findNearestOpenWater(sim, ship, ship);
   if (recovered) {
@@ -244,14 +246,30 @@ export function restoreScenario(data) {
     ships: data.ships.map((ship) => {
       const hull = ship.hull || "DDG";
       const cls = SHIP_CLASSES[hull] || SHIP_CLASSES.DDG;
+      const domain = ship.domain ?? cls.domain ?? "sea";
+      const loadout = normalizeLoadout({ ...defaultLoadout(hull), ...(ship.loadout || {}) });
+      // Air units carry lifecycle/fuel state; seed class defaults then keep any
+      // serialized values so a saved mid-flight squadron restores faithfully.
+      const airState = domain === "air"
+        ? {
+            ...initialAircraftState(cls),
+            ...(ship.airState != null ? { airState: ship.airState } : {}),
+            ...(Number.isFinite(ship.fuelS) ? { fuelS: ship.fuelS } : {}),
+            ...(Number.isFinite(ship.rearmUntil) ? { rearmUntil: ship.rearmUntil } : {}),
+            ...(ship.homeBaseId != null ? { homeBaseId: ship.homeBaseId } : {})
+          }
+        : {};
       return {
         ...ship,
         hull,
-        domain: ship.domain ?? cls.domain ?? "sea",
+        domain,
         isFixed: ship.isFixed ?? cls.isFixed ?? false,
+        isAirfield: ship.isAirfield ?? cls.isAirfield ?? false,
         className: ship.className || cls.className,
         tracks: new Map((ship.tracks || []).map((track) => [track.id, track])),
-        loadout: normalizeLoadout({ ...defaultLoadout(hull), ...(ship.loadout || {}) }),
+        loadout,
+        baseLoadoutSnapshot: ship.baseLoadoutSnapshot ? { ...ship.baseLoadoutSnapshot } : { ...loadout },
+        ...airState,
         editable: ship.editable ?? true,
         vlsCells: ship.vlsCells ?? cls.vlsCells,
         lengthM: ship.lengthM ?? cls.lengthM,
@@ -372,9 +390,12 @@ export function exportAfterAction(sim) {
 
 export function placeShip(sim, side, x, y, hull = "DDG") {
   const ship = clampShipToBounds(sim, makeShip(side, x, y, hull));
-  // Sea units require open water; fixed ground emplacements require land
-  // (except on the terrain-less open-sea map, where any point is allowed).
-  if (ship.isFixed ? !canEmplaceOnLand(sim, ship) : !canOccupyWater(sim, ship, ship)) return null;
+  // Placement rules by unit kind:
+  //   air units and airfields may be placed anywhere (land or water);
+  //   other fixed ground emplacements require land;
+  //   sea units require open water (except the terrain-less open-sea map).
+  const placeAnywhere = ship.domain === "air" || ship.isAirfield;
+  if (!placeAnywhere && (ship.isFixed ? !canEmplaceOnLand(sim, ship) : !canOccupyWater(sim, ship, ship))) return null;
   sim.ships.push(ship);
   sim._entityIndexesDirty = true;
   sim.selectedId = ship.id;

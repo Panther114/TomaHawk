@@ -20,6 +20,7 @@ export * from "./sim/constants.js";
 export * from "./sim/math.js";
 export * from "./sim/events.js";
 export * from "./sim/missiles.js";
+export * from "./sim/aircraft.js";
 export * from "./sim/ships.js";
 export * from "./sim/sensors.js";
 export * from "./sim/command.js";

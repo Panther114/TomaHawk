@@ -5,6 +5,8 @@ import {
   SIDE,
   SHIP_CLASSES,
   VISUAL_CONFIG,
+  aliveAircraftCount,
+  squadronSize,
   battleSummaryCounts,
   canRunScenario,
   canAddAssets,
@@ -448,6 +450,9 @@ function drawGroundUnit(ship, label) {
     ctx.moveTo(0, -s); ctx.lineTo(s, s); ctx.lineTo(-s, s); ctx.closePath();
   } else if (glyph === "radar") {
     ctx.moveTo(0, -s); ctx.lineTo(s, 0); ctx.lineTo(0, s); ctx.lineTo(-s, 0); ctx.closePath();
+  } else if (glyph === "airfield") {
+    // Rounded "stadium" footprint suggesting a runway/ramp.
+    ctx.rect(-s * 1.15, -s * 0.7, 2.3 * s, 1.4 * s);
   } else {
     ctx.rect(-s, -s, 2 * s, 2 * s);
   }
@@ -459,6 +464,10 @@ function drawGroundUnit(ship, label) {
   ctx.beginPath();
   if (glyph === "radar") {
     ctx.arc(0, 0, s * 0.55, -Math.PI * 0.78, -Math.PI * 0.08);
+  } else if (glyph === "airfield") {
+    // Dashed centreline like a runway.
+    ctx.moveTo(-s * 0.9, 0); ctx.lineTo(-s * 0.2, 0);
+    ctx.moveTo(s * 0.2, 0); ctx.lineTo(s * 0.9, 0);
   } else {
     ctx.moveTo(-s * 0.4, 0); ctx.lineTo(s * 0.4, 0);
     ctx.moveTo(0, -s * 0.4); ctx.lineTo(0, s * 0.4);
@@ -474,7 +483,56 @@ function drawGroundUnit(ship, label) {
   ctx.restore();
 }
 
+// A squadron renders as a small formation of dart glyphs — one per surviving
+// aircraft — so attrition is visible (a 4-ship that has lost a plane shows 3).
+// It is one entity; the darts are pure presentation offsets around its centre.
+function drawAircraft(ship, label) {
+  const p = worldToScreen(ship);
+  if (!screenPointVisible(p, 60)) return;
+  const color = sideColor(ship.side);
+  const selected = ship.id === sim.selectedId;
+  const alive = Math.max(ship.alive ? 1 : 0, aliveAircraftCount(ship));
+  const heading = Number.isFinite(ship.heading) ? ship.heading : 0;
+  const dart = 5;
+  // Wedge formation: lead aircraft ahead, wingmen stepped back on alternating
+  // sides. Offsets are in screen pixels along/across the heading.
+  const along = (i) => -Math.floor((i + 1) / 2) * 7;
+  const across = (i) => (i === 0 ? 0 : (i % 2 === 1 ? 1 : -1) * Math.ceil(i / 2) * 7);
+  ctx.save();
+  ctx.globalAlpha = ship.alive ? 1 : 0.3;
+  for (let i = 0; i < Math.max(1, alive); i++) {
+    const ax = Math.cos(heading) * along(i) - Math.sin(heading) * across(i);
+    const ay = Math.sin(heading) * along(i) + Math.cos(heading) * across(i);
+    ctx.save();
+    ctx.translate(p.x + ax, p.y + ay);
+    ctx.rotate(heading);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(5, 12, 16, .82)";
+    ctx.lineWidth = selected ? 1.1 : 0.7;
+    ctx.beginPath();
+    // Forward-pointing dart (arrowhead) — reads as a fast jet.
+    ctx.moveTo(dart, 0);
+    ctx.lineTo(-dart * 0.7, dart * 0.7);
+    ctx.lineTo(-dart * 0.3, 0);
+    ctx.lineTo(-dart * 0.7, -dart * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
+  ctx.fillStyle = color;
+  ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+  const count = `${aliveAircraftCount(ship)}/${squadronSize(ship)}`;
+  ctx.fillText(`${shipDisplayName(ship, "-")} ×${count}`, p.x + 10, p.y - 6);
+  ctx.restore();
+}
+
 function drawScaledShip(ship, label) {
+  if (ship.domain === "air") return drawAircraft(ship, label);
   if (ship.isFixed || ship.domain === "ground") return drawGroundUnit(ship, label);
   const p = worldToScreen(ship);
   if (!screenPointVisible(p, 48)) return;
