@@ -10,6 +10,11 @@ import { currentTrack } from "./sensors.js";
 
 const offensivePriorCache = new Map();
 
+// Threat weight of an observed enemy aircraft squadron in the force estimate.
+// Smaller than a destroyer's strike prior (a flight throws a modest salvo) but
+// non-trivial. Provisional — tune alongside the air-unit model.
+const AIR_OFFENSE_PRIOR = 12;
+
 // ---------------------------------------------------------------------------
 // Cooperative Engagement Capability (CEC) — composite fire-control tracks.
 //
@@ -269,8 +274,15 @@ function observedForceMetrics(sim, side) {
       metrics.missilePressure += 1;
       continue;
     }
-    const hull = trackHullEstimate(track) || "DDG";
     const quality = clamp(track.quality ?? 0.35, 0.05, 0.99);
+    if (track.domain === "air") {
+      // Enemy aircraft carry strike weapons (a real offensive threat) but no VLS
+      // magazine — counting them as a destroyer would over-state enemy strength.
+      metrics.offense += AIR_OFFENSE_PRIOR * (0.55 + 0.45 * quality);
+      metrics.targets += 1;
+      continue;
+    }
+    const hull = trackHullEstimate(track) || "DDG";
     metrics.offense += offensivePriorForHull(hull) * (0.55 + 0.45 * quality);
     metrics.vls += estimatedVlsCapacity(track);
     metrics.targets += 1;

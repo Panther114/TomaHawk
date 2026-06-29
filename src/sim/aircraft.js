@@ -135,12 +135,19 @@ export function decideAircraft(sim, ship) {
   ship.nextDecision = sim.time + 1;
   if (sim.mode !== SCENARIO_MODE.RUNNING) return;
 
-  // Parked + rearming: hold until the rearm timer elapses, then relaunch.
+  // Parked + rearming: hold until the rearm timer elapses, then relaunch — but
+  // only while the home airfield is still alive. If it is destroyed mid-rearm
+  // the flight cannot rearm on a crater, so it diverts (RTB to seek another
+  // field, or splash). Falls through to the RTB logic below.
   if (ship.airState === AIR_STATE.REARMING) {
-    ship.desiredSpeed = 0;
-    ship.waypoint = null;
-    if (sim.time >= (ship.rearmUntil ?? 0)) refillFromBase(ship);
-    return;
+    const base = sim.ships.find((s) => s.id === ship.homeBaseId && s.alive && isAirfield(s));
+    if (base) {
+      ship.desiredSpeed = 0;
+      ship.waypoint = null;
+      if (sim.time >= (ship.rearmUntil ?? 0)) refillFromBase(ship);
+      return;
+    }
+    ship.airState = AIR_STATE.RTB;
   }
 
   const lowFuel = ship.fuelS <= ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac;

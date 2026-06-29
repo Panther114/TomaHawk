@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  NM, SHIP_CLASSES, makeShip, createScenario, clearSide, placeShip, stepSim,
+  NM, SHIP_CLASSES, makeShip, createScenario, clearSide, placeShip, duplicateShip, stepSim,
   SIDE, SCENARIO_MODE, aliveAircraftCount, squadronSize, isAircraft, isAirfield,
   serializeScenario, restoreScenario
 } from "../src/sim.js";
@@ -102,6 +102,36 @@ test("RTB → rearm → relaunch refills the magazine and refuels", () => {
   assert.ok(states.has("rearming"), "parked to rearm");
   assert.ok(relaunched, "relaunched with a refilled magazine");
   assert.ok(vfa.fuelS > 1000, "refuelled on rearm");
+});
+
+test("a squadron will not rearm on a destroyed airfield (diverts instead)", () => {
+  const sim = running();
+  const afb = placeShip(sim, SIDE.BLUE, -30 * NM, 0, "AFB");
+  const vfa = placeShip(sim, SIDE.BLUE, -28 * NM, 0, "VFA"); // already within base reach
+  placeShip(sim, SIDE.RED, 80 * NM, 0, "EWR");
+  vfa.loadout = {}; vfa.fuelS = 300;
+  // Run until it parks to rearm, then destroy the airfield mid-rearm.
+  let parked = false;
+  for (let i = 0; i < 200 && !parked; i++) { stepSim(sim, 0.25); parked = vfa.airState === "rearming"; }
+  assert.ok(parked, "squadron parked to rearm");
+  afb.alive = false; // airfield destroyed while the flight is on the ramp
+  // It must NOT complete the rearm; with no other base it diverts and splashes.
+  let resolved = false;
+  for (let i = 0; i < 2000 && !resolved; i++) {
+    stepSim(sim, 0.25);
+    resolved = !vfa.alive || (vfa.airState === "mission" && Object.keys(vfa.loadout).length > 0);
+  }
+  assert.ok(!vfa.alive, "did not magically rearm on the crater — diverted and splashed");
+  assert.equal(Object.keys(vfa.loadout).length, 0, "magazine was never refilled");
+});
+
+test("a duplicated airfield stays a valid airfield at its offset", () => {
+  const sim = running();
+  const afb = placeShip(sim, SIDE.BLUE, 0, 0, "AFB");
+  const dup = duplicateShip(sim, afb.id);
+  assert.ok(dup, "duplicate produced");
+  assert.equal(isAirfield(dup), true);
+  assert.notEqual(dup.id, afb.id);
 });
 
 test("a winchester squadron with no airfield splashes when fuel runs out", () => {

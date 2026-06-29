@@ -417,8 +417,9 @@ export function duplicateShip(sim, shipId) {
   copy.offenseDoctrine = { ...original.offenseDoctrine };
   if (copy.isFixed) {
     // A fixed emplacement's offset copy must stay on land; if the offset spills
-    // into water, overlap the original (the user can drag it clear).
-    if (!canEmplaceOnLand(sim, copy)) {
+    // into water, overlap the original (the user can drag it clear). Airfields
+    // are exempt — they may sit on land or water, so the offset always stands.
+    if (!copy.isAirfield && !canEmplaceOnLand(sim, copy)) {
       copy.x = original.x;
       copy.y = original.y;
     }
