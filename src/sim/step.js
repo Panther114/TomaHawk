@@ -8,6 +8,7 @@ import { canRunScenario } from "./scenario.js";
 import { ageTracks, scanSensors, shareTracks, pruneDeadTracks, markContactDead } from "./sensors.js";
 import { buildForcePicture } from "./command.js";
 import { moveShips, decideShip } from "./movement.js";
+import { decideAircraft, updateAircraft } from "./aircraft.js";
 import { planEngagements, processLaunchQueues, updateMissiles, pointDefense } from "./combat.js";
 
 const FORCE_PICTURE_INTERVAL_S = 0.5;
@@ -50,6 +51,7 @@ export function stepSim(sim, dt = 0.25) {
   if (sim._entityIndexesDirty || !sim._aliveShips) rebuildEntityIndexes(sim);
   ageTracks(sim, dt);
   moveShips(sim, dt);
+  updateAircraft(sim, dt);
   const sensorChanged = scanSensors(sim, dt);
   const shareDue = Math.floor((sim.time - dt) / 5) !== Math.floor(sim.time / 5);
   const sharedChanged = shareDue ? shareTracks(sim) : false;
@@ -58,7 +60,10 @@ export function stepSim(sim, dt = 0.25) {
     buildForcePicture(sim, { dirtyOnly: !pictureDue && (sensorChanged || sharedChanged) });
     sim.nextForcePictureAt = sim.time + FORCE_PICTURE_INTERVAL_S;
   }
-  for (const ship of sim.ships) decideShip(sim, ship);
+  for (const ship of sim.ships) {
+    if (ship.domain === "air") decideAircraft(sim, ship);
+    else decideShip(sim, ship);
+  }
   planEngagements(sim);
   processLaunchQueues(sim);
   updateMissiles(sim, dt);

@@ -12,7 +12,10 @@
 // (carrier basing, per-airframe fuel models, etc.) without touching the rest of
 // the sim. Treat everything in AIRCRAFT_TEMP_CONFIG as a placeholder.
 
-import { NM, KNOT, SHIP_SPEED_MULTIPLIER } from "./constants.js";
+import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE, SCENARIO_MODE } from "./constants.js";
+import { distance } from "./math.js";
+import { addEvent } from "./events.js";
+import { markContactDead, iterateTracksForShip } from "./sensors.js";
 
 // Squadron / endurance / rearm tunables. All provisional.
 export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
@@ -70,3 +73,133 @@ export function initialAircraftState(cls) {
 
 export const AIR_CRUISE_MPS = AIRCRAFT_TEMP_CONFIG.cruiseSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER;
 export const AIR_MAX_MPS = AIRCRAFT_TEMP_CONFIG.maxSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER;
+
+// ---------------------------------------------------------------------------
+// TEMPORARY mission/RTB/rearm behaviour.
+//
+// A squadron flies its mission (pursue + attack the nearest enemy) until it is
+// Winchester (out of weapons) or low on fuel, then returns to the nearest
+// friendly airfield to rearm/refuel and relaunch. If no airfield is reachable
+// it presses toward friendly territory and splashes when fuel runs out.
+//
+// This whole block is provisional scaffolding — carrier basing, per-airframe
+// fuel, CAP/strike tasking, etc. can replace it later. Keep the decisions here
+// deterministic (no RNG) so the simulation stays reproducible.
+// ---------------------------------------------------------------------------
+
+function totalWeapons(ship) {
+  let n = 0;
+  for (const c of Object.values(ship.loadout || {})) n += c > 0 ? c : 0;
+  return n;
+}
+
+function friendlyHomeAnchor(sim, ship) {
+  // Fallback "go home" point when no airfield exists: deep on the friendly edge.
+  const x = ship.side === SIDE.BLUE ? -sim.widthM / 2 + 4 * NM : sim.widthM / 2 - 4 * NM;
+  return { x, y: ship.y };
+}
+
+function nearestFriendlyAirfield(sim, ship) {
+  let best = null;
+  let bestD = Infinity;
+  for (const other of sim.ships) {
+    if (!other.alive || other.side !== ship.side || !isAirfield(other)) continue;
+    const d = distance(ship, other);
+    if (d < bestD) { bestD = d; best = other; }
+  }
+  return best;
+}
+
+function nearestEnemyTrack(sim, ship) {
+  let best = null;
+  let bestD = Infinity;
+  for (const track of iterateTracksForShip(sim, ship)) {
+    if (track.side === ship.side || track.quality <= 0.18) continue;
+    if (String(track.id).startsWith("M-")) continue; // ignore in-flight missiles for nav
+    const d = distance(ship, track);
+    if (d < bestD) { bestD = d; best = track; }
+  }
+  return best;
+}
+
+function refillFromBase(ship) {
+  ship.loadout = { ...(ship.baseLoadoutSnapshot || {}) };
+  ship.fuelS = ship.enduranceS;
+  ship.airState = AIR_STATE.MISSION;
+  ship.lastLaunchAtByMissile = {};
+}
+
+// Per-decision-tick state machine for one squadron. Sets waypoint/desiredSpeed.
+export function decideAircraft(sim, ship) {
+  if (!ship.alive || sim.time < (ship.nextDecision ?? 0)) return;
+  ship.nextDecision = sim.time + 1;
+  if (sim.mode !== SCENARIO_MODE.RUNNING) return;
+
+  // Parked + rearming: hold until the rearm timer elapses, then relaunch.
+  if (ship.airState === AIR_STATE.REARMING) {
+    ship.desiredSpeed = 0;
+    ship.waypoint = null;
+    if (sim.time >= (ship.rearmUntil ?? 0)) refillFromBase(ship);
+    return;
+  }
+
+  const lowFuel = ship.fuelS <= ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac;
+  const winchester = totalWeapons(ship) <= 0;
+  if ((lowFuel || winchester) && ship.airState !== AIR_STATE.RTB) {
+    ship.airState = AIR_STATE.RTB;
+  }
+
+  if (ship.airState === AIR_STATE.RTB) {
+    const base = nearestFriendlyAirfield(sim, ship);
+    if (base) {
+      ship.homeBaseId = base.id;
+      if (distance(ship, base) <= AIRCRAFT_TEMP_CONFIG.baseReachM) {
+        ship.airState = AIR_STATE.REARMING;
+        ship.rearmUntil = sim.time + (ship.rearmTimeS ?? AIRCRAFT_TEMP_CONFIG.rearmTimeS);
+        ship.desiredSpeed = 0;
+        ship.waypoint = null;
+        return;
+      }
+      ship.waypoint = { x: base.x, y: base.y };
+      ship.desiredSpeed = ship.maxSpeed;
+      return;
+    }
+    // No airfield: limp toward friendly territory; fuel exhaustion → splash.
+    ship.waypoint = friendlyHomeAnchor(sim, ship);
+    ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
+    return;
+  }
+
+  // Mission: run down the nearest enemy so fire planning can engage it. Firing
+  // itself is handled by the shared offensive/defensive planners.
+  const enemy = nearestEnemyTrack(sim, ship);
+  if (enemy) {
+    ship.waypoint = { x: enemy.x, y: enemy.y };
+    ship.desiredSpeed = ship.maxSpeed;
+    return;
+  }
+  // No contacts: advance toward the enemy side at cruise to find work.
+  ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
+  if (!ship.waypoint) {
+    const dir = ship.side === SIDE.BLUE ? 1 : -1;
+    ship.waypoint = { x: ship.x + dir * 30 * NM, y: ship.y };
+  }
+}
+
+// Per-tick upkeep for all squadrons: burn fuel (except while parked) and splash
+// any flight that runs dry. Deterministic; gated entirely on air units.
+export function updateAircraft(sim, dt) {
+  for (const ship of sim.ships) {
+    if (!ship.alive || ship.domain !== "air") continue;
+    if (ship.airState === AIR_STATE.REARMING) continue; // parked: no fuel burn
+    ship.fuelS = (ship.fuelS ?? 0) - dt;
+    if (ship.fuelS <= 0) {
+      ship.fuelS = 0;
+      ship.alive = false;
+      ship.speed = 0;
+      markContactDead(sim, ship.id);
+      sim._entityIndexesDirty = true;
+      addEvent(sim, `${ship.name} ran out of fuel and splashed.`, ship.side);
+    }
+  }
+}

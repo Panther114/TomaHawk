@@ -149,7 +149,7 @@ const SHIP_CLASSES = {
   // joins the sensor/CEC net automatically via its radar + track-file. Carrier
   // basing is out of scope; squadrons are spawned directly and rearm at an
   // airfield. enduranceS / rearmTimeS are TEMP tunables (see aircraft.js).
-  VFA: { hull:"VFA",className:"Strike Fighter Squadron approx.",prefix:"VFA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:20,beamM:14,draftM:5,displacementT:30,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:0.8,decelMps2:0.8,turnRateDps:6,turnRateFlankDps:4,radarRangeNm:90,radarIntervalS:3,vlsCells:12,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:4,damageDegrade:0.10,enduranceS:1800,rearmTimeS:90,baseLoadout:{ MaritimeStrike:6,"SM-6":4 } },
+  VFA: { hull:"VFA",className:"Strike Fighter Squadron approx.",prefix:"VFA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:20,beamM:14,draftM:5,displacementT:30,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:6,turnRateFlankDps:4,radarRangeNm:90,radarIntervalS:3,vlsCells:12,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:4,damageDegrade:0.10,enduranceS:1800,rearmTimeS:90,baseLoadout:{ MaritimeStrike:6,"SM-6":4 } },
 
   // --- Airfield (domain:"ground", placeable anywhere) ----------------------
   // Behaves like a fixed ground unit but may be placed on land OR water. Serves
