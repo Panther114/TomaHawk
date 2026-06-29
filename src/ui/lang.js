@@ -94,6 +94,8 @@ const strings = {
   "inv.rdr":   { en: "RDR",   zh: "雷达" },
   "inv.aaw":   { en: "AAW",   zh: "防空" },
   "inv.asuw":  { en: "ASUW",  zh: "反舰" },
+  "inv.ac":    { en: "A/C",   zh: "飞机" },
+  "inv.state": { en: "STATE", zh: "状态" },
 
   // Ground unit class labels / descriptions
   "ground.sam": { en: "SAM", zh: "防空" },
@@ -101,9 +103,12 @@ const strings = {
   "ground.ewr": { en: "EWR", zh: "预警" },
   "ground.group": { en: "Ground", zh: "陆基" },
   "naval.group":  { en: "Naval",  zh: "海上" },
+  "air.group":    { en: "Air",    zh: "空中" },
   "ship.sam":  { en: "SAM", zh: "防空" },
   "ship.cdb":  { en: "CDB", zh: "岸舰" },
   "ship.ewr":  { en: "EWR", zh: "预警" },
+  "ship.vfa":  { en: "VFA", zh: "战机" },
+  "ship.afb":  { en: "AFB", zh: "机场" },
 
   // Placement / setup
   "place.addBlue": { en: "Add blue ship", zh: "添加蓝方舰艇" },

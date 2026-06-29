@@ -898,16 +898,20 @@ function populateSpawnDropdown() {
   const prev = shipClassSelect.value;
   const naval = [];
   const ground = [];
+  const air = [];
   for (const [hull, cls] of Object.entries(SHIP_CLASSES)) {
-    (cls.domain === "ground" ? ground : naval).push([hull, cls]);
+    const bucket = cls.domain === "ground" ? ground : cls.domain === "air" ? air : naval;
+    bucket.push([hull, cls]);
   }
   const escAttr = (s) => String(s).replace(/"/g, "&quot;");
   const optHtml = (arr) => arr
     .map(([hull, cls]) => `<option value="${escAttr(hull)}">${escAttr(spawnOptionLabel(hull, cls))}</option>`)
     .join("");
+  const group = (label, arr) => arr.length ? `<optgroup label="${escAttr(label)}">${optHtml(arr)}</optgroup>` : "";
   shipClassSelect.innerHTML =
-    `<optgroup label="${escAttr(t("naval.group"))}">${optHtml(naval)}</optgroup>` +
-    `<optgroup label="${escAttr(t("ground.group"))}">${optHtml(ground)}</optgroup>`;
+    group(t("naval.group"), naval) +
+    group(t("ground.group"), ground) +
+    group(t("air.group"), air);
   if ([...shipClassSelect.options].some((o) => o.value === prev)) shipClassSelect.value = prev;
 }
 

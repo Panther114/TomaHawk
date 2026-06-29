@@ -105,8 +105,12 @@ function toNavalClass(u) {
 }
 
 function toGroundClass(u) {
+  const isAirfield = !!u.isAirfield;
   return {
-    hull: u.id, className: u.name, prefix: u.prefix, domain: "ground", isFixed: true, glyph: u.glyph,
+    // An airfield is a ground unit that may be placed anywhere and rearms
+    // friendly squadrons; it carries the runway glyph by default.
+    hull: u.id, className: u.name, prefix: u.prefix, domain: "ground", isFixed: true,
+    isAirfield, glyph: u.glyph ?? (isAirfield ? "airfield" : "bunker"),
     lengthM: Number(u.lengthM), beamM: Number(u.beamM), draftM: 10, displacementT: 4000,
     cruiseSpeedKt: 0, maxSpeedKt: 0, accelMps2: 0, decelMps2: 0, turnRateDps: 0, turnRateFlankDps: 0,
     radarRangeNm: Number(u.radarRangeNm), radarIntervalS: Number(u.radarIntervalS),
@@ -118,10 +122,32 @@ function toGroundClass(u) {
   };
 }
 
+function toAircraftClass(u) {
+  // A squadron's hit-point pool equals its aircraft count, so damageResist is
+  // the flight size. Hull dimensions are nominal (icon only). enduranceS /
+  // rearmTimeS feed the (temporary) RTB/rearm model.
+  const size = Math.max(1, Math.round(Number(u.squadronSize) || 4));
+  return {
+    hull: u.id, className: u.name, prefix: u.prefix, domain: "air", isFixed: false, glyph: "aircraft",
+    lengthM: Number(u.lengthM) || 20, beamM: Number(u.beamM) || 14, draftM: 5, displacementT: 30,
+    cruiseSpeedKt: Number(u.cruiseSpeedKt), maxSpeedKt: Number(u.maxSpeedKt),
+    accelMps2: Number(u.accelMps2), decelMps2: Number(u.decelMps2),
+    turnRateDps: Number(u.turnRateDps), turnRateFlankDps: Number(u.turnRateFlankDps),
+    radarRangeNm: Number(u.radarRangeNm), radarIntervalS: Number(u.radarIntervalS),
+    vlsCells: Math.round(Number(u.vlsCells)),
+    ciwsCount: 0, ciwsAmmo: 0, ciwsBurstRounds: 0, ciwsBurstS: 0, ciwsCycleS: 5,
+    defenseChannels: { area: 0, point: 0, ciws: 0 },
+    damageResist: size, damageDegrade: Number(u.damageDegrade),
+    enduranceS: Number(u.enduranceS) || 1800, rearmTimeS: Number(u.rearmTimeS) || 90,
+    baseLoadout: numClean(u.baseLoadout)
+  };
+}
+
 /** Build the internal sim spec for an editor-JSON unit (does not register it). */
 export function toInternalSpec(unit) {
   if (unit.kind === "ammo") return toMissileSpec(unit);
   if (unit.kind === "ground") return toGroundClass(unit);
+  if (unit.kind === "aircraft") return toAircraftClass(unit);
   return toNavalClass(unit);
 }
 
@@ -148,8 +174,21 @@ function fromShipClass(hull, c) {
     defenseArea: c.defenseChannels?.area ?? 0, defensePoint: c.defenseChannels?.point ?? 0,
     baseLoadout: { ...(c.baseLoadout ?? defaultLoadout(hull)) }
   };
+  if (c.domain === "air") {
+    return {
+      kind: "aircraft", id: hull, name: c.className, prefix: c.prefix,
+      squadronSize: Math.max(1, Math.round(c.damageResist ?? 4)),
+      cruiseSpeedKt: c.cruiseSpeedKt, maxSpeedKt: c.maxSpeedKt,
+      accelMps2: c.accelMps2, decelMps2: c.decelMps2,
+      turnRateDps: c.turnRateDps, turnRateFlankDps: c.turnRateFlankDps,
+      radarRangeNm: c.radarRangeNm, radarIntervalS: c.radarIntervalS,
+      vlsCells: c.vlsCells, enduranceS: c.enduranceS ?? 1800, rearmTimeS: c.rearmTimeS ?? 90,
+      damageDegrade: c.damageDegrade,
+      baseLoadout: { ...(c.baseLoadout ?? {}) }
+    };
+  }
   if (c.domain === "ground") {
-    return { kind: "ground", glyph: c.glyph ?? "bunker", ...base };
+    return { kind: "ground", glyph: c.glyph ?? "bunker", isAirfield: c.isAirfield ?? false, ...base };
   }
   return {
     kind: "naval", ...base,

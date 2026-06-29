@@ -13,10 +13,10 @@ import {
 import { loadMods, deleteMod, recordKey } from "../src/mods/store.js";
 import { weaponColumns, groundRowHtml } from "../src/ui/view.js";
 
-test("schema exposes three types; only naval+ground are deployable", () => {
-  assert.deepEqual(UNIT_TYPES, ["naval", "ground", "ammo"]);
-  assert.deepEqual(DEPLOYABLE_TYPES, ["naval", "ground"]);
-  assert.ok(SCHEMAS.naval && SCHEMAS.ground && SCHEMAS.ammo);
+test("schema exposes four types; naval+ground+aircraft are deployable", () => {
+  assert.deepEqual(UNIT_TYPES, ["naval", "ground", "aircraft", "ammo"]);
+  assert.deepEqual(DEPLOYABLE_TYPES, ["naval", "ground", "aircraft"]);
+  assert.ok(SCHEMAS.naval && SCHEMAS.ground && SCHEMAS.aircraft && SCHEMAS.ammo);
 });
 
 test("validateUnit accepts defaults and rejects bad fields", () => {

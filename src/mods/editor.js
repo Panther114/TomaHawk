@@ -18,7 +18,8 @@ const L = (label) => label?.[getLang()] ?? label?.en ?? "";
 const KIND_LABEL = {
   ammo: { en: "Ammo", zh: "弹药" },
   naval: { en: "Naval", zh: "海上" },
-  ground: { en: "Ground", zh: "陆基" }
+  ground: { en: "Ground", zh: "陆基" },
+  aircraft: { en: "Air", zh: "空中" }
 };
 
 export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
@@ -40,7 +41,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
   // --- list ----------------------------------------------------------------
   function renderList() {
-    const groups = { ammo: [], naval: [], ground: [] };
+    const groups = { ammo: [], naval: [], ground: [], aircraft: [] };
     for (const u of units) (groups[u.kind] || groups.naval).push(u);
     const lang = getLang();
     const section = (kind) => {
@@ -57,9 +58,10 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
       <div class="mods-newbar">
         <button class="mods-new" data-new="naval">+ ${esc(L(KIND_LABEL.naval))}</button>
         <button class="mods-new" data-new="ground">+ ${esc(L(KIND_LABEL.ground))}</button>
+        <button class="mods-new" data-new="aircraft">+ ${esc(L(KIND_LABEL.aircraft))}</button>
         <button class="mods-new" data-new="ammo">+ ${esc(L(KIND_LABEL.ammo))}</button>
       </div>
-      ${section("naval")}${section("ground")}${section("ammo")}`;
+      ${section("naval")}${section("ground")}${section("aircraft")}${section("ammo")}`;
   }
 
   // --- detail form ---------------------------------------------------------
