@@ -67,6 +67,7 @@ function makeLaunchOrder(sim, launcher, track, missileId, sequence = 0) {
     missileId,
     targetId: track.id,
     targetSide: track.side,
+    targetDomain: track.domain ?? "sea",
     targetClassification: track.classification,
     targetX: track.x,
     targetY: track.y,
@@ -128,7 +129,12 @@ function launchMissile(sim, launcher, order) {
     launcherId: launcher.id,
     targetId: order.targetId,
     missileId: order.missileId,
-    launchRole: spec.category === "dual_role" ? (order.defensive ? "anti_air" : "anti_ship") : spec.category,
+    // Dual-role role is "anti_air" when engaging an in-flight missile OR an
+    // aircraft platform, else "anti_ship". (Identical to the old defensive-based
+    // rule for vanilla, where air targets never occur.)
+    launchRole: spec.category === "dual_role"
+      ? ((String(order.targetId).startsWith("M-") || order.targetDomain === "air") ? "anti_air" : "anti_ship")
+      : spec.category,
     x: launchPos.x,
     y: launchPos.y,
     heading: wrapAngle(heading + lane * 0.006),
@@ -502,6 +508,37 @@ function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.
   return best;
 }
 
+// Pick a weapon to engage an enemy aircraft *platform* (not an in-flight
+// missile). Candidates are anti-air-capable rounds actually in the magazine
+// (anti_air or dual_role), keeping a defensive reserve unless authorised to
+// commit it. Mirrors chooseAntiShipWeapon's longest-reach-fit selection.
+function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5) {
+  const rangeM = distance(ship, track);
+  const hull = ship.hull || "DDG";
+  const baseLoad = defaultLoadout(hull);
+  const candidates = Object.keys(ship.loadout).filter((id) => {
+    const spec = MISSILES[id];
+    if (!spec) return false;
+    const antiAirCapable = spec.category === "anti_air" || spec.category === "dual_role"
+      || spec.target === "missile" || spec.target === "dual";
+    if (!antiAirCapable) return false;
+    if (rangeM > spec.rangeM) return false;
+    const reserve = allowReserve ? 0 : Math.ceil((baseLoad[id] ?? ship.loadout[id]) * (spec.magazineReserveRatio || 0));
+    if (!ship.loadout[id] || ship.loadout[id] <= reserve) return false;
+    return true;
+  });
+  if (!candidates.length) return null;
+  let best = candidates[0];
+  for (let i = 1; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    const candidateFit = rangeM <= MISSILES[candidate].preferredMaxRangeM ? 0 : 1;
+    const bestFit = rangeM <= MISSILES[best].preferredMaxRangeM ? 0 : 1;
+    const comparison = candidateFit - bestFit || MISSILES[candidate].rangeM - MISSILES[best].rangeM;
+    if (comparison < 0) best = candidate;
+  }
+  return best;
+}
+
 export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   const target = aliveShipById(sim, threat.targetId);
   const rangeM = distance(ship, threat);
@@ -731,12 +768,21 @@ function planOffensiveFires(sim) {
           if (!track) continue;
           const targetScore = state.score;
           const targetAllowReserve = allowReserve || shooterAggression > 0.72 || targetScore > 120;
-          const weapon = chooseAntiShipWeapon(shooter, track, targetAllowReserve, shooterAggression);
+          // Engaging an aircraft platform draws anti-air rounds; ships/ground
+          // draw anti-ship rounds. Routing by target domain keeps the surface
+          // path byte-identical when no air units are present.
+          const targetIsAir = targetShip.domain === "air";
+          const weapon = targetIsAir
+            ? chooseAntiAirWeapon(shooter, track, targetAllowReserve, shooterAggression)
+            : chooseAntiShipWeapon(shooter, track, targetAllowReserve, shooterAggression);
           if (!weapon) continue;
           const alreadyAssigned = countSideWeaponsOnTarget(sim, side, item.track.id);
           if (alreadyAssigned >= state.desired) continue;
-          const ownPending = (shooter.launchQueue || []).some((order) => order.targetId === item.track.id && MISSILES[order.missileId]?.category === "anti_ship")
-            || missilesTargeting(sim, item.track.id).some((m) => m.launcherId === shooter.id && MISSILES[m.missileId]?.category === "anti_ship");
+          const offensiveCat = targetIsAir
+            ? ((c) => c === "anti_air" || c === "dual_role")
+            : ((c) => c === "anti_ship");
+          const ownPending = (shooter.launchQueue || []).some((order) => order.targetId === item.track.id && offensiveCat(MISSILES[order.missileId]?.category))
+            || missilesTargeting(sim, item.track.id).some((m) => m.launcherId === shooter.id && offensiveCat(MISSILES[m.missileId]?.category));
           const saturationHold = posture.mode === "saturate" ? 0.92 : shooterAggression > 0.74 ? 0.75 : 0.5;
           if (ownPending && alreadyAssigned >= Math.ceil(state.desired * saturationHold)) continue;
           const salvoBonus = posture.mode === "saturate" && shooterAggression > 0.82 ? 1 : 0;
@@ -820,8 +866,11 @@ export function updateMissiles(sim, dt) {
     const spec = missile._spec ?? MISSILES[missile.missileId];
     if (!missile._spec) Object.defineProperty(missile, "_spec", { value: spec, writable: true, configurable: true });
     const launchRole = missileDisplayRole(missile);
-    const isInterceptor = launchRole === "anti_air";
-    let target = spec.target === "missile" || isInterceptor
+    // Resolve the target by id namespace, not by weapon role: in-flight missiles
+    // have "M-…" ids, every platform (ship/ground/air) has a hull id. This lets a
+    // SAM (anti_air) engage either an incoming missile OR an enemy aircraft.
+    const targetIsInFlightMissile = String(missile.targetId).startsWith("M-");
+    let target = targetIsInFlightMissile
       ? aliveMissileById(sim, missile.targetId)
       : aliveShipById(sim, missile.targetId);
 
@@ -829,7 +878,7 @@ export function updateMissiles(sim, dt) {
     // abort or self-destruct — never coast on a dead datum.
     if (!target) {
       if (!handleTargetLoss(sim, missile, spec)) continue;
-      target = spec.target === "missile" || isInterceptor
+      target = targetIsInFlightMissile
         ? sim.missiles.find((m) => m.id === missile.targetId && m.alive)
         : sim.ships.find((s) => s.id === missile.targetId && s.alive);
       if (!target) { deactivateMissile(sim, missile); continue; }
@@ -837,14 +886,20 @@ export function updateMissiles(sim, dt) {
 
     const distToTarget = distance(missile, target);
     missile.timeToImpactEstimate = timeToImpact(missile, target);
-    const isAntiShipTarget = launchRole === "anti_ship";
-    const isInterceptorTarget = launchRole === "anti_air";
-    if (isAntiShipTarget && distToTarget < spec.seekerRangeM) {
+    // Anti-surface strike vs a platform; otherwise (intercepting a missile, or a
+    // SAM running down an aircraft) it is an air-intercept engagement.
+    const isAntiShipTarget = !targetIsInFlightMissile && launchRole === "anti_ship";
+    if (targetIsInFlightMissile && distToTarget < 4 * NM) {
+      missile.terminal = true;
+      missile.phase = "terminal";
+      missile.terminalReason = "intercept endgame";
+    } else if (isAntiShipTarget && distToTarget < spec.seekerRangeM) {
       missile.terminal = true;
       missile.phase = "terminal";
       missile.terminalReason = "terminal attack phase";
       missile.seaSkimming = true;
-    } else if (isInterceptorTarget && distToTarget < 4 * NM) {
+    } else if (!targetIsInFlightMissile && !isAntiShipTarget && distToTarget < spec.seekerRangeM) {
+      // SAM/AAM closing on an aircraft squadron.
       missile.terminal = true;
       missile.phase = "terminal";
       missile.terminalReason = "intercept endgame";
@@ -898,9 +953,7 @@ export function updateMissiles(sim, dt) {
     missile.x += Math.cos(missile.heading) * travel;
     missile.y += Math.sin(missile.heading) * travel;
     missile.flownM += travel;
-    const targetIsMissile = isInterceptorTarget;
-    const targetIsShip = isAntiShipTarget;
-    if (target && targetIsMissile && distance(missile, target) < 850) {
+    if (target && targetIsInFlightMissile && distance(missile, target) < 850) {
       // Interceptor PK: base PK modified by target kinematics and defense saturation
       // Sea-skimming targets are harder to engage; supersonic targets reduce engagement window
       const targetSpeed = target.speed || 270;
@@ -924,7 +977,7 @@ export function updateMissiles(sim, dt) {
         addEvent(sim, `${missile.missileId} failed to intercept ${target.missileId}.`, missile.side);
       }
       deactivateMissile(sim, missile);
-    } else if (target && targetIsShip && distance(missile, target) < 420) {
+    } else if (target && !targetIsInFlightMissile && distance(missile, target) < 420) {
       // Hit chance: base PK modified by terminal phase, sea state, target damage
       // Large ships (BBG) are easier to hit, fast/maneuvering ships harder
       const maneuverPenalty = target.speed > 12 ? 0.06 : 0;
@@ -935,18 +988,28 @@ export function updateMissiles(sim, dt) {
       );
       if (sim.rng.next() < hitChance) {
         target.damage += 1;
-        // Subsystem damage: each hit degrades random subsystems
-        applySubsystemDamage(sim, target);
+        const isAir = target.domain === "air";
+        // Subsystem damage applies to ships/emplacements, not aircraft flights
+        // (a squadron has no radar/VLS/CIWS subsystems — a hit just downs a plane).
+        if (!isAir) applySubsystemDamage(sim, target);
         const damageShown = Math.max(0, Math.round(target.damage));
         const resistShown = Math.max(1, Math.ceil(target.damageResist ?? 3.0));
-        addEvent(sim, `${target.name} hit by ${missile.missileId}. Damage: ${damageShown}/${resistShown}.`, missile.side);
-        // Mission kill at per-class damageResist threshold
+        if (isAir) {
+          const remaining = Math.max(0, resistShown - damageShown);
+          addEvent(sim, `${target.name} lost an aircraft to ${missile.missileId} (${remaining} of ${resistShown} remaining).`, missile.side);
+        } else {
+          addEvent(sim, `${target.name} hit by ${missile.missileId}. Damage: ${damageShown}/${resistShown}.`, missile.side);
+        }
+        // Mission kill (or last aircraft downed) at the damageResist threshold.
         if (target.damage >= (target.damageResist ?? 3.0)) {
           target.alive = false;
           target.speed = 0;
           markContactDead(sim, target.id);
           sim._entityIndexesDirty = true;
-          addEvent(sim, `${target.name} mission-killed — ${damageShown} hits sustained (class limit ${resistShown}).`, missile.side);
+          const killMsg = isAir
+            ? `${target.name} squadron destroyed — all ${resistShown} aircraft downed.`
+            : `${target.name} mission-killed — ${damageShown} hits sustained (class limit ${resistShown}).`;
+          addEvent(sim, killMsg, missile.side);
         }
       } else {
         addEvent(sim, `${missile.missileId} missed ${target.name}.`, missile.side);

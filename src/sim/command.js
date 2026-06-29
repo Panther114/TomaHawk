@@ -27,6 +27,7 @@ function mergeTrack(fused, track) {
     fused.set(track.id, {
       id: track.id,
       side: track.side,
+      domain: track.domain ?? "sea",
       classification: track.classification,
       x: track.x,
       y: track.y,
@@ -203,6 +204,13 @@ function observedMissilePressure(sim, side) {
 }
 
 export function offensiveTargetValue(track) {
+  // Air platforms (squadrons) are priority air-defence targets: killing the
+  // shooter is worth more than chasing its missiles. Valued on track firmness.
+  if (track?.domain === "air") {
+    const quality = clamp(track?.quality ?? 0.35, 0.05, 0.99);
+    const uncertaintyPenalty = Math.min(18, (track?.uncertainty ?? 0) / NM * 0.75);
+    return 78 + quality * 34 - uncertaintyPenalty;
+  }
   const hull = trackHullEstimate(track);
   // Ground emplacements are high-priority strike targets: killing the radar
   // blinds the coast, killing the SAM opens the strike lane, the battery is a
@@ -305,7 +313,9 @@ export function computeFleetCommand(sim) {
     // ground emplacements are never chosen as OTC/AAWC unless no sea unit
     // survives on the side.
     const ordered = [...ships].sort((a, b) => fleetCapability(b) - fleetCapability(a) || a.id.localeCompare(b.id));
-    const mobileOrdered = ordered.filter((ship) => !ship.isFixed);
+    // The guide anchors the surface formation, so it must be a mobile surface
+    // combatant — never a fixed emplacement and never an air squadron.
+    const mobileOrdered = ordered.filter((ship) => !ship.isFixed && ship.domain !== "air");
     const otc = mobileOrdered[0] ?? ordered[0];
     otc.isOTC = true;
     otc.fleetRole = FLEET_ROLE.OTC;

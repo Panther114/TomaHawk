@@ -298,6 +298,7 @@ export function scanSensors(sim, dt) {
         setLocalTrack(sim, observer, target.id, {
           id: target.id,
           side: target.side,
+          domain: target.domain ?? "sea",
           classification: quality > 0.7 ? target.className : "surface combatant",
           x: target.x + sim.rng.range(-uncertainty, uncertainty),
           y: target.y + sim.rng.range(-uncertainty, uncertainty),
