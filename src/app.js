@@ -137,10 +137,16 @@ function replaceHtmlIfChanged(element, html) {
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(innerWidth * dpr);
-  canvas.height = Math.floor(innerHeight * dpr);
-  canvas.style.width = `${innerWidth}px`;
-  canvas.style.height = `${innerHeight}px`;
+  const w = Math.floor(innerWidth * dpr);
+  const h = Math.floor(innerHeight * dpr);
+  canvas.width = w;
+  canvas.height = h;
+  // Size the element from the floored backing store divided by dpr so the
+  // backing maps 1:1 onto physical pixels. Using innerWidth directly leaves a
+  // sub-pixel mismatch at fractional dpr (e.g. 1.5 on Windows 150% scaling):
+  // 625css * 1.5 = 937.5 device px vs a 937 backing → resampling blur.
+  canvas.style.width = `${w / dpr}px`;
+  canvas.style.height = `${h / dpr}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   terrainLayerKey = "";
   clampCamera();
@@ -608,6 +614,8 @@ function drawScaledShip(ship, label) {
 function drawSectorResponsibility(ship) {
   // Only meaningful once a fleet exists and a sub-sector has been carved out.
   if (!ship.alive || sim.mode !== SCENARIO_MODE.RUNNING) return;
+  // Aircraft are strikers, not sectorised air-defence pickets — no AAW sector.
+  if (ship.domain === "air") return;
   if (!Number.isFinite(ship.sectorCenter) || !(ship.sectorHalfWidth < Math.PI - 0.05)) return;
   const p = worldToScreen(ship);
   const radius = Math.min(ship.radarRangeM * camera.scale * 0.5, Math.max(innerWidth, innerHeight));
@@ -958,7 +966,15 @@ function drawTerrain() {
     terrainLayerCtx.strokeRect(-MAP_HALF_WIDTH_M, -MAP_HALF_HEIGHT_M, MAP_WIDTH_M, MAP_HEIGHT_M);
     terrainLayerCtx.restore();
   }
-  ctx.drawImage(terrainLayer, 0, 0, innerWidth, innerHeight);
+  // Blit the terrain layer 1:1 in device space. Drawing it at (innerWidth x
+  // innerHeight) under the dpr transform would rescale its backing store
+  // (e.g. 937 → 937.5 px at dpr 1.5) and soften the coastline; an identity
+  // transform maps backing pixels straight onto the matching main-canvas pixels.
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(terrainLayer, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.restore();
 }
 
 function renderScaleBar() {

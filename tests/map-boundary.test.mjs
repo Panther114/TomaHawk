@@ -79,7 +79,9 @@ test("terrain rendering reuses a cached offscreen layer when the camera is uncha
 
   assert.match(appSource, /const terrainLayer = document\.createElement\("canvas"\);/);
   assert.match(appSource, /if \(terrainLayerKey !== key\) \{/);
-  assert.match(appSource, /ctx\.drawImage\(terrainLayer, 0, 0, innerWidth, innerHeight\);/);
+  // The cached layer is blitted 1:1 in device space (identity transform) so a
+  // fractional devicePixelRatio does not resample/soften the coastline.
+  assert.match(appSource, /ctx\.drawImage\(terrainLayer, 0, 0\);/);
 });
 
 test("setup mode suppresses ship direction arrows until battle starts", () => {

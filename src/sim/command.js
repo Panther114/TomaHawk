@@ -349,13 +349,27 @@ export function computeFleetCommand(sim) {
       if (sx !== 0 || sy !== 0) axis = Math.atan2(sy, sx);
     }
 
-    // Split AAW sectors around the threat axis among the units; the OTC owns
-    // the central sector straddling the axis.
-    const n = ships.length;
+    // Split AAW sectors around the threat axis among the air-defence units.
+    // Aircraft are mobile strikers, not sectorised air-defence pickets, so they
+    // are excluded from the sector division and own no sector (a full-circle
+    // half-width disables the sector overlay for them) and no formation station.
+    // Derive from `ordered` (capability-sorted) so the non-air ordering — and
+    // thus every sector assignment — is byte-identical to the pre-air behaviour
+    // when no aircraft are present.
+    const sectorShips = ordered.filter((ship) => ship.domain !== "air");
+    for (const ship of ships) {
+      if (ship.domain === "air") {
+        ship.sectorCenter = side === SIDE.BLUE ? 0 : Math.PI;
+        ship.sectorHalfWidth = Math.PI;
+        ship.station = null;
+      }
+    }
+    const n = sectorShips.length;
     const sectorWidth = (2 * Math.PI) / Math.max(1, n);
     const stationRing = 6 * NM; // screen radius around the guide
-    const sectorOrder = [otc, ...ordered.filter((ship) => ship !== otc)];
+    const sectorOrder = [otc, ...sectorShips.filter((ship) => ship !== otc)];
     sectorOrder.forEach((ship, idx) => {
+      if (ship.domain === "air") return;
       // idx 0 (OTC) -> centred on axis; others fan out alternately.
       const slot = idx === 0 ? 0 : (idx % 2 === 1 ? Math.ceil(idx / 2) : -Math.ceil(idx / 2));
       ship.sectorCenter = wrapAngle(axis + slot * sectorWidth);
