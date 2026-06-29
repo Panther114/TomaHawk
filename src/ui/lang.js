@@ -67,6 +67,7 @@ const strings = {
   "detail.fuel":  { en: "FUEL",  zh: "燃油" },
   "detail.flares":{ en: "FLARE", zh: "诱饵" },
   "detail.state": { en: "STATE", zh: "状态" },
+  "detail.alt":   { en: "ALT",   zh: "高度" },
   "detail.aaw":   { en: "AAW",   zh: "防空" },
   "detail.asuw":  { en: "ASUW",  zh: "反舰" },
 

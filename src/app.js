@@ -881,6 +881,7 @@ function renderShipDetails() {
         ${row(t('detail.fuel'), fuelFrac, "load")}
         ${row(t('detail.flares'), flareFrac, "load")}
         ${textRow(t('detail.state'), state + (s.evading ? ' !' : ''))}
+        ${textRow(t('detail.alt'), `${((s.altitudeM ?? 0) / 1000).toFixed(1)} km`)}
         ${textRow(t('detail.aaw'), aaw)}
         ${textRow(t('detail.asuw'), asuw)}
       </div>

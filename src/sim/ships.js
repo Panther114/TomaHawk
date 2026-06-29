@@ -189,6 +189,26 @@ export function unregisterShipClass(hull) {
 
 export { SHIP_CLASSES };
 
+// Default radar cross-section (m²) when a class omits `rcsM2`. Surface ships
+// scale with displacement; ground structures are large; an aircraft flight is a
+// small, hard-to-detect target. A class may override (e.g. a future stealth hull
+// with a deliberately low value). Used by the RCS-based detection model.
+export function defaultRcsM2(cls) {
+  if (Number.isFinite(cls.rcsM2)) return cls.rcsM2;
+  const domain = cls.domain ?? "sea";
+  if (domain === "air") return 25;
+  if (domain === "ground") return 9000;
+  return clamp((cls.displacementT ?? 9000) * 1.3, 3000, 50000);
+}
+
+// Default cruise altitude (m). Only aircraft fly; surface/ground sit at sea
+// level (their radar-reflective height is the structural mast, handled by the
+// sensor model). A class may override via `cruiseAltitudeM`.
+export function defaultAltitudeM(cls) {
+  if (Number.isFinite(cls.cruiseAltitudeM)) return cls.cruiseAltitudeM;
+  return (cls.domain ?? "sea") === "air" ? 9000 : 0;
+}
+
 export function makeShip(side, x, y, hull = "DDG") {
   const cls = SHIP_CLASSES[hull] || SHIP_CLASSES.DDG;
   const seq = nextId++;
@@ -211,6 +231,8 @@ export function makeShip(side, x, y, hull = "DDG") {
     accel: cls.accelMps2 * SHIP_SPEED_MULTIPLIER, decel: cls.decelMps2 * SHIP_SPEED_MULTIPLIER,
     turnRate: cls.turnRateDps * Math.PI / 180, turnRateFlank: cls.turnRateFlankDps * Math.PI / 180,
     lengthM: cls.lengthM, beamM: cls.beamM, draftM: cls.draftM, displacementT: cls.displacementT,
+    // Signature + altitude drive RCS/horizon-based detection (see sensors.js).
+    rcsM2: defaultRcsM2(cls), altitudeM: defaultAltitudeM(cls),
     radarRangeM: cls.radarRangeNm * NM, radarInterval: cls.radarIntervalS, radarCooldown: 0, radarActive: true,
     editable: true, alive: true,
     damage: 0, damageResist: cls.damageResist, damageDegrade: cls.damageDegrade,

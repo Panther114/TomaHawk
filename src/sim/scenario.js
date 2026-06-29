@@ -11,7 +11,9 @@ import {
   normalizeLoadout,
   defaultLoadout,
   defaultRoe,
-  resetShipIds
+  resetShipIds,
+  defaultRcsM2,
+  defaultAltitudeM
 } from "./ships.js";
 import { initialAircraftState } from "./aircraft.js";
 import { addEvent } from "./events.js";
@@ -285,6 +287,8 @@ export function restoreScenario(data) {
         decel: Number.isFinite(ship.decel) ? ship.decel : cls.decelMps2 * SHIP_SPEED_MULTIPLIER,
         turnRate: Number.isFinite(ship.turnRate) ? ship.turnRate : cls.turnRateDps * Math.PI / 180,
         turnRateFlank: Number.isFinite(ship.turnRateFlank) ? ship.turnRateFlank : cls.turnRateFlankDps * Math.PI / 180,
+        rcsM2: Number.isFinite(ship.rcsM2) ? ship.rcsM2 : defaultRcsM2(cls),
+        altitudeM: Number.isFinite(ship.altitudeM) ? ship.altitudeM : defaultAltitudeM(cls),
         radarRangeM: Number.isFinite(ship.radarRangeM) ? ship.radarRangeM : cls.radarRangeNm * NM,
         radarInterval: Number.isFinite(ship.radarInterval) ? ship.radarInterval : cls.radarIntervalS,
         ciwsCount: ship.ciwsCount ?? cls.ciwsCount,

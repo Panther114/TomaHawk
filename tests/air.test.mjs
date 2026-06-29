@@ -299,6 +299,28 @@ test("a full flight relaunches faster than a lone survivor (rate scales with air
   assert.ok(four < one, `4-plane min gap ${four}s < 1-plane min gap ${one}s`);
 });
 
+test("low-RCS aircraft are detected far closer than ships (RCS-based radar)", () => {
+  const detects = (targetHull, rangeNm) => {
+    const sim = running(7);
+    const obs = placeShip(sim, SIDE.BLUE, 0, 0, "DDG"); obs.desiredSpeed = 0;
+    const tgt = placeShip(sim, SIDE.RED, rangeNm * NM, 0, targetHull);
+    if (tgt.fuelS !== undefined) { tgt.fuelS = 1e9; tgt.desiredSpeed = 0; }
+    for (let i = 0; i < 160; i++) { stepSim(sim, 0.25); if (obs.tracks.has(tgt.id)) return true; }
+    return false;
+  };
+  assert.ok(detects("DDG", 120), "a ship is detected at long range");
+  assert.ok(!detects("VFA", 120), "an aircraft flight is NOT seen at that range (small RCS)");
+  assert.ok(detects("VFA", 25), "the aircraft flight is detected once it closes in");
+});
+
+test("aircraft fly high and have a small RCS; ships sit at sea level with a large RCS", () => {
+  const ddg = makeShip(SIDE.BLUE, 0, 0, "DDG");
+  const vfa = makeShip(SIDE.BLUE, 0, 0, "VFA");
+  assert.equal(ddg.altitudeM, 0);
+  assert.ok(vfa.altitudeM > 1000, "aircraft cruise high");
+  assert.ok(vfa.rcsM2 < ddg.rcsM2 / 100, "aircraft RCS far smaller than a ship");
+});
+
 test("a scenario with air units is deterministic for the same seed", () => {
   const build = (seed) => {
     const sim = createScenario(seed);

@@ -171,6 +171,29 @@ Interceptor PK now includes supersonic penalty (-0.15 for Mach 2+ targets), sea-
 ### Radar Horizon
 A 4/3 Earth-radius model limits detection probability beyond the geometric horizon (~20 NM ship-to-ship). Beyond the horizon, detection probability falls off over 120 NM to a floor of 0.20.
 
+### RCS- and Altitude-Based Detection
+Detection is no longer a rigid radar-range cutoff. Every unit carries a radar
+cross-section (`rcsM2`) and an altitude (`altitudeM`), and a contact's effective
+detection range scales with the fourth root of its RCS (the radar-range equation),
+referenced to a typical destroyer:
+
+- **RCS.** Surface hulls default their RCS from displacement (so destroyer-vs-
+  destroyer play is near-unchanged), ground structures are large, and an aircraft
+  flight is a small target — a 190 NM ship radar holds another warship out to
+  ~180 NM but a fighter flight only inside ~40 NM. A class may set `rcsM2`
+  directly (e.g. a future low-observable / stealth hull). The factor is capped at
+  the radar's nominal range, so RCS only *shortens* detection for small or
+  stealthy targets; it never extends a radar beyond its rated reach.
+- **Altitude + horizon shadow.** A flying target uses its altitude for the
+  geometric-horizon term, so high-flying aircraft are visible far while ships and
+  sea-skimming weapons are masked beyond the horizon — a radar shadow with no need
+  for terrain elevation (the world surface is uniform sea/ground). Ships and ground
+  units sit at sea level and use their structural mast height as before.
+
+Both are cheap scalars (one `pow` and one height lookup per detection candidate);
+they do not change the O(observers × candidates) sensor cost. Altitude is shown in
+a selected squadron's detail card; it is not drawn on the top-down map.
+
 ### CEC Latency
 Track sharing now has a 1.8s propagation delay. Tracks younger than the latency window are not shared to other units. Shared track quality is degraded (0.85×) with increased uncertainty (+1500m).
 CEC selects from local sensor reports only, so a track cannot relay through multiple ships. One shared report is stored per side/contact and resolved together with each receiver's local reports; it is not copied into every receiving ship. The fused force picture refreshes fully every 0.5s and updates dirty contacts immediately when radar or CEC data changes.

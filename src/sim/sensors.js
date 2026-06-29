@@ -27,6 +27,27 @@ function radarHeightM(ship) {
   return height;
 }
 
+// RCS-based detection. A radar's range against a target scales with the fourth
+// root of the target's radar cross-section (the classic radar-range equation),
+// referenced to a typical destroyer so ship-vs-ship play is near-unchanged while
+// small targets (a fighter flight) are only seen much closer and large or low-
+// observable hulls scale accordingly. Cheap: one pow() per detection candidate.
+const REF_RCS_M2 = 12000;
+function rcsRangeFactor(rcsM2) {
+  // Capped at 1.0 so nominal radar range stays the maximum (keeps the candidate
+  // broad-phase correct and surface play near-unchanged); RCS only shortens it
+  // for small/low-observable targets (a fighter flight, a stealth hull).
+  return clamp(Math.pow((rcsM2 ?? REF_RCS_M2) / REF_RCS_M2, 0.25), 0.12, 1.0);
+}
+
+// Radar-reflective height for the geometric horizon: a flying target uses its
+// altitude (so high aircraft are seen far and sea-skimmers are masked beyond the
+// horizon — the "radar shadow"), surface/ground use their structural mast height.
+function targetScatterHeightM(target) {
+  const alt = target.altitudeM ?? 0;
+  return alt > 30 ? alt : radarHeightM(target);
+}
+
 function radarDetectionChance(rangeM, radarRangeM, target) {
   const ratio = clamp(rangeM / radarRangeM, 0, 1.4);
   const base = 0.96 - ratio * ratio * 0.74;
@@ -298,17 +319,21 @@ export function scanSensors(sim, dt) {
   for (const observer of observers) {
     for (const target of sensorCandidates(ships, observer, observer.radarRangeM)) {
       if (target.id === observer.id || target.side === observer.side || !target.alive) continue;
+      // RCS-limited detection range (replaces the rigid radar range): a small or
+      // low-observable target is only seen well inside the radar's nominal reach.
+      const effectiveRangeM = observer.radarRangeM * rcsRangeFactor(target.rcsM2);
       const dx = observer.x - target.x;
       const dy = observer.y - target.y;
-      if (dx * dx + dy * dy > observer.radarRangeM * observer.radarRangeM) continue;
+      if (dx * dx + dy * dy > effectiveRangeM * effectiveRangeM) continue;
       const rangeM = distance(observer, target);
-      // Radar horizon: reduce detection probability beyond geometric horizon
-      const horizon = radarHorizonM(radarHeightM(observer), radarHeightM(target));
+      // Radar horizon: a high-altitude target is visible far; a low one (ship,
+      // sea-skimmer) is masked beyond the geometric horizon (the radar shadow).
+      const horizon = radarHorizonM(radarHeightM(observer), targetScatterHeightM(target));
       const horizonFactor = rangeM > horizon ? clamp(1.0 - (rangeM - horizon) / (120 * NM), 0.20, 1.0) : 1.0;
-      const chance = radarDetectionChance(rangeM, observer.radarRangeM, target) * horizonFactor;
+      const chance = radarDetectionChance(rangeM, effectiveRangeM, target) * horizonFactor;
       if (sim.rng.next() <= chance) {
         const radarHealth = observer.subsystems?.radar ?? 1.0;
-        const quality = clamp((1 - rangeM / observer.radarRangeM + sim.rng.range(-0.08, 0.08)) * radarHealth, 0.05, 0.98);
+        const quality = clamp((1 - rangeM / effectiveRangeM + sim.rng.range(-0.08, 0.08)) * radarHealth, 0.05, 0.98);
         const uncertainty = (1 - quality) * 5 * NM + sim.rng.range(0, 0.5 * NM);
         setLocalTrack(sim, observer, target.id, {
           id: target.id,
