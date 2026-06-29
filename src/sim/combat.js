@@ -166,6 +166,11 @@ function launchMissile(sim, launcher, order) {
     aimX: lead.x,
     aimY: lead.y,
     phase: spec.category === "anti_ship" ? "cruise" : "boost",
+    // Cruise altitude (m): anti-ship weapons sea-skim, air-defence/strike rounds
+    // loft. Drives the energy-bleed (drag) model and the detail display; the map
+    // stays top-down (altitude is not a third movement axis).
+    altitudeM: spec.category === "anti_ship" ? 30 : 7000,
+    launchSpeedMps: spec.speedMps,
     terminalReason: null,
     seaSkimming: false,
     maneuvering: spec.category === "anti_ship",
@@ -931,6 +936,18 @@ function airDefenseHitChance(sim, missile, spec, target) {
   return { decoyed: false, pk: clamp(pk, 0.03, 0.7) };
 }
 
+// Bounded energy-bleed (drag) model. A missile is fastest at launch and slows
+// toward the end of its reach; denser air at low altitude bleeds energy faster,
+// so a sea-skimmer arrives slower than a high-altitude round. Clamped so a weapon
+// never stalls and engagement balance stays close to the tuned envelopes. Cheap:
+// a handful of arithmetic ops per missile per tick.
+function dragSpeedFactor(missile) {
+  const flownFrac = clamp((missile.flownM ?? 0) / Math.max(1, missile.maxRangeM), 0, 1);
+  const alt = missile.altitudeM ?? 1000;
+  const densityFactor = alt < 100 ? 1.15 : (alt > 4000 ? 0.65 : 0.9);
+  return clamp(1 - 0.32 * flownFrac * densityFactor, 0.62, 1);
+}
+
 export function updateMissiles(sim, dt) {
   for (const missile of sim.missiles) {
     if (!missile.alive) continue;
@@ -969,6 +986,7 @@ export function updateMissiles(sim, dt) {
       missile.phase = "terminal";
       missile.terminalReason = "terminal attack phase";
       missile.seaSkimming = true;
+      missile.altitudeM = 12; // drop to sea-skim for the terminal run-in
     } else if (!targetIsInFlightMissile && !isAntiShipTarget && distToTarget < spec.seekerRangeM) {
       // SAM/AAM closing on an aircraft squadron.
       missile.terminal = true;
@@ -1020,6 +1038,9 @@ export function updateMissiles(sim, dt) {
     const baseTurn = (spec.maxTurnRateDps ?? 12) * Math.PI / 180;
     const maxTurn = baseTurn * (missile.terminal ? 1.5 : 1) * dt;
     missile.heading = wrapAngle(missile.heading + clamp(wrapAngle(losAngle - missile.heading), -maxTurn, maxTurn));
+    // Energy bleed: recompute speed from the launch value and the drag model so
+    // long-range / low-altitude shots arrive slower (deterministic; no RNG).
+    missile.speed = (missile.launchSpeedMps ?? spec.speedMps) * dragSpeedFactor(missile);
     const travel = missile.speed * dt;
     missile.x += Math.cos(missile.heading) * travel;
     missile.y += Math.sin(missile.heading) * travel;

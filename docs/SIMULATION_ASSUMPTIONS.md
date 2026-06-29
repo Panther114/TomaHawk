@@ -101,6 +101,18 @@ behaviourally meaningful level:
   positive-identification quality gate, and an in-flight target-loss policy
   (self-destruct only) govern release. Self-defence is always authorised.
 
+### Missile Altitude & Energy Bleed
+Every weapon carries a cruise altitude (anti-ship rounds sea-skim ~30 m and drop
+to ~12 m for the terminal run-in; air-defence/strike rounds loft to several
+thousand metres) and a bounded drag model: a missile is fastest at launch and
+bleeds speed toward the end of its reach, faster in the denser air at low
+altitude, so a long-range or sea-skimming shot arrives slower than a lofted one.
+The bleed is clamped (a weapon never drops below ~62% of its launch speed) so the
+tuned engagement envelopes and balance stay close to before. The map remains
+top-down — altitude is a hidden scalar that drives the radar horizon, the drag
+model, and the detail display, not a third movement axis. The per-tick cost is a
+few arithmetic operations per missile.
+
 ### Missile Guidance
 
 Weapons no longer steer at the bare current position of the target. Each tick a
