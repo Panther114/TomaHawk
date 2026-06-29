@@ -8,6 +8,15 @@ import { firstLandCollisionFraction, isWaterPoint, segmentCrossesLand, terrainCo
 import { shipWaterClearanceM } from "./scenario.js";
 import { iterateTracksForShip } from "./sensors.js";
 
+// Shared empty list: when the per-tick missile-by-target index exists but holds
+// no bucket for a ship, that ship has nothing inbound — iterate nothing rather
+// than falling back to a full O(missiles) scan (the pre-index fallback only).
+const NO_INCOMING = [];
+function incomingMissilesFor(sim, shipId) {
+  if (sim._missilesByTarget) return sim._missilesByTarget.get(shipId) ?? NO_INCOMING;
+  return sim.missiles;
+}
+
 function steeringTurnRate(ship) {
   const speedFrac = ship.maxSpeed > 0 ? ship.speed / ship.maxSpeed : 0;
   return speedFrac > 0.75 && ship.turnRateFlank ? ship.turnRateFlank : ship.turnRate;
@@ -211,7 +220,7 @@ export function decideShip(sim, ship) {
     }
   }
   let incoming = null;
-  for (const missile of sim._missilesByTarget?.get(ship.id) ?? sim.missiles) {
+  for (const missile of incomingMissilesFor(sim, ship.id)) {
     if (!missile.alive || missile.side === ship.side || missile.targetId !== ship.id) continue;
     if (!incoming || (missile.timeToImpactEstimate ?? Infinity) < (incoming.timeToImpactEstimate ?? Infinity)) {
       incoming = missile;

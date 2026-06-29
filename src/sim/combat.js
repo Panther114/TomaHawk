@@ -8,6 +8,7 @@ import { MISSILES, missileDisplayRole } from "./missiles.js";
 import { availableCount, setAvailableCount, defaultLoadout, defaultRoe } from "./ships.js";
 import { addEvent } from "./events.js";
 import { currentTrack, markContactDead } from "./sensors.js";
+import { AIRCRAFT_TEMP_CONFIG } from "./aircraft.js";
 import {
   forceTrack,
   inSector,
@@ -22,6 +23,16 @@ import {
 // Use the per-tick id indexes built in stepSim when present, falling back to a
 // linear scan so functions called directly from tests (without a full tick)
 // still behave. All return the same result as the original `.find`/`.filter`.
+
+// When the per-tick missile-by-target index exists, an absent bucket means the
+// ship has nothing inbound — iterate an empty list instead of falling back to a
+// full O(missiles) scan. The scan fallback is only for callers without an index
+// (e.g. direct unit tests). Shared frozen empty array avoids per-call allocation.
+const NO_INCOMING = [];
+function incomingMissilesFor(sim, shipId) {
+  if (sim._missilesByTarget) return sim._missilesByTarget.get(shipId) ?? NO_INCOMING;
+  return sim.missiles;
+}
 
 function aliveShipById(sim, id) {
   const s = sim._shipById ? sim._shipById.get(id) : sim.ships.find((x) => x.id === id);
@@ -860,6 +871,26 @@ function handleTargetLoss(sim, missile, spec) {
   return false;
 }
 
+// Terminal survivability roll for a missile reaching an aircraft squadron. The
+// flight is a small, fast, hard target (large inherent evasion), harder still
+// while breaking, and infrared seekers can be spoofed outright by flares.
+// May consume one flare and one RNG draw (flare roll); the caller draws the
+// hit roll only when not decoyed, so the RNG order stays deterministic.
+function airDefenseHitChance(sim, missile, spec, target) {
+  const cfg = AIRCRAFT_TEMP_CONFIG;
+  if (spec.guidance === "infrared" && (target.flares ?? 0) > 0 && (target.evading || missile.terminal)) {
+    target.flares -= 1;
+    if (sim.rng.next() < cfg.flareDecoyChance) {
+      addEvent(sim, `${target.name} decoyed ${missile.missileId} with flares.`, target.side);
+      return { decoyed: true, pk: 0 };
+    }
+  }
+  let pk = spec.pk - cfg.evasionBase;
+  if (target.evading) pk -= cfg.evasionManeuver;
+  pk += missile.terminal ? 0.10 : 0;
+  return { decoyed: false, pk: clamp(pk, 0.03, 0.7) };
+}
+
 export function updateMissiles(sim, dt) {
   for (const missile of sim.missiles) {
     if (!missile.alive) continue;
@@ -978,17 +1009,29 @@ export function updateMissiles(sim, dt) {
       }
       deactivateMissile(sim, missile);
     } else if (target && !targetIsInFlightMissile && distance(missile, target) < 420) {
-      // Hit chance: base PK modified by terminal phase, sea state, target damage
-      // Large ships (BBG) are easier to hit, fast/maneuvering ships harder
-      const maneuverPenalty = target.speed > 12 ? 0.06 : 0;
-      const sizeBonus = Math.min(0.08, (target.displacementT || 9200) / 200000);
-      const hitChance = clamp(
-        spec.pk + (missile.terminal ? 0.18 : 0) - target.damage * 0.03 + sizeBonus - maneuverPenalty,
-        0.10, 0.88
-      );
-      if (sim.rng.next() < hitChance) {
+      const isAir = target.domain === "air";
+      let hitChance;
+      let decoyed = false;
+      if (isAir) {
+        // Aircraft survivability: small, fast, hard-maneuvering target with IR
+        // countermeasures — a far cry from a ship's near-certain terminal hit.
+        const air = airDefenseHitChance(sim, missile, spec, target);
+        hitChance = air.pk;
+        decoyed = air.decoyed;
+      } else {
+        // Hit chance: base PK modified by terminal phase, sea state, target damage
+        // Large ships (BBG) are easier to hit, fast/maneuvering ships harder
+        const maneuverPenalty = target.speed > 12 ? 0.06 : 0;
+        const sizeBonus = Math.min(0.08, (target.displacementT || 9200) / 200000);
+        hitChance = clamp(
+          spec.pk + (missile.terminal ? 0.18 : 0) - target.damage * 0.03 + sizeBonus - maneuverPenalty,
+          0.10, 0.88
+        );
+      }
+      // No hit roll is drawn when a flare already spoofed the seeker.
+      const hit = !decoyed && sim.rng.next() < hitChance;
+      if (hit) {
         target.damage += 1;
-        const isAir = target.domain === "air";
         // Subsystem damage applies to ships/emplacements, not aircraft flights
         // (a squadron has no radar/VLS/CIWS subsystems — a hit just downs a plane).
         if (!isAir) applySubsystemDamage(sim, target);
@@ -1011,7 +1054,7 @@ export function updateMissiles(sim, dt) {
             : `${target.name} mission-killed — ${damageShown} hits sustained (class limit ${resistShown}).`;
           addEvent(sim, killMsg, missile.side);
         }
-      } else {
+      } else if (!decoyed) {
         addEvent(sim, `${missile.missileId} missed ${target.name}.`, missile.side);
       }
       deactivateMissile(sim, missile);
@@ -1034,7 +1077,7 @@ export function pointDefense(sim) {
     if (!(ship.roe?.ciwsRelease ?? true)) continue;
     const ciwsRange = 1.6 * NM;
     let inbound = null;
-    for (const missile of sim._missilesByTarget?.get(ship.id) ?? sim.missiles) {
+    for (const missile of incomingMissilesFor(sim, ship.id)) {
       if (!missile.alive || missile.side === ship.side || missile.targetId !== ship.id || !missile.terminal) continue;
       if (distance(ship, missile) >= ciwsRange) continue;
       if (!inbound || (missile.timeToImpactEstimate ?? Infinity) < (inbound.timeToImpactEstimate ?? Infinity)) {

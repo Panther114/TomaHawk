@@ -33,6 +33,7 @@ const SYMBOL_OPTIONS = [
 const TARGET_OPTIONS = [
   { value: "missile", label: { en: "Missile", zh: "导弹" } },
   { value: "ship", label: { en: "Ship", zh: "舰艇" } },
+  { value: "air", label: { en: "Aircraft", zh: "飞机" } },
   { value: "dual", label: { en: "Dual", zh: "两者" } }
 ];
 const LAYER_OPTIONS = [
@@ -48,7 +49,8 @@ const RING_OPTIONS = [
 const GUIDANCE_OPTIONS = [
   { value: "command_inertial", label: { en: "Command + inertial", zh: "指令+惯性" } },
   { value: "command_inertial_active", label: { en: "Command + active", zh: "指令+主动" } },
-  { value: "inertial_active", label: { en: "Inertial + active", zh: "惯性+主动" } }
+  { value: "inertial_active", label: { en: "Inertial + active", zh: "惯性+主动" } },
+  { value: "infrared", label: { en: "Infrared (flare-decoyable)", zh: "红外（可被照明弹诱骗）" } }
 ];
 const GLYPH_OPTIONS = [
   { value: "sam", label: { en: "SAM (triangle)", zh: "防空 (三角)" } },
@@ -158,7 +160,8 @@ const AIRCRAFT_SCHEMA = {
       num("rearmTimeS", { en: "Rearm time", zh: "补给时间" }, { unit: "s", min: 0, max: 3600, step: 5 })
     ] },
     { title: { en: "Survivability", zh: "生存力" }, fields: [
-      num("damageDegrade", { en: "Speed loss per loss", zh: "每损失减速" }, { min: 0, max: 1, step: 0.01 })
+      num("damageDegrade", { en: "Speed loss per loss", zh: "每损失减速" }, { min: 0, max: 1, step: 0.01 }),
+      num("flares", { en: "Flares (IR decoys)", zh: "照明弹（红外诱饵）" }, { min: 0, max: 999, step: 1 })
     ] }
   ]
 };
@@ -237,8 +240,8 @@ export const DEFAULTS = {
     squadronSize: 4,
     cruiseSpeedKt: 420, maxSpeedKt: 540, accelMps2: 3.0, decelMps2: 3.0,
     turnRateDps: 6, turnRateFlankDps: 4, radarRangeNm: 90, radarIntervalS: 3,
-    vlsCells: 12, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1,
-    baseLoadout: { MaritimeStrike: 6, "SM-6": 4 }
+    vlsCells: 20, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1, flares: 60,
+    baseLoadout: { "AIM-120": 8, "AIM-9X": 4, "AGM-84": 8 }
   }),
   ammo: () => ({
     kind: "ammo", name: "NEW-MSL",

@@ -139,6 +139,7 @@ function toAircraftClass(u) {
     defenseChannels: { area: 0, point: 0, ciws: 0 },
     damageResist: size, damageDegrade: Number(u.damageDegrade),
     enduranceS: Number(u.enduranceS) || 1800, rearmTimeS: Number(u.rearmTimeS) || 90,
+    flares: Number.isFinite(Number(u.flares)) ? Math.round(Number(u.flares)) : 60,
     baseLoadout: numClean(u.baseLoadout)
   };
 }
@@ -183,7 +184,7 @@ function fromShipClass(hull, c) {
       turnRateDps: c.turnRateDps, turnRateFlankDps: c.turnRateFlankDps,
       radarRangeNm: c.radarRangeNm, radarIntervalS: c.radarIntervalS,
       vlsCells: c.vlsCells, enduranceS: c.enduranceS ?? 1800, rearmTimeS: c.rearmTimeS ?? 90,
-      damageDegrade: c.damageDegrade,
+      damageDegrade: c.damageDegrade, flares: c.flares ?? 60,
       baseLoadout: { ...(c.baseLoadout ?? {}) }
     };
   }

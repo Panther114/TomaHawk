@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  NM, SHIP_CLASSES, makeShip, createScenario, clearSide, placeShip, duplicateShip, stepSim,
+  NM, MISSILES, SHIP_CLASSES, makeShip, createScenario, clearSide, placeShip, duplicateShip, stepSim,
   SIDE, SCENARIO_MODE, aliveAircraftCount, squadronSize, isAircraft, isAirfield,
   serializeScenario, restoreScenario
 } from "../src/sim.js";
@@ -77,7 +77,7 @@ test("an aircraft squadron strikes an enemy ship with anti-ship missiles", () =>
   let fired = false;
   for (let i = 0; i < 1600 && !fired; i++) {
     stepSim(sim, 0.25);
-    fired = sim.missiles.some((m) => m.side === SIDE.BLUE && m.missileId === "MaritimeStrike");
+    fired = sim.missiles.some((m) => m.side === SIDE.BLUE && m.missileId === "AGM-84");
   }
   assert.ok(fired, "the squadron launched an anti-ship missile at the ship");
 });
@@ -184,6 +184,81 @@ test("air inventory row reports flight strength, state and effector counts", () 
   const row = airRowHtml(vfa, false);
   assert.match(row, /4\/4/, "shows 4/4 aircraft");
   assert.match(row, /MSN/, "shows mission state");
+});
+
+test("aircraft weapons exist with correct categories (AMRAAM/Sidewinder/Harpoon)", () => {
+  assert.equal(MISSILES["AIM-120"].category, "anti_air");
+  assert.equal(MISSILES["AIM-9X"].category, "anti_air");
+  assert.equal(MISSILES["AIM-9X"].guidance, "infrared", "Sidewinder is IR (flare-decoyable)");
+  assert.equal(MISSILES["AGM-84"].category, "anti_ship");
+  for (const id of ["AIM-120", "AIM-9X", "AGM-84"]) assert.ok(MISSILES[id].shortLabel.length >= 3, id);
+});
+
+test("the F/A-18 squadron carries more than 4 AAW and more than 6 ASUW", () => {
+  const vfa = makeShip(SIDE.BLUE, 0, 0, "VFA");
+  let aaw = 0;
+  let asuw = 0;
+  for (const [id, n] of Object.entries(vfa.loadout)) {
+    if (MISSILES[id].category === "anti_ship") asuw += n; else aaw += n;
+  }
+  assert.ok(aaw > 4, `AAW ${aaw} > 4`);
+  assert.ok(asuw > 6, `ASUW ${asuw} > 6`);
+});
+
+test("two squadrons fight air-to-air with AAMs and attrit each other", () => {
+  const sim = running(7);
+  const b = placeShip(sim, SIDE.BLUE, -25 * NM, 0, "VFA"); b.fuelS = 1e9;
+  const r = placeShip(sim, SIDE.RED, 25 * NM, 0, "VFA"); r.fuelS = 1e9;
+  let firedAAM = false;
+  for (let i = 0; i < 1800; i++) {
+    stepSim(sim, 0.25);
+    if (sim.missiles.some((mm) => mm.missileId === "AIM-120" || mm.missileId === "AIM-9X")) firedAAM = true;
+  }
+  assert.ok(firedAAM, "air-to-air missiles were launched");
+  assert.ok(aliveAircraftCount(b) < 4 || aliveAircraftCount(r) < 4, "at least one flight took losses");
+});
+
+test("a squadron breaks evasively when a missile closes in", () => {
+  const sim = running(7);
+  placeShip(sim, SIDE.BLUE, -10 * NM, 0, "CCG");
+  const r = placeShip(sim, SIDE.RED, 35 * NM, 0, "VFA"); r.fuelS = 1e9;
+  let broke = false;
+  for (let i = 0; i < 1600 && !broke; i++) {
+    stepSim(sim, 0.25);
+    broke = r.evading === true || sim.events.some((e) => /breaks hard/.test(e.text));
+  }
+  assert.ok(broke, "the flight performed an evasive break");
+});
+
+test("flares are expended defending against infrared missiles", () => {
+  const sim = running(7);
+  const b = placeShip(sim, SIDE.BLUE, -22 * NM, 0, "VFA"); b.fuelS = 1e9;
+  const r = placeShip(sim, SIDE.RED, 22 * NM, 0, "VFA"); r.fuelS = 1e9;
+  for (let i = 0; i < 1800; i++) stepSim(sim, 0.25);
+  // Sidewinders (IR) reaching a breaking flight consume flares from its pool.
+  assert.ok((b.flares < b.flaresMax) || (r.flares < r.flaresMax), "a flight popped flares");
+});
+
+test("aircraft are hard targets: downing a flight costs many SAM shots", () => {
+  const sim = running(7);
+  placeShip(sim, SIDE.BLUE, -10 * NM, 0, "CCG");
+  const r = placeShip(sim, SIDE.RED, 35 * NM, 0, "VFA"); r.fuelS = 1e9; r.desiredSpeed = 0;
+  for (let i = 0; i < 2600; i++) stepSim(sim, 0.25);
+  const sams = sim.events.filter((e) => /launched SM/.test(e.text)).length;
+  const lost = 4 - aliveAircraftCount(r);
+  // Evasion + small/fast target means well under one kill per interceptor.
+  assert.ok(lost === 0 || sams > lost, `SAMs ${sams} should exceed kills ${lost} (low single-shot Pk)`);
+});
+
+test("a striker returns to base once its anti-ship load is spent", () => {
+  const sim = running();
+  placeShip(sim, SIDE.BLUE, -40 * NM, 0, "AFB");
+  const v = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "VFA");
+  placeShip(sim, SIDE.RED, 80 * NM, 0, "EWR");
+  v.loadout = { "AIM-120": 4 }; // air-to-air left, strike (AGM-84) depleted
+  let rtb = false;
+  for (let i = 0; i < 200 && !rtb; i++) { stepSim(sim, 0.25); rtb = v.airState === "rtb" || v.airState === "rearming"; }
+  assert.ok(rtb, "striker headed home with strike ammo spent");
 });
 
 test("a scenario with air units is deterministic for the same seed", () => {

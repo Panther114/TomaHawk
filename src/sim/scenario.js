@@ -256,7 +256,10 @@ export function restoreScenario(data) {
             ...(ship.airState != null ? { airState: ship.airState } : {}),
             ...(Number.isFinite(ship.fuelS) ? { fuelS: ship.fuelS } : {}),
             ...(Number.isFinite(ship.rearmUntil) ? { rearmUntil: ship.rearmUntil } : {}),
-            ...(ship.homeBaseId != null ? { homeBaseId: ship.homeBaseId } : {})
+            ...(ship.homeBaseId != null ? { homeBaseId: ship.homeBaseId } : {}),
+            ...(Number.isFinite(ship.flares) ? { flares: ship.flares } : {}),
+            ...(ship.evading != null ? { evading: ship.evading } : {}),
+            ...(Number.isFinite(ship.evadeUntil) ? { evadeUntil: ship.evadeUntil } : {})
           }
         : {};
       return {

@@ -13,7 +13,8 @@
 // the sim. Treat everything in AIRCRAFT_TEMP_CONFIG as a placeholder.
 
 import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE, SCENARIO_MODE } from "./constants.js";
-import { distance } from "./math.js";
+import { distance, angleTo } from "./math.js";
+import { MISSILES } from "./missiles.js";
 import { addEvent } from "./events.js";
 import { markContactDead, iterateTracksForShip } from "./sensors.js";
 
@@ -32,7 +33,22 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   baseReachM: 2 * NM,
   // Squadron airframe defaults (used when a class omits them).
   cruiseSpeedKt: 420,
-  maxSpeedKt: 540
+  maxSpeedKt: 540,
+  // --- survivability / countermeasures (all provisional) ------------------
+  // Default IR-countermeasure (flare) pool when a class omits `flares`.
+  flares: 60,
+  // A missile this close (m) or already terminal triggers a hard evasive break.
+  evadeRangeM: 12 * NM,
+  // How long (s) a break maneuver is held after the last triggering threat.
+  evadeDurationS: 6,
+  // Chance an IR-guided missile is decoyed when a flaring, evading flight pops
+  // flares in its terminal phase (one flare consumed per attempt).
+  flareDecoyChance: 0.6,
+  // Hit-probability the airframe shaves off any missile by virtue of being a
+  // small, fast, hard target (before maneuver/flares).
+  evasionBase: 0.22,
+  // Additional hit-probability shaved while actively breaking (notching).
+  evasionManeuver: 0.18
 });
 
 // Air-unit lifecycle states. Squadrons fly their mission until Winchester (out
@@ -61,13 +77,19 @@ export function aliveAircraftCount(ship) {
 // (temporary) shape lives next to the behaviour that consumes it.
 export function initialAircraftState(cls) {
   const enduranceS = Number.isFinite(cls.enduranceS) ? cls.enduranceS : AIRCRAFT_TEMP_CONFIG.enduranceS;
+  const flares = Number.isFinite(cls.flares) ? cls.flares : AIRCRAFT_TEMP_CONFIG.flares;
   return {
     airState: AIR_STATE.MISSION,
     enduranceS,
     fuelS: enduranceS,
     rearmTimeS: Number.isFinite(cls.rearmTimeS) ? cls.rearmTimeS : AIRCRAFT_TEMP_CONFIG.rearmTimeS,
     rearmUntil: 0,
-    homeBaseId: null
+    homeBaseId: null,
+    // Survivability state.
+    flaresMax: flares,
+    flares,
+    evading: false,
+    evadeUntil: 0
   };
 }
 
@@ -89,7 +111,8 @@ export const AIR_MAX_MPS = AIRCRAFT_TEMP_CONFIG.maxSpeedKt * KNOT * SHIP_SPEED_M
 
 function totalWeapons(ship) {
   let n = 0;
-  for (const c of Object.values(ship.loadout || {})) n += c > 0 ? c : 0;
+  const lo = ship.loadout;
+  if (lo) for (const id in lo) { const c = lo[id]; if (c > 0) n += c; }
   return n;
 }
 
@@ -122,10 +145,43 @@ function nearestEnemyTrack(sim, ship) {
   return best;
 }
 
+// Nearest live enemy missile actually homing on this flight (the evasion cue).
+const NO_INCOMING = [];
+function nearestIncomingMissile(sim, ship) {
+  // Indexed: an absent bucket means nothing inbound (skip the full-scan fallback,
+  // which exists only for index-less direct callers).
+  const list = sim._missilesByTarget ? (sim._missilesByTarget.get(ship.id) ?? NO_INCOMING) : sim.missiles;
+  let best = null;
+  let bestD = Infinity;
+  for (const m of list) {
+    if (!m.alive || m.side === ship.side || m.targetId !== ship.id) continue;
+    const d = distance(ship, m);
+    if (d < bestD) { bestD = d; best = m; }
+  }
+  return best;
+}
+
+// Strike (anti-ship) rounds currently aboard, and whether the flight launched
+// with any — used to send strikers home once their stand-off load is expended.
+function strikeAmmo(ship) {
+  let n = 0;
+  const lo = ship.loadout;
+  if (lo) for (const id in lo) { const c = lo[id]; if (c > 0 && MISSILES[id]?.category === "anti_ship") n += c; }
+  return n;
+}
+function carriedStrike(ship) {
+  const snap = ship.baseLoadoutSnapshot;
+  if (snap) for (const id in snap) { if (snap[id] > 0 && MISSILES[id]?.category === "anti_ship") return true; }
+  return false;
+}
+
 function refillFromBase(ship) {
   ship.loadout = { ...(ship.baseLoadoutSnapshot || {}) };
   ship.fuelS = ship.enduranceS;
+  ship.flares = ship.flaresMax ?? ship.flares ?? 0;
   ship.airState = AIR_STATE.MISSION;
+  ship.evading = false;
+  ship.evadeUntil = 0;
   ship.lastLaunchAtByMissile = {};
 }
 
@@ -150,9 +206,16 @@ export function decideAircraft(sim, ship) {
     ship.airState = AIR_STATE.RTB;
   }
 
+  // While actively breaking to defeat a missile, hold the evasion course set by
+  // updateAircraft — do not override it with mission/RTB navigation.
+  if (ship.evading && sim.time < (ship.evadeUntil ?? 0)) return;
+
   const lowFuel = ship.fuelS <= ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac;
   const winchester = totalWeapons(ship) <= 0;
-  if ((lowFuel || winchester) && ship.airState !== AIR_STATE.RTB) {
+  // A striker returns once its stand-off (anti-ship) load is spent, even if it
+  // still has air-to-air missiles for self-escort.
+  const strikeDepleted = carriedStrike(ship) && strikeAmmo(ship) <= 0;
+  if ((lowFuel || winchester || strikeDepleted) && ship.airState !== AIR_STATE.RTB) {
     ship.airState = AIR_STATE.RTB;
   }
 
@@ -193,12 +256,31 @@ export function decideAircraft(sim, ship) {
   }
 }
 
-// Per-tick upkeep for all squadrons: burn fuel (except while parked) and splash
-// any flight that runs dry. Deterministic; gated entirely on air units.
+// Per-tick upkeep for all squadrons: evasive maneuvering against inbound
+// missiles, fuel burn, and splashing any flight that runs dry. Deterministic
+// (no RNG here — the flare/PK rolls happen in the missile hit resolution) and
+// gated entirely on air units.
 export function updateAircraft(sim, dt) {
   for (const ship of sim.ships) {
     if (!ship.alive || ship.domain !== "air") continue;
-    if (ship.airState === AIR_STATE.REARMING) continue; // parked: no fuel burn
+    if (ship.airState === AIR_STATE.REARMING) { ship.evading = false; continue; } // parked
+
+    // Evasive break: when a missile is closing inside the reaction envelope (or
+    // already terminal) the flight notches — steering perpendicular to the
+    // threat line of sight at max speed. This both reads as a hard maneuver and
+    // feeds the survivability model (a breaking target is far harder to hit).
+    const threat = nearestIncomingMissile(sim, ship);
+    if (threat && (threat.terminal || distance(ship, threat) <= AIRCRAFT_TEMP_CONFIG.evadeRangeM)) {
+      if (!ship.evading) addEvent(sim, `${ship.name} breaks hard against an inbound missile.`, ship.side);
+      ship.evading = true;
+      ship.evadeUntil = sim.time + AIRCRAFT_TEMP_CONFIG.evadeDurationS;
+      const beam = angleTo(threat, ship) + Math.PI / 2;
+      ship.waypoint = { x: ship.x + Math.cos(beam) * 15 * NM, y: ship.y + Math.sin(beam) * 15 * NM };
+      ship.desiredSpeed = ship.maxSpeed;
+    } else if (ship.evading && sim.time >= (ship.evadeUntil ?? 0)) {
+      ship.evading = false;
+    }
+
     ship.fuelS = (ship.fuelS ?? 0) - dt;
     if (ship.fuelS <= 0) {
       ship.fuelS = 0;

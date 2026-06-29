@@ -66,6 +66,21 @@ export function missileDetectionEnvelope(observer, missile) {
       visibilityFactor = missile.terminal ? 0.48 : 0.42;
       baseChance = 0.84;
       break;
+    case "AGM-84": // air-launched sea-skimming anti-ship
+      targetHeightM = missile.terminal ? 8 : 18;
+      visibilityFactor = missile.terminal ? 0.22 : 0.19;
+      baseChance = 0.74;
+      break;
+    case "AIM-120": // BVR air-to-air, fast high-flyer
+      targetHeightM = missile.terminal ? 3000 : 8000;
+      visibilityFactor = missile.terminal ? 0.55 : 0.5;
+      baseChance = 0.8;
+      break;
+    case "AIM-9X": // WVR IR, small and lower
+      targetHeightM = missile.terminal ? 400 : 1500;
+      visibilityFactor = missile.terminal ? 0.34 : 0.3;
+      baseChance = 0.7;
+      break;
     default:
       targetHeightM = missile.terminal ? 20 : 60;
       visibilityFactor = missile.terminal ? 0.28 : 0.24;
