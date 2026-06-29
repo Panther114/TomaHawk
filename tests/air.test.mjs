@@ -261,6 +261,44 @@ test("a striker returns to base once its anti-ship load is spent", () => {
   assert.ok(rtb, "striker headed home with strike ammo spent");
 });
 
+test("a CAP fighter hard-kills an inbound ASCM but keeps an air-to-air reserve", () => {
+  const sim = running(7);
+  placeShip(sim, SIDE.BLUE, -10 * NM, 0, "DDG");
+  const cap = placeShip(sim, SIDE.BLUE, 5 * NM, 0, "VFA"); cap.fuelS = 1e9;
+  placeShip(sim, SIDE.RED, 30 * NM, 0, "CDB"); // fires anti-ship missiles
+  let firedAtMissile = false;
+  for (let i = 0; i < 2000 && !firedAtMissile; i++) {
+    stepSim(sim, 0.25);
+    firedAtMissile = sim.missiles.some((mm) => mm.side === SIDE.BLUE && mm.launcherId === cap.id && String(mm.targetId).startsWith("M-"));
+  }
+  assert.ok(firedAtMissile, "the fighter engaged an inbound anti-ship missile with an AAM");
+  // It must not have stripped its air-to-air load: a heavy reserve of the radar
+  // AAM remains (started at 8; conservative defence keeps most of it).
+  assert.ok((cap.loadout["AIM-120"] ?? 0) >= 5, `kept an AAM reserve (${cap.loadout["AIM-120"]} of 8)`);
+});
+
+test("a full flight relaunches faster than a lone survivor (rate scales with aircraft)", () => {
+  const launchTimes = (planes) => {
+    const sim = running(7);
+    const v = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "VFA"); v.fuelS = 1e9; v.desiredSpeed = 0;
+    v.damage = 4 - planes;
+    placeShip(sim, SIDE.RED, 20 * NM, 0, "BBG");
+    placeShip(sim, SIDE.RED, 22 * NM, 4 * NM, "BBG");
+    const times = [];
+    for (let i = 0; i < 400; i++) {
+      const before = sim.missiles.length;
+      stepSim(sim, 0.25);
+      for (let k = before; k < sim.missiles.length; k++) if (sim.missiles[k].launcherId === v.id) times.push(sim.time);
+    }
+    let minGap = Infinity;
+    for (let i = 1; i < times.length; i++) { const g = times[i] - times[i - 1]; if (g > 0.01) minGap = Math.min(minGap, g); }
+    return minGap;
+  };
+  const four = launchTimes(4);
+  const one = launchTimes(1);
+  assert.ok(four < one, `4-plane min gap ${four}s < 1-plane min gap ${one}s`);
+});
+
 test("a scenario with air units is deterministic for the same seed", () => {
   const build = (seed) => {
     const sim = createScenario(seed);

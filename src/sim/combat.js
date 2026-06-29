@@ -8,7 +8,7 @@ import { MISSILES, missileDisplayRole } from "./missiles.js";
 import { availableCount, setAvailableCount, defaultLoadout, defaultRoe } from "./ships.js";
 import { addEvent } from "./events.js";
 import { currentTrack, markContactDead } from "./sensors.js";
-import { AIRCRAFT_TEMP_CONFIG } from "./aircraft.js";
+import { AIRCRAFT_TEMP_CONFIG, aliveAircraftCount } from "./aircraft.js";
 import {
   forceTrack,
   inSector,
@@ -32,6 +32,15 @@ const NO_INCOMING = [];
 function incomingMissilesFor(sim, shipId) {
   if (sim._missilesByTarget) return sim._missilesByTarget.get(shipId) ?? NO_INCOMING;
   return sim.missiles;
+}
+
+// Effective relaunch interval for a launcher+weapon. A squadron has one shooter
+// per surviving aircraft, so its volley cadence scales with the flight: a 4-ship
+// flight relaunches a type ~4x faster than a lone survivor. Ships are unchanged
+// (returns the raw spec interval), so the surface launch path is byte-identical.
+function effectiveLaunchIntervalS(launcher, spec) {
+  if (launcher.domain !== "air") return spec.launchIntervalS;
+  return spec.launchIntervalS / Math.max(1, aliveAircraftCount(launcher));
 }
 
 function aliveShipById(sim, id) {
@@ -119,7 +128,7 @@ function launchMissile(sim, launcher, order) {
   const queueReadyAt = order.defensive ? (launcher.nextDefensiveLaunchAt || 0) : (launcher.nextLaunchAt || 0);
   if (sim.time < Math.max(order.readyAt, queueReadyAt)) return false;
   const lastTypeLaunch = launcher.lastLaunchAtByMissile[order.missileId] ?? -Infinity;
-  if (sim.time - lastTypeLaunch < spec.launchIntervalS) return false;
+  if (sim.time - lastTypeLaunch < effectiveLaunchIntervalS(launcher, spec)) return false;
   setAvailableCount(launcher, order.missileId, availableCount(launcher, order.missileId) - 1);
   const lane = ((order.launchSequence ?? 0) % 5) - 2;
   const laneOffset = lane * 38;
@@ -190,7 +199,7 @@ function launchMissile(sim, launcher, order) {
     // missile-specific interval above still prevents same-round overlap.
     launcher.nextDefensiveLaunchAt = sim.time + 0.45;
   } else {
-    launcher.nextLaunchAt = sim.time + spec.launchIntervalS;
+    launcher.nextLaunchAt = sim.time + effectiveLaunchIntervalS(launcher, spec);
   }
   addEvent(sim, `${launcher.name} launched ${spec.shortLabel} at ${order.targetClassification}.`, launcher.side);
   return true;
@@ -206,7 +215,7 @@ export function processLaunchQueues(sim) {
       if (!spec || availableCount(ship, order.missileId) <= 0) continue;
       const queueReadyAt = order.defensive ? (ship.nextDefensiveLaunchAt || 0) : (ship.nextLaunchAt || 0);
       const lastTypeLaunch = ship.lastLaunchAtByMissile?.[order.missileId] ?? -Infinity;
-      if (sim.time < Math.max(order.readyAt, queueReadyAt) || sim.time - lastTypeLaunch < spec.launchIntervalS) continue;
+      if (sim.time < Math.max(order.readyAt, queueReadyAt) || sim.time - lastTypeLaunch < effectiveLaunchIntervalS(ship, spec)) continue;
       if (selectedIndex < 0) {
         selectedIndex = index;
         continue;
@@ -550,6 +559,29 @@ function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5
   return best;
 }
 
+// Aircraft hard-kill of an inbound anti-ship missile (outer air battle). Kept
+// deliberately conservative so a flight does not strip its air-to-air load to
+// chase cruise missiles: only the long-range RADAR AAM is used (IR seekers do
+// poorly against a cold sea-skimmer), only against ASCMs, and only while a heavy
+// reserve of that round remains for the dogfight. Returns null otherwise.
+function chooseAirInterceptWeapon(ship, threat) {
+  if (MISSILES[threat.missileId]?.category !== "anti_ship") return null;
+  const rangeM = distance(ship, threat);
+  const baseLoad = defaultLoadout(ship.hull || "VFA");
+  let best = null;
+  for (const id in ship.loadout) {
+    const spec = MISSILES[id];
+    if (!spec) continue;
+    if (spec.category !== "anti_air" && spec.category !== "dual_role") continue;
+    if (spec.guidance === "infrared") continue; // WVR IR poor vs sea-skimmer; save for A2A
+    if (rangeM > spec.rangeM) continue;
+    const reserve = Math.ceil((baseLoad[id] ?? ship.loadout[id]) * 0.7); // keep 70% for air-to-air
+    if (ship.loadout[id] <= reserve) continue;
+    if (!best || spec.rangeM > MISSILES[best].rangeM) best = id;
+  }
+  return best;
+}
+
 export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   const target = aliveShipById(sim, threat.targetId);
   const rangeM = distance(ship, threat);
@@ -654,10 +686,14 @@ function planDefensiveFires(sim) {
         const defenderShotCap = need.needShootShoot ? 2 : 1;
         if (defenderAssigned >= defenderShotCap) continue;
         if (!need.needShootShoot && !need.needPromptShot && hasPendingOrActiveEngagement(sim, defender, missile.id)) continue;
-        const weapon = chooseDefensiveWeapon(sim, defender, missile, {
-          urgent: need.needPromptShot,
-          preferCheapFollowup: defenderAssigned > 0 && need.preferCheapLayer(distance(defender, missile))
-        });
+        // Aircraft defend the fleet with AAMs (conservatively); ships use their
+        // layered SAM doctrine. Branching keeps the surface path byte-identical.
+        const weapon = defender.domain === "air"
+          ? chooseAirInterceptWeapon(defender, missile)
+          : chooseDefensiveWeapon(sim, defender, missile, {
+              urgent: need.needPromptShot,
+              preferCheapFollowup: defenderAssigned > 0 && need.preferCheapLayer(distance(defender, missile))
+            });
         if (!weapon) continue;
         const threatTrack = {
           id: missile.id,
@@ -797,7 +833,11 @@ function planOffensiveFires(sim) {
           const saturationHold = posture.mode === "saturate" ? 0.92 : shooterAggression > 0.74 ? 0.75 : 0.5;
           if (ownPending && alreadyAssigned >= Math.ceil(state.desired * saturationHold)) continue;
           const salvoBonus = posture.mode === "saturate" && shooterAggression > 0.82 ? 1 : 0;
-          const count = Math.min(MISSILES[weapon].salvo + salvoBonus, state.desired - alreadyAssigned, availableCount(shooter, weapon));
+          // A squadron's coordinated volley is capped by its surviving aircraft:
+          // one shooter per plane, so an attrited flight throws fewer per cycle.
+          // Infinity for ships keeps the surface path byte-identical.
+          const flightCap = shooter.domain === "air" ? Math.max(1, aliveAircraftCount(shooter)) : Infinity;
+          const count = Math.min(MISSILES[weapon].salvo + salvoBonus, state.desired - alreadyAssigned, availableCount(shooter, weapon), flightCap);
           if (count > 0 && queueSalvo(sim, shooter, track, weapon, count, {
             readyAtOverride: state.coordinatedReadyAt,
             priorityOverride: posture.mode === "saturate" ? 40 : 50

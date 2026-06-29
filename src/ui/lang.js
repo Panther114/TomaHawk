@@ -63,6 +63,12 @@ const strings = {
   "detail.fcs":   { en: "FCS",   zh: "射控" },
   "detail.ciws":  { en: "CIWS",  zh: "近防" },
   "detail.cic":   { en: "CIC",   zh: "战情" },
+  "detail.ac":    { en: "A/C",   zh: "飞机" },
+  "detail.fuel":  { en: "FUEL",  zh: "燃油" },
+  "detail.flares":{ en: "FLARE", zh: "诱饵" },
+  "detail.state": { en: "STATE", zh: "状态" },
+  "detail.aaw":   { en: "AAW",   zh: "防空" },
+  "detail.asuw":  { en: "ASUW",  zh: "反舰" },
 
   // Ship class labels (for select and descriptions)
   "ship.ddg":  { en: "DDG", zh: "驱逐舰" },

@@ -6,7 +6,7 @@ The implemented stack uses static HTML, CSS, and JavaScript with a deterministic
 
 ## Runtime Shape
 
-- The simulation core owns deterministic state, doctrine, movement, sensors, tracks, missile flight, defenses, damage, and terrain-aware ship navigation. It is split into focused modules under `src/sim/` (constants, math, events, missiles, ships, sensors, command, movement, combat, scenario, step) behind the `src/sim.js` re-export barrel. See `src/README.md` for the module map.
+- The simulation core owns deterministic state, doctrine, movement, sensors, tracks, missile flight, defenses, damage, and terrain-aware ship navigation. It is split into focused modules under `src/sim/` (constants, math, events, missiles, ships, sensors, command, movement, combat, aircraft, scenario, step) behind the `src/sim.js` re-export barrel. See `src/README.md` for the module map. `src/sim/aircraft.js` owns the air-domain squadron model: attrition (HP = plane count), the mission/RTB/rearm/fuel state machine, evasive maneuvers, flares, and the (intentionally provisional) `AIRCRAFT_TEMP_CONFIG` tunables.
 - `src/app.js` owns canvas rendering, map interactions, UI panels, loadout editing, and sim controls.
 - `src/world/terrain.js` is the shared low-level terrain module. It owns the tactical-map geometry, projection, and binary water/land queries that both the UI and the simulation consume.
 - Scenario setup, save/load, copyable logs, and after-action export are handled through helpers in `src/sim/scenario.js` and `src/sim/events.js`.

@@ -184,6 +184,54 @@ Persistent entity indexes and per-planning-cycle target, side, queue, track, and
 ### Scenario Default
 Default starting distance reduced from 120 NM to 40 NM so engagements begin within 1-2 minutes at 1× speed.
 
+### Air Units (Aircraft Squadrons)
+
+Aircraft are modelled with `domain: "air"` on the same entity as ships, so they
+reuse the sensor, cooperative-engagement, fire-planning, damage, and win-condition
+pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything in
+`AIRCRAFT_TEMP_CONFIG` is intentionally provisional and meant to be retuned.
+
+- **One squadron = one entity, several aircraft.** A squadron costs one ship's
+  worth of latency (one radar, one track-file, one decision, one fire plan) but
+  renders and attrits as a flight. Its hit-point pool **is** the plane count:
+  each missile hit downs exactly one aircraft, and combat power scales with the
+  survivors. This keeps the per-tick budget flat as aircraft (which vastly
+  outnumber ships) are added. "Squadron is a point" is intentional — modelling
+  each airframe individually was judged a large performance cost for little gain.
+- **Movement.** Air units overfly land and sea (no water-collision/seating), are
+  placeable anywhere, and are excluded from OTC/AAWC command roles and AAW sector
+  responsibility (they are mobile strikers, not sectorised pickets).
+- **Survivability.** A squadron is a small, fast, hard target: every missile that
+  reaches it loses a large slice of its terminal PK (`evasionBase`), more while
+  the flight is breaking (`evasionManeuver`), so SAMs cost many shots per kill
+  rather than ~1. When a missile closes inside the reaction envelope the flight
+  performs an **evasive break** (notches perpendicular to the threat at max speed)
+  and pops **flares**; infrared seekers (e.g. Sidewinder) can be decoyed outright.
+- **Air-to-air.** Flights fight with radar BVR and infrared WVR missiles, attriting
+  each other; the loser's countermeasures and evasion make every kill cost several
+  rounds.
+- **Air defence of the fleet.** A squadron will hard-kill an inbound anti-ship
+  missile with its long-range radar AAM, but only conservatively — IR rounds are
+  reserved for the dogfight and a heavy (≈70%) reserve of the radar AAM is kept,
+  so a flight does not strip its air-to-air load chasing cruise missiles.
+- **Volley scales with the flight.** A squadron's coordinated volley is capped by
+  its surviving aircraft, and its relaunch cadence scales with them (one shooter
+  per plane), so a four-ship flight throws a fast alpha-strike while a lone
+  survivor fires slowly.
+- **Return to base / fuel.** A squadron flies its mission until it is Winchester,
+  has spent its anti-ship (strike) load, or is low on fuel, then returns to the
+  nearest friendly **airfield** to rearm/refuel (a flat timer) and relaunch. With
+  no airfield reachable it limps toward friendly territory and splashes when fuel
+  runs out. A flight will not rearm on a destroyed airfield. Carriers, sortie
+  generation, and per-airframe fuel are out of scope for now.
+- **Airfields.** An airfield (`AFB`, or any ground unit with `isAirfield`) is a
+  fixed unit placeable on land **or** water that rearms/refuels friendly flights.
+- **UI.** The force inventory has an air sub-table (flight strength / lifecycle
+  state / AAW / ASUW), and a selected squadron's detail card shows flight readouts
+  (aircraft, fuel, flares, state, AAW/ASUW) instead of ship subsystems. Rendering
+  draws one dart per surviving aircraft; labels are skipped when zoomed far out
+  (level-of-detail culling) so a large, zoomed-out air battle stays responsive.
+
 ## Current Weapons (updated)
 
 - `SM-2MR` / `SM2`: area air-defence interceptor (90 NM, Mach 3.1, PK 0.45)
@@ -191,3 +239,6 @@ Default starting distance reduced from 120 NM to 40 NM so engagements begin with
 - `ESSM`: point-defence interceptor, quad-packable (28 NM, Mach 2.9, PK 0.35)
 - `MaritimeStrike` / `MSTK`: subsonic anti-ship cruise missile (120 NM, Mach 0.8, PK 0.42)
 - `TomahawkBlockV` / `TLAM`: long-range surface strike (650 NM, Mach 0.7, PK 0.34)
+- `AIM-120` / `120`: BVR active-radar air-to-air missile (55 NM, PK 0.50, `target: "air"`)
+- `AIM-9X` / `AIM9`: WVR infrared air-to-air missile (18 NM, PK 0.72, flare-decoyable)
+- `AGM-84` / `HPN`: air-launched anti-ship missile (67 NM, subsonic, PK 0.45)

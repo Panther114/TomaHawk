@@ -481,12 +481,14 @@ function drawGroundUnit(ship, label) {
   ctx.stroke();
   ctx.restore();
 
-  ctx.save();
-  ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
-  ctx.fillStyle = color;
-  ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
-  ctx.fillText(shipDisplayName(ship, "-"), p.x + s + 4, p.y - 4);
-  ctx.restore();
+  if (label.alpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
+    ctx.fillStyle = color;
+    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+    ctx.fillText(shipDisplayName(ship, "-"), p.x + s + 4, p.y - 4);
+    ctx.restore();
+  }
 }
 
 // A squadron renders as a small formation of dart glyphs — one per surviving
@@ -528,13 +530,17 @@ function drawAircraft(ship, label) {
   }
   ctx.restore();
 
-  ctx.save();
-  ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
-  ctx.fillStyle = color;
-  ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
-  const count = `${aliveAircraftCount(ship)}/${squadronSize(ship)}`;
-  ctx.fillText(`${shipDisplayName(ship, "-")} ×${count}`, p.x + 10, p.y - 6);
-  ctx.restore();
+  // Skip label rendering entirely when zoomed far out (faded) — fillText is the
+  // dominant per-entity cost in a large, zoomed-out battle. Render-only LOD.
+  if (label.alpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
+    ctx.fillStyle = color;
+    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+    const count = `${aliveAircraftCount(ship)}/${squadronSize(ship)}`;
+    ctx.fillText(`${shipDisplayName(ship, "-")} ×${count}`, p.x + 10, p.y - 6);
+    ctx.restore();
+  }
 }
 
 function drawScaledShip(ship, label) {
@@ -582,12 +588,14 @@ function drawScaledShip(ship, label) {
   ctx.restore();
   ctx.restore();
 
-  ctx.save();
-  ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
-  ctx.fillStyle = color;
-  ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
-  ctx.fillText(shipDisplayName(ship, "-"), p.x + len * 0.48 + 3, p.y - 5);
-  ctx.restore();
+  if (label.alpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
+    ctx.fillStyle = color;
+    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+    ctx.fillText(shipDisplayName(ship, "-"), p.x + len * 0.48 + 3, p.y - 5);
+    ctx.restore();
+  }
 
   if (sim.mode !== SCENARIO_MODE.SETUP && ship.alive && (ship.speed > 0.1 || ship.desiredSpeed > 0.1)) {
     const hasVelocity = Math.hypot(ship.vx ?? 0, ship.vy ?? 0) > 0.1;
@@ -823,6 +831,11 @@ function renderShipDetails() {
     ship.subsystems?.fireControl,
     ship.subsystems?.ciws,
     ship.subsystems?.cic,
+    // Air units show volatile flight readouts; key on coarse fuel + flares +
+    // state so the card refreshes as they change (a few selected cards, cheap).
+    ship.domain === "air"
+      ? `${Math.round((ship.fuelS / (ship.enduranceS || 1)) * 20)}:${ship.flares}:${ship.airState}:${ship.evading ? 1 : 0}`
+      : 0,
     ...Object.values(ship.loadout)
   ].join(":")).join("|")}`;
   if (panelRenderCache.details === detailKey) return;
@@ -835,7 +848,47 @@ function renderShipDetails() {
   const availableHeight = innerHeight - y - 16;
   shipDetailOverlay.style.cssText = `position:fixed;right:${rightInset}px;top:${y}px;z-index:100;width:${cardWidth}px;max-height:${availableHeight}px;display:flex;flex-direction:column;align-items:stretch;gap:${cardGap}px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color: rgba(142,193,205,0.25) transparent;`;
 
+  const subBar = (val, mode = "health") => {
+    const w = Math.round(Math.max(0, Math.min(1, val)) * 100);
+    const c = mode === "load"
+      ? (val >= 0.8 ? '#5a9' : val >= 0.4 ? '#f7b955' : '#f66')
+      : (val > 0.6 ? '#5a9' : val > 0.3 ? '#f7b955' : '#f66');
+    return `<span class="subsystem-meter"><i style="width:${w}%;background:${c}"></i></span>`;
+  };
+
+  // Aircraft squadrons have no ship subsystems — show flight-relevant readouts
+  // (surviving aircraft, fuel, flares, lifecycle state, and effector counts).
+  const aircraftCardHtml = (s) => {
+    const color = sideColor(s.side);
+    const ac = aliveAircraftCount(s);
+    const size = squadronSize(s);
+    const fuelFrac = s.enduranceS ? (s.fuelS ?? 0) / s.enduranceS : 0;
+    const flareFrac = s.flaresMax ? (s.flares ?? 0) / s.flaresMax : 0;
+    let aaw = 0, asuw = 0;
+    for (const [id, n] of Object.entries(s.loadout || {})) {
+      if (!MISSILES[id]) continue;
+      if (MISSILES[id].category === 'anti_ship') asuw += n; else aaw += n;
+    }
+    const state = ({ mission: 'MSN', rtb: 'RTB', rearming: 'RRM' })[s.airState] ?? 'MSN';
+    const row = (label, val, mode = "health") => `<span>${label}</span>${subBar(val, mode)}<b>${Math.round(Math.max(0, Math.min(1, val)) * 100)}%</b>`;
+    const textRow = (label, value) => `<span>${label}</span><b style="grid-column:2/4;text-align:right">${value}</b>`;
+    return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
+      <div class="ship-detail-heading">
+        <b>${shipDisplayName(s, "")}</b>
+        <span style="color:${ac < size ? '#f7b955' : ''}">${t('detail.ac')} ${ac}/${size}</span>
+      </div>
+      <div class="ship-detail-grid">
+        ${row(t('detail.fuel'), fuelFrac, "load")}
+        ${row(t('detail.flares'), flareFrac, "load")}
+        ${textRow(t('detail.state'), state + (s.evading ? ' !' : ''))}
+        ${textRow(t('detail.aaw'), aaw)}
+        ${textRow(t('detail.asuw'), asuw)}
+      </div>
+    </div>`;
+  };
+
   const cardHtml = (s) => {
+    if (s.domain === "air") return aircraftCardHtml(s);
     const rdr = s.subsystems?.radar ?? 1.0;
     const prop = s.subsystems?.propulsion ?? 1.0;
     const fc = s.subsystems?.fireControl ?? 1.0;
@@ -844,13 +897,6 @@ function renderShipDetails() {
     const hp = shipHpState(s);
     const vls = vlsLoadState(s);
     const color = sideColor(s.side);
-    const subBar = (val, mode = "health") => {
-      const w = Math.round(val * 100);
-      const c = mode === "load"
-        ? (val >= 0.8 ? '#5a9' : val >= 0.4 ? '#f7b955' : '#f66')
-        : (val > 0.6 ? '#5a9' : val > 0.3 ? '#f7b955' : '#f66');
-      return `<span class="subsystem-meter"><i style="width:${w}%;background:${c}"></i></span>`;
-    };
     const row = (label, val, mode = "health") => `
       <span>${label}</span>
       ${subBar(val, mode)}
