@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "PORT=4173"
+set "PORT=4172"
 set "URL=http://127.0.0.1:%PORT%"
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^

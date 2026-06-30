@@ -29,6 +29,7 @@ import {
   tracksForShip,
   weaponRangeEntries
 } from "./sim.js";
+import { PerfRecorder, BattleLogger } from "./sim/debug.js";
 import {
   sideColor,
   sideSoftColor,
@@ -98,6 +99,46 @@ let selectionBox = null;
 let selectedIds = new Set([sim.selectedId]);
 let last = performance.now();
 let labelBoxes = [];
+
+// The DOM side-panels are text and don't need 60 fps; rebuilding and diffing
+// their markup every frame is wasted reflow. They refresh at ~20 Hz while the
+// canvas battlefield keeps rendering every frame (so animation stays smooth).
+let lastPanelRenderAt = 0;
+const PANEL_RENDER_INTERVAL_MS = 50;
+// Above this many live missiles, drop the per-missile glow (canvas shadowBlur is
+// very expensive and indistinguishable in a crowded raid — exactly when frame
+// budget is tight).
+const MISSILE_GLOW_CAP = 50;
+
+// --- per-run debug capture --------------------------------------------------
+// Two read-only collectors observe each running simulation and are persisted to
+// debug/ (perf-debug.log + sim-debug.log) via the server, OVERWRITTEN every run,
+// so the AI behaviour and device cost of the last run can be inspected offline.
+// A "run" is one SETUP→RUNNING→ENDED lifecycle; the collectors reset when a new
+// run starts and the logs are saved when it ends (and periodically while live).
+let perfRec = null;
+let battleLog = null;
+let debugRunActive = false;
+let lastDebugSaveAt = 0;
+
+function beginDebugRun() {
+  perfRec = new PerfRecorder({ label: `app run ${new Date().toISOString()}` });
+  battleLog = new BattleLogger({ intervalS: 15, label: `app run ${new Date().toISOString()}` });
+  debugRunActive = true;
+  lastDebugSaveAt = performance.now();
+}
+
+function saveDebugLogs() {
+  if (!perfRec || !battleLog) return;
+  try {
+    fetch("/debug/save", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ perf: perfRec.format(), sim: battleLog.format() }),
+      keepalive: true
+    }).catch(() => {});
+  } catch { /* best-effort; never disrupt the sim */ }
+}
 let feedCollapsed = false;
 let aboutOpen = false;
 const MAX_CAMERA_SCALE = 0.011;
@@ -332,9 +373,17 @@ function collectWeaponRangeRings() {
     const selected = ship.id === sim.selectedId;
     if (mode === "selected" && !selected) continue;
     const p = worldToScreen(ship);
+    // Nearest distance from the viewport rectangle to this ship (ring centre).
+    const nx = Math.max(0, Math.min(p.x, innerWidth));
+    const ny = Math.max(0, Math.min(p.y, innerHeight));
+    const minDistToView = Math.hypot(p.x - nx, p.y - ny);
     for (const entry of cachedWeaponRangeEntries(ship)) {
       const radius = entry.rangeM * camera.scale;
       if (radius < 1.5) continue;
+      // The whole ring is off-screen (too small to reach the viewport): it draws
+      // nothing and clips nothing visible, so skip it entirely. (Rings that
+      // encompass the view are kept — they still bound the union of inner rings.)
+      if (radius < minDistToView - 2) continue;
       rings.push({
         side: ship.side,
         id: entry.id,
@@ -683,6 +732,9 @@ function drawMissiles(label) {
   const labelFontPx = Math.max(7, VISUAL_CONFIG.shipLabelPx * 0.4 * label.scale);
   const missileLabelsByType = new Map();
   const labelWidths = new Map();
+  // Drop the per-missile glow in a crowded raid (shadowBlur is the most expensive
+  // per-draw op and invisible at that density).
+  const useGlow = (sim._aliveMissiles?.length ?? sim.missiles.length) <= MISSILE_GLOW_CAP;
   ctx.save();
   ctx.font = canvasFont(labelFontPx);
   for (const missile of sim.missiles) {
@@ -722,7 +774,7 @@ function drawMissiles(label) {
     ctx.strokeStyle = iconColor;
     ctx.fillStyle = missile.terminal ? "rgba(247,185,85,.22)" : "rgba(5, 12, 16, .82)";
     ctx.lineWidth = isAntiAir ? 1.05 : 0.65;
-    if (isAntiAir) {
+    if (isAntiAir && useGlow) {
       ctx.shadowColor = iconColor;
       ctx.shadowBlur = 3;
     }
@@ -1128,8 +1180,15 @@ function render() {
   drawMissiles(label);
   drawRuler();
   drawSelectionBox();
-  renderPanels();
-  renderShipDetails();
+  // Throttle the DOM side-panels to ~20 Hz (the canvas above still draws every
+  // frame). Numbers/events updating 50 ms later is imperceptible, but it avoids
+  // rebuilding the inventory/event-log markup and reflowing on every frame.
+  const nowMs = performance.now();
+  if (nowMs - lastPanelRenderAt >= PANEL_RENDER_INTERVAL_MS) {
+    lastPanelRenderAt = nowMs;
+    renderPanels();
+    renderShipDetails();
+  }
 }
 
 function pickShip(world) {
@@ -1148,15 +1207,32 @@ function pickShip(world) {
 function tick(now) {
   const elapsed = Math.min(0.1, (now - last) / 1000);
   last = now;
+  // Returning to SETUP (a fresh scenario / reset) ends the current capture so
+  // the next run starts clean rather than appending to the previous one.
+  if (sim.mode === SCENARIO_MODE.SETUP) debugRunActive = false;
   if (!sim.paused) {
+    if (!debugRunActive && sim.mode === SCENARIO_MODE.RUNNING) beginDebugRun();
     const rate = Number(speed.value);
     let remaining = elapsed * rate;
     while (remaining > 0) {
+      const t0 = performance.now();
       stepSim(sim, Math.min(0.25, remaining));
+      if (debugRunActive) {
+        perfRec.record(sim, performance.now() - t0);
+        battleLog.sample(sim);
+      }
       remaining -= 0.25;
     }
+    // Persist while live (throttled) and once more the instant the run ends, so
+    // the logs always reflect the latest run even if the tab is closed.
+    if (debugRunActive) {
+      if (sim.mode === SCENARIO_MODE.ENDED) { saveDebugLogs(); debugRunActive = false; }
+      else if (now - lastDebugSaveAt > 5000) { saveDebugLogs(); lastDebugSaveAt = now; }
+    }
   }
+  const renderStart = performance.now();
   render();
+  if (debugRunActive) perfRec.recordRender(performance.now() - renderStart);
   requestAnimationFrame(tick);
 }
 

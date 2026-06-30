@@ -127,7 +127,7 @@ const strings = {
 
   // About overlay
   "about.title":      { en: "TOMAHAWK",            zh: "TOMAHAWK" },
-  "about.subtitle":   { en: "Naval Sandbox v0.2",   zh: "海战沙盘 v0.2" },
+  "about.subtitle":   { en: "Naval Sandbox v0.3",   zh: "海战沙盘 v0.3" },
   "about.desc1":      {
     en: "A real-time naval combat sandbox for experimenting with fleet compositions, doctrine settings, and tactical engagements. Place ships, configure loadouts and ROE, then watch the AI command structure execute multi-axis strike and defense plans.",
     zh: "实时海战沙盘，用于试验舰队编成、作战条令和战术交战。部署舰艇，配置载弹和交战规则，观察AI指挥体系执行多轴打击和防御计划。"

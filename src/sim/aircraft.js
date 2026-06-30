@@ -34,6 +34,36 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   // Squadron airframe defaults (used when a class omits them).
   cruiseSpeedKt: 420,
   maxSpeedKt: 540,
+  // --- altitude / strike geometry (all provisional) -----------------------
+  // Altitude is NOT a third movement axis; it is a per-flight attribute that
+  // drives the radar-horizon masking in the sensor model. A flight cruises high
+  // (better lookout, energy for air-to-air) and descends for a low-level strike
+  // ingress so hostile radars only see it much closer (the "go low" the user
+  // expects on a strike run).
+  cruiseAltitudeM: 9000,
+  ingressAltitudeM: 150,
+  // Fire the stand-off anti-ship load from just inside its max reach, then hold —
+  // never bore into the ship's air-defence envelope. Fractions of the best
+  // carried anti-ship weapon's range.
+  standoffFrac: 0.9,
+  // Closer than this fraction of the stand-off ring → turn cold and re-open
+  // range (the egress the user asked for: "move away after they are done").
+  egressFrac: 0.72,
+  // Begin the low-level descent once within this multiple of the stand-off ring.
+  ingressStartFrac: 1.7,
+  // On-station weave period (s): how long the flight holds one beam leg before
+  // reversing. Alternating the leg keeps it on the stand-off ring (a racetrack)
+  // instead of sliding off the threat axis.
+  stationWeaveS: 16,
+  // Pursue an enemy flight for air-to-air out to this range (m) when the flight
+  // has no strike mission to fly (a dedicated sweep / spent striker).
+  a2aEngageRangeM: 60 * NM,
+  // A striker only breaks off its run for a hostile flight that closes inside
+  // this (self-defence / merge range); a fighter farther out is ignored so the
+  // strike is prosecuted rather than every flight collapsing into a furball.
+  a2aSelfDefenseRangeM: 22 * NM,
+  // Minimum fused-track quality a squadron will vector a strike/intercept on.
+  acquireTrackQuality: 0.14,
   // --- survivability / countermeasures (all provisional) ------------------
   // Default IR-countermeasure (flare) pool when a class omits `flares`.
   flares: 60,
@@ -88,6 +118,9 @@ export function initialAircraftState(cls) {
     // Survivability state.
     flaresMax: flares,
     flares,
+    // Intrinsic hit-probability reduction a generation buys beyond the common
+    // airframe evasion (e.g. a low-observable 5-gen flight is harder to engage).
+    airEvasionBonus: Number.isFinite(cls.airEvasionBonus) ? cls.airEvasionBonus : 0,
     evading: false,
     evadeUntil: 0
   };
@@ -143,6 +176,54 @@ function nearestEnemyTrack(sim, ship) {
     if (d < bestD) { bestD = d; best = track; }
   }
   return best;
+}
+
+// Acquire the nearest enemy surface and air contacts a squadron can be vectored
+// onto. A flight is networked into the fleet's Cooperative Engagement (CEC)
+// picture — the same fused force picture the ships fire on — so it can prosecute
+// targets held by the fleet's long-range radars, not just the handful its own
+// short-range set can see. Falls back to the unit's own/shared tracks when no
+// force picture has been built yet (e.g. a direct unit-test call).
+function acquireAirTargets(sim, ship) {
+  const q = AIRCRAFT_TEMP_CONFIG.acquireTrackQuality;
+  let surf = null; let surfD = Infinity;
+  let air = null; let airD = Infinity;
+  const consider = (track) => {
+    if (!track || track.side === ship.side) return;
+    if (String(track.id).startsWith("M-")) return;
+    if ((track.quality ?? 0) <= q) return;
+    const d = distance(ship, track);
+    if ((track.domain ?? "sea") === "air") {
+      if (d < airD) { airD = d; air = track; }
+    } else if (d < surfD) { surfD = d; surf = track; }
+  };
+  const picture = sim.forcePicture?.get(ship.side);
+  if (picture) {
+    for (const track of picture.values()) consider(track);
+  } else {
+    for (const track of iterateTracksForShip(sim, ship)) consider(track);
+  }
+  return { surf, surfRangeM: surfD, air, airRangeM: airD };
+}
+
+// Longest reach (m) among the anti-ship weapons currently aboard — the basis for
+// the stand-off ring. 0 when the flight carries no strike rounds.
+function bestStrikeRangeM(ship) {
+  let max = 0;
+  const lo = ship.loadout;
+  if (lo) for (const id in lo) {
+    if (lo[id] > 0 && MISSILES[id]?.category === "anti_ship") max = Math.max(max, MISSILES[id].rangeM);
+  }
+  return max;
+}
+
+function hasAirToAir(ship) {
+  const lo = ship.loadout;
+  if (lo) for (const id in lo) {
+    const cat = MISSILES[id]?.category;
+    if (lo[id] > 0 && (cat === "anti_air" || cat === "dual_role")) return true;
+  }
+  return false;
 }
 
 // Nearest live enemy missile actually homing on this flight (the evasion cue).
@@ -240,20 +321,73 @@ export function decideAircraft(sim, ship) {
     return;
   }
 
-  // Mission: run down the nearest enemy so fire planning can engage it. Firing
-  // itself is handled by the shared offensive/defensive planners.
-  const enemy = nearestEnemyTrack(sim, ship);
-  if (enemy) {
-    ship.waypoint = { x: enemy.x, y: enemy.y };
+  // Mission: prosecute the fused fleet picture. Firing itself is handled by the
+  // shared offensive/defensive planners; this only sets the flight's geometry —
+  // where to fly, how fast, and at what altitude.
+  const cfg = AIRCRAFT_TEMP_CONFIG;
+  const { surf, surfRangeM, air, airRangeM } = acquireAirTargets(sim, ship);
+  const aam = hasAirToAir(ship);
+  const strikeRangeM = bestStrikeRangeM(ship);
+  ship._standoffNm = strikeRangeM > 0 ? (strikeRangeM * cfg.standoffFrac) / NM : null;
+
+  const canStrike = surf && strikeRangeM > 0;
+
+  // 1) Defensive air-to-air. Break for an enemy flight only when it closes inside
+  //    self-defence/merge range (or this flight has no strike to fly). A striker
+  //    ignores fighters farther out so it presses its run instead of collapsing
+  //    into a furball. Stay high for energy and close to a no-escape-zone shot;
+  //    the planner releases the missile.
+  if (air && aam && (airRangeM <= cfg.a2aSelfDefenseRangeM || !canStrike) && airRangeM <= cfg.a2aEngageRangeM) {
+    ship.altitudeM = cfg.cruiseAltitudeM;
+    ship.waypoint = { x: air.x, y: air.y };
     ship.desiredSpeed = ship.maxSpeed;
     return;
   }
-  // No contacts: fly a combat air patrol that screens the fleet — a station
-  // ahead of the formation guide (OTC) along the force's threat axis, taken from
-  // the shared command picture, rather than each fighter wandering on its own.
-  // This integrates the flight into the OTC's air picture. Falls back to
-  // advancing toward the enemy side before a command picture exists (or if the
-  // side has no surface guide to screen).
+
+  // 2) Stand-off strike. Vector onto the surface target, descend for a low-level
+  //    ingress (radar-horizon masking), and hold at the stand-off ring — fire
+  //    from just inside weapon reach, never inside the ship's air-defence
+  //    envelope. Too close → turn cold and re-open range (egress).
+  if (surf && strikeRangeM > 0) {
+    const standoffM = strikeRangeM * cfg.standoffFrac;
+    const r = surfRangeM;
+    ship.altitudeM = r <= standoffM * cfg.ingressStartFrac ? cfg.ingressAltitudeM : cfg.cruiseAltitudeM;
+    if (r > standoffM * 1.06) {
+      ship.waypoint = { x: surf.x, y: surf.y };           // ingress
+      ship.desiredSpeed = ship.maxSpeed;
+    } else if (r < standoffM * cfg.egressFrac) {
+      const away = angleTo(surf, ship);                    // egress: open the range
+      ship.waypoint = { x: ship.x + Math.cos(away) * 12 * NM, y: ship.y + Math.sin(away) * 12 * NM };
+      ship.desiredSpeed = ship.maxSpeed;
+    } else {
+      // On station at stand-off: weave a racetrack across the threat bearing to
+      // hold range while the strike is released, rather than boring straight in.
+      // The beam leg reverses every `stationWeaveS` so the net drift cancels and
+      // the flight stays on the stand-off ring instead of sliding off the axis.
+      if (sim.time >= (ship._weaveFlipAt ?? 0)) {
+        ship._weaveSign = ship._weaveSign === 1 ? -1 : 1;
+        ship._weaveFlipAt = sim.time + cfg.stationWeaveS;
+      }
+      const beam = angleTo(ship, surf) + (ship._weaveSign ?? 1) * Math.PI / 2;
+      ship.waypoint = { x: ship.x + Math.cos(beam) * 5 * NM, y: ship.y + Math.sin(beam) * 5 * NM };
+      ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
+    }
+    return;
+  }
+
+  // 3) Air-to-air against a distant flight when that is all we can do (pure
+  //    air-superiority load, or strike spent but AAMs remain): run it down.
+  if (air && aam) {
+    ship.altitudeM = cfg.cruiseAltitudeM;
+    ship.waypoint = { x: air.x, y: air.y };
+    ship.desiredSpeed = ship.maxSpeed;
+    return;
+  }
+
+  // 4) No engageable contact: fly a combat air patrol that screens the fleet — a
+  //    station ahead of the formation guide (OTC) along the force's threat axis,
+  //    taken from the shared command picture. Cruise high for lookout.
+  ship.altitudeM = cfg.cruiseAltitudeM;
   ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
   const cmd = sim.fleetCommand?.get(ship.side);
   if (cmd?.otc?.alive && cmd.otc.domain !== "air" && Number.isFinite(cmd.axis)) {

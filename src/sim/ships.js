@@ -149,10 +149,19 @@ const SHIP_CLASSES = {
   // joins the sensor/CEC net automatically via its radar + track-file. Carrier
   // basing is out of scope; squadrons are spawned directly and rearm at an
   // airfield. enduranceS / rearmTimeS are TEMP tunables (see aircraft.js).
-  // F/A-18E/F Super Hornet squadron (4 aircraft). Mixed strike load: AMRAAM +
-  // Sidewinder for air-to-air, Harpoon for anti-surface. Hardpoints (vlsCells)
-  // hold the flight's aggregate stores; flares are the IR countermeasure pool.
-  VFA: { hull:"VFA",className:"Strike Fighter Squadron approx.",prefix:"VFA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:20,beamM:14,draftM:5,displacementT:30,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,radarRangeNm:90,radarIntervalS:3,vlsCells:20,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:4,damageDegrade:0.10,enduranceS:1800,rearmTimeS:90,flares:60,baseLoadout:{ "AIM-120":8,"AIM-9X":4,"AGM-84":8 } },
+  // 4.5-GEN multirole — F/A-18E/F Super Hornet squadron (4 aircraft). Mixed
+  // strike load: AMRAAM + Sidewinder for air-to-air, Harpoon for anti-surface,
+  // carried externally on hardpoints (large radar cross-section). Hardpoints
+  // (vlsCells) hold the flight's aggregate stores; flares are the IR pool. It
+  // relies on stand-off range and terrain masking, not signature, to survive.
+  VFA: { hull:"VFA",className:"Strike Fighter Squadron (4.5-gen) approx.",prefix:"VFA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:20,beamM:14,draftM:5,displacementT:30,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,radarRangeNm:90,radarIntervalS:3,vlsCells:20,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:25,damageResist:4,damageDegrade:0.10,enduranceS:1800,rearmTimeS:90,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120":8,"AIM-9X":4,"AGM-84":8 } },
+  // 5-GEN multirole — low-observable stealth fighter squadron (F-35 approx.).
+  // Carries its weapons internally, so its magazine is smaller, but its tiny
+  // radar cross-section (rcsM2) means hostile radars only see it deep inside
+  // their nominal reach — it shoots first and absorbs far fewer SAM shots per
+  // pass (airEvasionBonus). Better sensor (longer radarRange) reflects fused
+  // sensor fusion. Tunables remain provisional.
+  VFS: { hull:"VFS",className:"Stealth Fighter Squadron (5-gen) approx.",prefix:"VFS",domain:"air",isFixed:false,glyph:"aircraft",lengthM:16,beamM:11,draftM:4,displacementT:28,cruiseSpeedKt:440,maxSpeedKt:560,accelMps2:3.2,decelMps2:3.2,turnRateDps:9,turnRateFlankDps:7,radarRangeNm:110,radarIntervalS:2.5,vlsCells:12,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2,damageResist:4,damageDegrade:0.10,enduranceS:1900,rearmTimeS:100,flares:48,airEvasionBonus:0.08,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-84":4 } },
 
   // --- Airfield (domain:"ground", placeable anywhere) ----------------------
   // Behaves like a fixed ground unit but may be placed on land OR water. Serves

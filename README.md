@@ -1,6 +1,6 @@
 # TomaHawk / 战斧 Naval Sandbox
 
-**Current release:** `v0.2` (`package.json` version `0.2.0`)
+**Current release:** `v0.3` (`package.json` version `0.3.0`)
 
 TomaHawk (in-app name **战斧**) is a deterministic 2D browser simulation of modern
 surface warfare: task-group missile combat, imperfect radar tracks, coordinated
@@ -27,7 +27,7 @@ starting the server.
 启动服务前重新生成内置的 Natural Earth 海岸线数据。
 
 ```bash
-npm start      # serve at http://127.0.0.1:4173
+npm start      # serve at http://127.0.0.1:4172
 npm run refresh:start  # refresh Natural Earth data, then serve
 npm test       # run the deterministic test suite (node --test)
 ```
@@ -38,9 +38,9 @@ generated Natural Earth crop are all derived from the shared map dimensions.
 / 战术世界的宽度为原东海视图的九倍、高度为 9.6 倍；相机硬边界、模拟边界与生成的
 Natural Earth 裁剪范围都由共享地图尺寸自动派生。
 
-On Windows you can also double-click `quickrun.bat`: it frees port `4173`, starts
+On Windows you can also double-click `quickrun.bat`: it frees port `4172`, starts
 a fresh server, and opens the browser automatically.
-Windows 用户也可双击 `quickrun.bat`：释放 `4173` 端口、启动服务并自动打开浏览器。
+Windows 用户也可双击 `quickrun.bat`：释放 `4172` 端口、启动服务并自动打开浏览器。
 
 ## Railway deployment / Railway 部署
 
@@ -122,7 +122,7 @@ complete operator/controls guide (English + 中文), see
 - [`docs/MAP_DATA.md`](docs/MAP_DATA.md) — Natural Earth provenance, projection, and regeneration.
 - [`docs/SOURCES.md`](docs/SOURCES.md) — public-source references and data policy.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current capability status and forward-looking ideas.
-- [`CHANGELOG.md`](CHANGELOG.md) — release history (`v0.1` → `v0.2`).
+- [`CHANGELOG.md`](CHANGELOG.md) — release history (`v0.1` → `v0.3`).
 - [`AGENTS.md`](AGENTS.md) — navigation guide for AI coding agents.
 
 ## License / 许可

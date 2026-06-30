@@ -260,20 +260,43 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   rather than ~1. When a missile closes inside the reaction envelope the flight
   performs an **evasive break** (notches perpendicular to the threat at max speed)
   and pops **flares**; infrared seekers (e.g. Sidewinder) can be decoyed outright.
-- **Air-to-air.** Flights fight with radar BVR and infrared WVR missiles, attriting
-  each other; the loser's countermeasures and evasion make every kill cost several
-  rounds.
+- **Two generations.** `VFA` is a **4.5-gen** multirole flight (Super Hornet
+  approx.): a larger radar cross-section, external stores, a bigger magazine — it
+  survives by stand-off and terrain masking, not signature. `VFS` is a **5-gen**
+  low-observable flight (F-35 approx.): a tiny `rcsM2` so hostile radars only see
+  it deep inside their nominal reach (it shoots first and absorbs far fewer SAM
+  shots), an intrinsic `airEvasionBonus` survivability edge, a better sensor, and
+  a smaller internal-carriage magazine. Both are tunable `SHIP_CLASSES` entries.
+- **Mission doctrine (vectored on the fleet picture).** A squadron prosecutes the
+  fused **CEC force picture** — the same picture the ships fire on — so it is
+  cued onto targets by the fleet's long-range radars/datalink instead of only the
+  handful its own short-range set can see. Its geometry then follows its role:
+  - *Stand-off strike.* A striker vectors onto a surface target, **descends to a
+    low-level ingress altitude** (so the radar-horizon model masks it until much
+    closer — the "go low" of a strike run), and holds at a **stand-off ring** just
+    inside its best anti-ship weapon's reach. It fires from there and never bores
+    into the ship's air-defence envelope; if it drifts too close it turns cold and
+    **egresses** to re-open the range. (`standoffFrac`, `egressFrac`,
+    `ingressStartFrac`, `cruiseAltitudeM`, `ingressAltitudeM`.)
+  - *Defensive air-to-air.* A striker breaks off for an enemy flight only when it
+    closes inside self-defence/merge range (`a2aSelfDefenseRangeM`) — it does not
+    abandon its run to chase a distant fighter, so strike packages press their
+    attack instead of every flight collapsing into a furball.
+  - *Sweep.* A flight with no strike to fly (pure air-superiority load, or strike
+    spent) runs down enemy flights for air-to-air (`a2aEngageRangeM`), staying high
+    for energy and closing to a no-escape-zone shot.
+- **Altitude is an attribute, not a movement axis.** A flight's `altitudeM`
+  switches between a high cruise (CAP/sweep/transit — lookout and energy) and a low
+  ingress (strike masking). It drives the sensor radar-horizon only; the map stays
+  top-down. No RNG is involved, so determinism is unaffected.
 - **Air defence of the fleet.** A squadron will hard-kill an inbound anti-ship
   missile with its long-range radar AAM, but only conservatively — IR rounds are
   reserved for the dogfight and a heavy (≈70%) reserve of the radar AAM is kept,
   so a flight does not strip its air-to-air load chasing cruise missiles.
-- **Fleet integration (OTC air picture).** Aircraft feed and consume the same
-  cooperative (CEC) force picture as ships, so a fighter can engage on a ship's
-  remote track and vice versa. When it has no contact of its own a flight flies a
-  combat air patrol screening the fleet — a station ahead of the formation guide
-  (OTC) along the force's threat axis — instead of wandering independently, so the
-  air and surface pictures act as one force. Aircraft are still excluded from the
-  OTC/AAWC roles and AAW sector division themselves (they are mobile screeners).
+- **CAP fallback.** With no track held at all, a flight flies a combat air patrol
+  screening the fleet — a station ahead of the formation guide (OTC) along the
+  force's threat axis — instead of wandering independently. Aircraft are excluded
+  from the OTC/AAWC roles and AAW sector division (they are mobile screeners).
 - **Volley scales with the flight.** A squadron's coordinated volley is capped by
   its surviving aircraft, and its relaunch cadence scales with them (one shooter
   per plane), so a four-ship flight throws a fast alpha-strike while a lone
@@ -291,6 +314,62 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   (aircraft, fuel, flares, state, AAW/ASUW) instead of ship subsystems. Rendering
   draws one dart per surviving aircraft; labels are skipped when zoomed far out
   (level-of-detail culling) so a large, zoomed-out air battle stays responsive.
+
+### Coordinated Strike Allocation (anti-overcommit)
+
+Offensive fire planning avoids two wasteful failure modes observed in air/surface
+battles:
+
+- **Dedicated strike weapons are preferred over dual-role rounds.** When choosing
+  an anti-ship weapon a shooter picks a dedicated `anti_ship` round (Maritime
+  Strike / Tomahawk / Harpoon) ahead of the dual-role `SM-6`, so the fleet's
+  precious area-air-defence missile is conserved for the air battle instead of
+  being burned as the primary strike weapon. (Selection is otherwise unchanged —
+  range fit, then reach — so a hull whose only in-range option is dedicated is
+  unaffected.)
+- **Raid size is capped by target toughness** in the default/measured postures:
+  the fleet sizes a raid to score the target's remaining hit points through the
+  expected defensive leakage plus a few leakers, rather than dumping a full
+  saturation salvo on a lightly-built ship. A deliberate `saturate` doctrine is
+  exempt — its whole purpose is to overwhelm.
+- **A strike target always keeps a slot.** A high-value enemy flight can outscore
+  every ship; with a narrow target breadth it would monopolise the side's whole
+  salvo and leave the strikers' anti-ship rounds unused. The planner guarantees
+  the top surface/ground target a slot so the fleet keeps prosecuting ships even
+  while fighters are up. (A no-op when every observed target is already surface,
+  so pure-surface play is unchanged.)
+
+### Debug Instrumentation
+
+Two read-only collectors (`src/sim/debug.js`) observe a run without perturbing it
+(they draw no RNG and mutate no sim state) and are persisted to `debug/`,
+**overwritten every run**:
+
+- **`PerfRecorder` → `debug/perf-debug.log`.** A device/workload performance trace:
+  per-tick **sim** cost (avg / p50 / p95 / p99 / max), per-frame **render** cost
+  (browser only), peak concurrent entities, the worst tick and what was alive then,
+  heap growth, and a short lag diagnosis that **attributes a slow frame to the sim
+  step vs the canvas render path**. It is about the *device*, to explain stutter —
+  not the battle. Typical numbers on this hardware: sim p50 ≈ 0.1 ms/tick, p95 ≈ 1
+  ms/tick — so the simulation core is not the bottleneck; browser slowness is the
+  render path (which scales with on-screen ships/missiles/weapon-range-rings/labels
+  and is amplified by zoom and by the **speed multiplier**, which runs many sim
+  ticks per rendered frame), plus the occasional GC pause (a one-off 100–240 ms
+  tick). Lower the speed slider, zoom in, or hide the WEZ rings / tracks to recover
+  frame rate.
+- **`BattleLogger` → `debug/sim-debug.log`.** A tactical trace sampled at a fixed
+  sim-time cadence: every entity's position/heading/speed/altitude/state/stores, a
+  one-line translation of what each unit is *doing and why* (derived from the same
+  fused picture the AI uses), the per-side command posture, and the events since
+  the last frame — enough to "watch" how the battle and the AI unfolded offline.
+
+Both run headless via `npm run debug:sim` — `scripts/sim-debug.mjs` builds a
+**highly asymmetric** deterministic battle (a BLUE air task force of two stealth
+5-gen and two 4.5-gen squadrons + a picket + an airfield, raiding a RED surface
+group that is strong in anti-ship fires but thin on air defence). Unlike a
+mirrored match-up it resolves decisively and exercises the full strike → RTB →
+rearm → relaunch cycle. The same two logs are also written from the browser app,
+which POSTs them to the server (`POST /debug/save`) on every run.
 
 ## Current Weapons (updated)
 

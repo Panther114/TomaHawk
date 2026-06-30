@@ -3,7 +3,34 @@
 All notable changes to this repository will be documented in this file.
 本文件记录仓库的全部重要变更。
 
-## Unreleased
+## v0.3.0 — 2026-06-30
+
+### Release summary
+- Third public release of the TomaHawk / 战斧 local naval sandbox. It collects every change made since `v0.2`. The headline is **air units** — aircraft squadrons as first-class entities that scout, strike, dogfight, and rearm, woven into the existing sensor / Cooperative-Engagement (CEC) / fire-planning / damage / win pipeline rather than a parallel system. Around them: a **detection-realism overhaul** (radar cross-section + altitude / radar-horizon shadow, missile altitude and energy bleed, air-to-air no-escape-zone geometry), an **anti-overcommit** rework of offensive fire planning, the **Unit Workshop** modding system, new **performance** work (spatial saturation grid, pooled fire-planning indexes, throttled DOM render path), and a read-only **debug-logging** toolkit.
+- The simulation remains deterministic, dependency-light, and build-step-free; everything below was verified through `npm test` (170 tests) and the determinism + machine-independent complexity checks in `npm run bench` (complexity score ≈ 0.8, sub-linear).
+- 第三个公开版本，汇总自 `v0.2` 以来的全部变更。核心是**空中单位**：机队作为一等实体，复用现有传感器 / 协同交战 / 火控 / 毁伤 / 胜负流程。同时带来探测拟真升级（雷达截面 + 高度雷达地平线、导弹高度与能量衰减、空空不可逃逸区几何）、反过度投射的火力规划、单位工坊、性能优化与只读调试日志工具。
+
+### Added — Air units (aircraft squadrons) / 空中单位（机队）
+- **One squadron = one entity, several aircraft.** A flight is a single `domain:"air"` entity that costs one ship's worth of latency (one radar, one track-file, one decision, one fire plan) but renders and attrits as several aircraft: its hit-point pool **is** its plane count, so each hit downs one aircraft and combat power (volley size, relaunch cadence) scales with the survivors. Modelling each airframe individually was deliberately avoided to keep the per-tick budget flat.
+- **Two generations.** `VFA` is a 4.5-gen multirole flight (large RCS, big external load); `VFS` is a 5-gen low-observable flight (tiny `rcsM2` so radars see it only deep inside their reach, an intrinsic `airEvasionBonus`, a smaller internal-carriage magazine, a better sensor).
+- **Stand-off strike doctrine.** Flights vector on the fused CEC fleet picture (not just their own short radar), fly a **low-altitude stand-off strike** — ingress → descend for radar-horizon masking → hold at a stand-off ring (a back-and-forth racetrack) → release → **egress** — never boring into the SAM envelope. They break to air-to-air only inside self-defence range, sweep when they have no strike to fly, and otherwise screen the fleet on CAP. Altitude is a per-flight attribute (high cruise vs low ingress) that drives sensor masking only — not a movement axis.
+- **Air-to-air, evasion, and flares.** Flights fight with radar BVR and infrared WVR missiles and attrit each other; a flight is a small, fast, hard target (large inherent evasion, more while breaking) so SAMs cost many shots per kill. When a missile closes inside the reaction envelope a flight performs an **evasive break** and pops **flares** — infrared seekers can be decoyed outright. A flight will also hard-kill an inbound anti-ship missile with its radar AAM, but conservatively (keeping a reserve for the dogfight).
+- **Airfields, RTB, rearm, and fuel.** An **airfield** (`AFB`, or any ground unit with `isAirfield`) is placeable on land **or** water and serves as a rearm/refuel node. A flight flies its mission until it is Winchester, has spent its anti-ship load, or is low on fuel, then returns to the nearest friendly airfield, rearms/refuels on a timer, and relaunches; with no field reachable it limps toward friendly territory and splashes when fuel runs out. It will not rearm on a destroyed airfield. Save/restore preserves mid-flight lifecycle/fuel/flare state.
+- **UI.** The force inventory gains an air sub-table (flight strength / lifecycle state / AAW / ASUW); a selected squadron's detail card shows flight readouts (aircraft, fuel, flares, state, altitude, effector counts) instead of ship subsystems; rendering draws one dart per surviving aircraft with label level-of-detail culling.
+- 新增机队（一个实体=数架飞机，HP 即飞机数，逐机减员）：4.5 代 `VFA` 与 5 代隐身 `VFS`；按编队 CEC 态势引导，执行低空防区外打击（突防→下降规避→环绕发射→脱离），仅自卫距离内转空战，否则担任战斗空中巡逻；机动规避 + 红外诱饵；机场可置于陆/海，弹尽油尽返场再装挂。
+
+### Added — Detection & missile realism / 探测与导弹拟真
+- **RCS-based detection.** Radar range against a target scales with the fourth root of its radar cross-section (`rcsM2`, referenced to a destroyer), so a small fighter flight is only seen far closer than a ship and a low-observable hull closer still — replacing the old rigid detection distance while keeping surface-vs-surface play near-unchanged.
+- **Altitude + radar horizon (the "radar shadow").** A 4/3-Earth-radius horizon model uses each contact's altitude: high flyers are seen far, sea-skimmers and low-level ingressers are masked beyond the geometric horizon.
+- **Missile altitude + bounded energy bleed.** Missiles carry a cruise altitude (anti-ship sea-skim vs lofted air-defence/strike) and lose speed toward the end of their reach via a bounded drag model (denser low air bleeds faster), clamped so a weapon never stalls and tuned envelopes hold.
+- **Air-to-air geometry.** Per-missile no-escape-zone (`nezFraction`, editor-tunable) plus aspect/closure: a shot inside the NEZ keeps its energy and is hard to defeat, a max-range or tail-chase shot is far easier to out-run. The AI prefers high-percentage NEZ shots (a BVR→WVR progression).
+- **New air weapons.** `AIM-120` AMRAAM (BVR active radar), `AIM-9X` Sidewinder (WVR infrared, flare-decoyable), `AGM-84` Harpoon (air-launched sea-skimming anti-ship).
+- **OTC air-picture integration.** Aircraft feed and consume the same fused CEC force picture as ships (engage-on-remote both ways); they are excluded from OTC/AAWC roles and AAW sector division (mobile screeners, not pickets).
+- 探测改为基于雷达截面（探测距离 ∝ RCS^0.25）+ 高度/雷达地平线（雷达阴影）；导弹带巡航高度与有界能量衰减；空空引入不可逃逸区与进入角；新增 AIM-120 / AIM-9X / AGM-84；机队接入协同交战态势。
+
+### Added — Anti-overcommit fire planning / 反过度投射的火力规划
+- Ships prefer dedicated anti-ship weapons over the dual-role `SM-6` (conserving fleet air defence), cap raid size by target toughness outside the deliberate `saturate` doctrine, and always keep a slot for the top surface target so strikers still get to use their anti-ship rounds when an enemy flight outscores every ship.
+- 火力规划优先使用专用反舰武器（节省 SM-6 防空弹），非饱和打击下按目标耐受度限制齐射规模，并始终为最高价值水面目标保留名额。
 
 ### Added — Unit modding system / 单位自定义系统
 - **Unit Workshop.** A new folder-icon button beside the language toggle opens a dense editor popup: a lockable unit list on the left, and a curated, schema-driven parameter form on the right (empty until a unit is selected). Edits live in a working copy — closing the popup or switching units discards unsaved changes; **Save** is the only commit path.
@@ -13,9 +40,26 @@ All notable changes to this repository will be documented in this file.
 - **Live registries.** `MISSILES` and `SHIP_CLASSES` are now mutable registries (not frozen) with `registerMissile`/`registerShipClass` (+ `isBuiltin…`/`unregister…`). Custom units flow through the existing sensor/CEC/engagement/win pipeline with no parallel code path. Ground units carry an explicit `glyph` (`sam`/`radar`/`bunker`) so custom emplacements pick a map symbol.
 - 单位工坊：语言切换按钮旁的文件夹图标打开一个紧凑编辑器；左侧为可锁定的单位列表，右侧为按类型生成的参数表单。未保存的修改在切换或关闭时丢弃，只有“保存”会提交。共三种类型：`naval`/`ground` 可部署，`ammo` 仅用于载弹配置。每个单位是存于浏览器 IndexedDB 的自包含 JSON，可拖入导入、导出分享；内置单位只读且不可删除。
 
+### Added — Debug instrumentation / 调试工具
+- **`PerfRecorder` → `debug/perf-debug.log`.** A per-run performance trace: sim ms/tick (avg/p50/p95/p99/max) and browser render ms/frame, peak concurrent entities, the worst tick, heap growth, and a lag diagnosis that **attributes a slow frame to the sim step vs the canvas render path**.
+- **`BattleLogger` → `debug/sim-debug.log`.** A per-run tactical narrative sampled at a fixed cadence: every entity's position/altitude/state/stores, a one-line translation of what each unit is doing and why, the per-side command posture, and the events since the last frame — enough to "watch" how the battle and the AI unfolded offline.
+- Both are read-only (no RNG, no sim mutation, so determinism is unaffected) and written to `debug/`, overwritten every run — headless via `npm run debug:sim` (a highly asymmetric air-vs-surface scenario that resolves) and from the browser app, which POSTs them to the server (`POST /debug/save`) on every run.
+- 新增只读调试模块：性能记录（区分模拟与渲染开销）与战场叙事日志，每次运行覆盖写入 `debug/`；`npm run debug:sim` 跑一个会分出胜负的高度不对称空海战。
+
 ### Changed
-- `MISSILES` / `SHIP_CLASSES` changed from frozen objects to live registries; all built-in values are preserved exactly, so the deterministic regression suite and complexity score are unchanged (138 tests pass; complexity score ≈0.95).
+- **`MISSILES` / `SHIP_CLASSES` are now live registries** (not frozen objects); all built-in values are preserved exactly, so the deterministic regression suite and complexity score are unchanged.
 - **Removed the strike-cell concept.** `vlsStrikeCells` is gone from the model, the editor, and saved scenarios: every missile now draws from one shared VLS pool by its `cellCost`. Vanilla default loadouts are byte-identical (the old cap never bound any built-in hull), so determinism is unaffected. / 移除“打击单元”概念：所有导弹共用同一垂发容量。
+- **Render-path performance.** The DOM side-panels (status, inventory, event log, detail cards) now refresh at ~20 Hz instead of every frame (the canvas still draws at full frame rate), eliminating the per-frame inventory/event-log rebuild + reflow that dominated browser cost during combat. The per-missile glow (`shadowBlur`) is dropped above ~50 live missiles, and weapon-range rings entirely off-screen are culled. No simulation logic changed. / 渲染优化：侧栏面板由逐帧改为约 20Hz 刷新，拥挤交战时丢弃导弹辉光、剔除完全离屏的射程环；不改动任何模拟逻辑。
+- **Local default serving port moved from `4173` to `4172`** (`server.mjs`, `quickrun.bat`, `.claude/launch.json`, docs). / 本地默认服务端口由 `4173` 改为 `4172`。
+
+### Fixed
+- **Blurry map.** Root cause was a fractional `devicePixelRatio` (e.g. 1.5) leaving the canvas backing store a half-pixel off the CSS size; fixed with exact CSS sizing and an identity-transform terrain blit so the backing store maps 1:1 to device pixels.
+- Aircraft no longer own or draw an AAW sector (they are mobile strikers, not sectorised air-defence pickets).
+
+### Performance
+- **Spatial missile saturation grid + raid-count memoization.** Interceptor and CIWS saturation now read a true local missile density from a pooled per-tick uniform grid (more realistic than the old same-target proxy and bounded to nearby cells), and the inbound-raid count is memoized per planning cycle — removing the dominant quadratic in a saturated defence.
+- **Pooled per-cycle engagement-index Maps.** The seven fire-planning index structures are reused and cleared in place across cycles instead of reallocated each second — provably behaviour-preserving (the event-stream hash is unchanged).
+- Per-tick entity indexes let the movement / point-defence / aircraft paths skip the full all-missiles scan when nothing is inbound.
 
 ### Removed
 - Naval editor: the **Hull** (length/beam/draft/displacement), **CIWS hardware**, and **Strike cells** fields — all defaulted internally to keep the form lean. Mobility fields now auto-derive from cruise speed. Ammo identity is reduced to **ID** (the weapon labels itself with its ID).

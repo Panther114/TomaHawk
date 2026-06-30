@@ -601,12 +601,20 @@ function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.
     return true;
   });
   if (!candidates.length) return null;
+  // Prefer a DEDICATED anti-ship weapon over a dual-role round so the fleet's
+  // SM-6 (its precious area air-defence missile) is conserved for the air battle
+  // instead of being burned as the primary strike weapon — then by range fit,
+  // then by reach. (For a vanilla hull whose only in-range anti-ship option is a
+  // dedicated weapon this is unchanged; it only changes the SM-6-vs-strike tie.)
+  const dual = (id) => (MISSILES[id].category === "dual_role" ? 1 : 0);
   let best = candidates[0];
   for (let i = 1; i < candidates.length; i++) {
     const candidate = candidates[i];
     const candidateRangeFit = rangeM <= MISSILES[candidate].preferredMaxRangeM ? 0 : 1;
     const bestRangeFit = rangeM <= MISSILES[best].preferredMaxRangeM ? 0 : 1;
-    const comparison = candidateRangeFit - bestRangeFit || MISSILES[candidate].rangeM - MISSILES[best].rangeM;
+    const comparison = dual(candidate) - dual(best)
+      || candidateRangeFit - bestRangeFit
+      || MISSILES[candidate].rangeM - MISSILES[best].rangeM;
     if (comparison < 0) best = candidate;
   }
   return best;
@@ -850,6 +858,16 @@ function planOffensiveFires(sim) {
     const targetLimit = Math.max(1, Math.min(observedTargets.length, posture.targetBreadth ?? 1));
     const targetPlan = new Map();
     const selectedTargets = observedTargets.slice(0, targetLimit);
+    // A high-value enemy flight can outrank every ship and, with a narrow target
+    // breadth, monopolise the side's whole salvo — leaving the strikers' anti-
+    // ship rounds unused. Guarantee the top surface/ground target a slot so the
+    // fleet keeps prosecuting ships even while fighters are up. (When every
+    // observed target is already surface this is a no-op, so pure-surface play is
+    // unchanged.)
+    if (selectedTargets.length && selectedTargets.every((it) => (it.track.domain ?? "sea") === "air")) {
+      const topSurface = observedTargets.find((it) => (it.track.domain ?? "sea") !== "air");
+      if (topSurface) selectedTargets.push(topSurface);
+    }
     const scoreTotal = selectedTargets.reduce((sum, item) => sum + item.score, 0) || 1;
     for (const item of selectedTargets) {
       const scoreShare = item.score / scoreTotal;
@@ -860,13 +878,35 @@ function planOffensiveFires(sim) {
           : posture.mode === "focus"
             ? (posture.raidDepth ?? 3) * (1.05 + scoreShare * 1.35)
             : (posture.raidDepth ?? 2) * (0.65 + scoreShare);
-      const desired = Math.max(
+      let desired = Math.max(
         posture.mode === "saturate" ? 3 : 1,
         Math.min(
           posture.mode === "saturate" ? 16 : 12,
           Math.round(desiredBase)
         )
       );
+      // Cap the raid by the target's toughness so the fleet does not dump a
+      // 16-deep saturation salvo on a 1-HP frigate. Size it to score the
+      // remaining hits through expected defensive leakage plus a few leakers —
+      // enough to kill, not the whole magazine. (Posture still governs how the
+      // shots are paced and split.)
+      // A deliberate saturation doctrine is *meant* to overwhelm, so the cap
+      // only reins in the default/measured postures (the casual overcommit) —
+      // the SM-6→dedicated-weapon preference already curbs magazine waste in
+      // every mode.
+      const tgt = posture.mode === "saturate" ? null : aliveShipById(sim, item.track.id);
+      if (tgt) {
+        const remainingHits = Math.max(1, Math.ceil(tgt.damageResist ?? 1) - Math.round(tgt.damage ?? 0));
+        const desiredLeakers = ships[0]?.offenseDoctrine?.desiredLeakers ?? 2;
+        // Against a layered SAM defence only a fraction of a strike salvo leaks
+        // through and hits, so size the raid to score the remaining hits at that
+        // leakage plus a few extra leakers — generous enough to kill a defended
+        // ship, but not the whole magazine on a lone frigate (a 2-HP hull caps at
+        // ~8 instead of the 16-deep saturation salvo).
+        const expectedLeakFrac = 0.35;
+        const hpCap = Math.ceil(remainingHits / expectedLeakFrac) + desiredLeakers;
+        desired = Math.min(desired, hpCap);
+      }
       targetPlan.set(item.track.id, {
         track: item.track,
         score: item.score,
@@ -1032,7 +1072,7 @@ function airDefenseHitChance(sim, missile, spec, target) {
       return { decoyed: true, pk: 0 };
     }
   }
-  let pk = spec.pk - cfg.evasionBase;
+  let pk = spec.pk - cfg.evasionBase - (target.airEvasionBonus ?? 0);
   if (target.evading) pk -= cfg.evasionManeuver;
   pk += missile.terminal ? 0.10 : 0;
   // Air-to-air geometry. No-escape-zone: a shot taken within `nezFraction` of the

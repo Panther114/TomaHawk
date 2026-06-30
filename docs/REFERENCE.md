@@ -1,6 +1,6 @@
 # TomaHawk / 战斧 — Full Reference / 完整参考手册
 
-Detailed bilingual manual for the `v0.2` release. The top-level `README.md` is a
+Detailed bilingual manual for the `v0.3` release. The top-level `README.md` is a
 concise overview; this file holds the full capability, architecture, data-model,
 and operator detail. 顶层 `README.md` 为简明概览，本文件提供完整的能力、架构、数据模型与操作细节。
 
@@ -25,7 +25,7 @@ The project is intentionally local and dependency-light so it remains easy to
 inspect, extend, and eventually replace with a lower-level simulation core if
 desired.
 
-### 2. Core capabilities in `v0.2`
+### 2. Core capabilities in `v0.3`
 
 #### Simulation and doctrine
 - Deterministic simulation loop with seeded RNG.
@@ -117,6 +117,21 @@ Ground units must be placed on land, never move, never act as the formation
 guide, and are never re-seated to water; they otherwise share the ship object
 shape, the CEC picture, and the engagement pipeline.
 
+Air units (`domain: "air"`):
+
+| Unit | Role | Radar | Weapons |
+| --- | --- | ---: | --- |
+| `VFA` | 4.5-gen multirole strike-fighter squadron | 90 nm | `AIM-120`, `AIM-9X`, `AGM-84` |
+| `VFS` | 5-gen low-observable multirole squadron | 110 nm | `AIM-120`, `AIM-9X`, `AGM-84` |
+| `AFB` | airfield / rearm-refuel node (placeable on land **or** water) | 180 nm | — |
+
+A squadron is **one** entity whose hit-point pool equals its plane count, so each
+hit downs one aircraft and its combat power scales with the survivors. It flies a
+low-altitude stand-off strike (ingress → masked descent → release at the
+stand-off ring → egress), dogfights with radar BVR and infrared WVR missiles
+(evasive breaks + flares), and returns to a friendly airfield to rearm/refuel and
+relaunch. See `docs/SIMULATION_ASSUMPTIONS.md` for the full doctrine.
+
 Each ship instance includes:
 - kinematics,
 - radar state,
@@ -137,9 +152,12 @@ Defined in `src/sim/missiles.js`:
 | `MaritimeStrike` | `MSTK` | anti-surface cruise strike | 222 km |
 | `TomahawkBlockV` | `TLAM` | long-range anti-surface strike | 1,204 km |
 | `SM-6` | `SM6` | dual-role anti-air / anti-surface | 370 km |
+| `AIM-120` | `120` | BVR active-radar air-to-air | 102 km |
+| `AIM-9X` | `AIM9` | WVR infrared air-to-air (flare-decoyable) | 33 km |
+| `AGM-84` | `HPN` | air-launched sea-skimming anti-ship | 124 km |
 
 Weapons encode range, speed, Pk, salvo size, launch interval, spacing, seeker
-transition, guidance style, and reserve behavior.
+transition, guidance style, reserve behavior, and (for air-to-air) the no-escape-zone fraction.
 
 ### 5. Simulation concepts worth knowing
 
@@ -210,7 +228,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - 使用极小的 Node HTTP 服务进行本地托管；
 - 使用 Node 内置测试框架验证规则与回归行为。
 
-### 2. `v0.2` 当前能力
+### 2. `v0.3` 当前能力
 
 #### 仿真与决策
 - 基于种子的确定性仿真循环。

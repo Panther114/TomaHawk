@@ -59,8 +59,12 @@ test("air units and airfields can be placed anywhere; air is not seated to water
 test("a ship shoots down an enemy aircraft (SAM vs platform, attrition)", () => {
   const sim = running(11);
   const ddg = placeShip(sim, SIDE.BLUE, -10 * NM, 0, "DDG");
-  const vfa = placeShip(sim, SIDE.RED, 40 * NM, 0, "VFA");
-  vfa.desiredSpeed = 0; vfa.fuelS = 1e9; // hold station, no fuel splash
+  // Park the squadron inside the ship's (RCS-limited) detection range and freeze
+  // its autonomous routing (nextDecision = Infinity) so this isolates the SAM-
+  // vs-aircraft attrition mechanic, not the stand-off strike AI (which would
+  // correctly egress out of the SAM envelope — covered by its own tests).
+  const vfa = placeShip(sim, SIDE.RED, 28 * NM, 0, "VFA");
+  vfa.desiredSpeed = 0; vfa.fuelS = 1e9; vfa.nextDecision = Infinity;
   let downed = false;
   for (let i = 0; i < 2000 && !downed; i++) {
     stepSim(sim, 0.25);
@@ -221,7 +225,10 @@ test("two squadrons fight air-to-air with AAMs and attrit each other", () => {
 test("a squadron breaks evasively when a missile closes in", () => {
   const sim = running(7);
   placeShip(sim, SIDE.BLUE, -10 * NM, 0, "CCG");
-  const r = placeShip(sim, SIDE.RED, 35 * NM, 0, "VFA"); r.fuelS = 1e9;
+  // Hold the flight inside the cruiser's detection range and freeze its routing
+  // so the test exercises the evasive-break reaction, not the stand-off AI.
+  const r = placeShip(sim, SIDE.RED, 28 * NM, 0, "VFA");
+  r.fuelS = 1e9; r.desiredSpeed = 0; r.nextDecision = Infinity;
   let broke = false;
   for (let i = 0; i < 1600 && !broke; i++) {
     stepSim(sim, 0.25);
