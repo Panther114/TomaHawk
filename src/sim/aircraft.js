@@ -248,9 +248,18 @@ export function decideAircraft(sim, ship) {
     ship.desiredSpeed = ship.maxSpeed;
     return;
   }
-  // No contacts: advance toward the enemy side at cruise to find work.
+  // No contacts: fly a combat air patrol that screens the fleet — a station
+  // ahead of the formation guide (OTC) along the force's threat axis, taken from
+  // the shared command picture, rather than each fighter wandering on its own.
+  // This integrates the flight into the OTC's air picture. Falls back to
+  // advancing toward the enemy side before a command picture exists (or if the
+  // side has no surface guide to screen).
   ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
-  if (!ship.waypoint) {
+  const cmd = sim.fleetCommand?.get(ship.side);
+  if (cmd?.otc?.alive && cmd.otc.domain !== "air" && Number.isFinite(cmd.axis)) {
+    const capM = 40 * NM; // screen this far ahead of the guide toward the threat
+    ship.waypoint = { x: cmd.otc.x + Math.cos(cmd.axis) * capM, y: cmd.otc.y + Math.sin(cmd.axis) * capM };
+  } else if (!ship.waypoint) {
     const dir = ship.side === SIDE.BLUE ? 1 : -1;
     ship.waypoint = { x: ship.x + dir * 30 * NM, y: ship.y };
   }

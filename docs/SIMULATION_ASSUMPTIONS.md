@@ -265,6 +265,13 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   missile with its long-range radar AAM, but only conservatively — IR rounds are
   reserved for the dogfight and a heavy (≈70%) reserve of the radar AAM is kept,
   so a flight does not strip its air-to-air load chasing cruise missiles.
+- **Fleet integration (OTC air picture).** Aircraft feed and consume the same
+  cooperative (CEC) force picture as ships, so a fighter can engage on a ship's
+  remote track and vice versa. When it has no contact of its own a flight flies a
+  combat air patrol screening the fleet — a station ahead of the formation guide
+  (OTC) along the force's threat axis — instead of wandering independently, so the
+  air and surface pictures act as one force. Aircraft are still excluded from the
+  OTC/AAWC roles and AAW sector division themselves (they are mobile screeners).
 - **Volley scales with the flight.** A squadron's coordinated volley is capped by
   its surviving aircraft, and its relaunch cadence scales with them (one shooter
   per plane), so a four-ship flight throws a fast alpha-strike while a lone
