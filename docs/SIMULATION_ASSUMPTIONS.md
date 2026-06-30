@@ -196,6 +196,8 @@ performance claims.
 ### Interceptor PK Refinements
 Interceptor PK now includes supersonic penalty (-0.15 for Mach 2+ targets), sea-skimming penalty (-0.14), and defence saturation penalty (concurrent threats degrade each interceptor's PK). CIWS PK uses a base 0.45 × saturation ratio with penalties for sea-skimmer (-0.18), damage (-0.06), and supersonic speed (-0.12).
 
+Saturation is now a **true local spatial density**, not a per-target proxy: both the interceptor penalty and the CIWS saturation ratio count the live threat missiles physically crowding the airspace around the interceptor / point-defence bubble (from any raid), via a pooled per-tick missile grid. This makes a dense, multi-axis raid degrade defences the way a single concentrated raid does, and is bounded to a handful of nearby grid cells rather than a naive scan of every missile.
+
 ### Radar Horizon
 A 4/3 Earth-radius model limits detection probability beyond the geometric horizon (~20 NM ship-to-ship). Beyond the horizon, detection probability falls off over 120 NM to a floor of 0.20.
 
@@ -230,7 +232,7 @@ CEC selects from local sensor reports only, so a track cannot relay through mult
 Compact overlay cards showing subsystem health, effective speed, and CIWS ammo. Appears on right-click+drag ship selection. Multiple ships selectable simultaneously. Clears on right-click blank space.
 
 ### Performance
-Persistent entity indexes and per-planning-cycle target, side, queue, track, and engagement indexes avoid repeated O(n) scans in hot paths. Track ageing uses lazy state projection plus an expiry heap; CEC stores one shared side/contact report; sensor scans use a deterministic adaptive spatial broad phase. Terrain uses conservative raster/grid broad phases followed by exact polygon checks, and blocked-route plans are reused for their cache window. The UI caches stable DOM panels and range metadata, clusters labels spatially, resolves targets through entity indexes, and culls offscreen symbols. `npm run bench` reports Open Sea combat throughput and determinism plus an East China Sea route case; `npm run bench:frontend` measures isolated high-density rendering helpers. Results are machine-dependent.
+Persistent entity indexes and per-planning-cycle target, side, queue, track, and engagement indexes avoid repeated O(n) scans in hot paths. The inbound-raid count on each ship is memoized for the fire-planning cycle (it is constant while planning yet queried once per threat), removing the dominant quadratic in a saturated defence; the missile saturation grid is a pooled per-tick uniform grid whose buckets are reused across ticks to keep allocation and GC low. Track ageing uses lazy state projection plus an expiry heap; CEC stores one shared side/contact report; sensor scans use a deterministic adaptive spatial broad phase. Terrain uses conservative raster/grid broad phases followed by exact polygon checks, and blocked-route plans are reused for their cache window. The UI caches stable DOM panels and range metadata, clusters labels spatially, resolves targets through entity indexes, and culls offscreen symbols. `npm run bench` reports Open Sea combat throughput and determinism plus an East China Sea route case; `npm run bench:frontend` measures isolated high-density rendering helpers. Results are machine-dependent.
 
 ### Scenario Default
 Default starting distance reduced from 120 NM to 40 NM so engagements begin within 1-2 minutes at 1× speed.

@@ -34,6 +34,53 @@ function incomingMissilesFor(sim, shipId) {
   return sim.missiles;
 }
 
+// --- missile spatial grid (saturation density) ------------------------------
+// A pooled per-tick uniform grid bucketing live missiles by position. It lets
+// the saturation models ask "how crowded is the airspace around this point" as a
+// true LOCAL density (missiles from any raid), which is both more realistic than
+// the old same-target-bucket proxy and bounded to a handful of nearby cells
+// instead of a naive O(missiles) scan per query. Buckets are reused across ticks
+// (only the previously-filled ones are cleared) to keep allocation — and GC
+// pressure on low-RAM machines — low. Cell size ≈ the largest saturation radius.
+const SAT_CELL_M = 8 * NM;
+function buildMissileGrid(sim, missiles) {
+  let grid = sim._missileGrid;
+  if (!grid) grid = sim._missileGrid = { cells: new Map(), used: [] };
+  for (const bucket of grid.used) bucket.length = 0;
+  grid.used.length = 0;
+  for (const m of missiles) {
+    if (!m.alive) continue;
+    const key = `${Math.floor(m.x / SAT_CELL_M)},${Math.floor(m.y / SAT_CELL_M)}`;
+    let bucket = grid.cells.get(key);
+    if (!bucket) { bucket = []; grid.cells.set(key, bucket); }
+    if (bucket.length === 0) grid.used.push(bucket);
+    bucket.push(m);
+  }
+  return grid;
+}
+// Count live missiles within `radiusM` of (x,y) that satisfy `match`. Scans only
+// the cells overlapping the radius; the count is order-independent (deterministic).
+function countNearbyMissiles(grid, x, y, radiusM, match) {
+  if (!grid) return 0;
+  const span = Math.ceil(radiusM / SAT_CELL_M);
+  const cx = Math.floor(x / SAT_CELL_M);
+  const cy = Math.floor(y / SAT_CELL_M);
+  const r2 = radiusM * radiusM;
+  let n = 0;
+  for (let ix = cx - span; ix <= cx + span; ix++) {
+    for (let iy = cy - span; iy <= cy + span; iy++) {
+      const bucket = grid.cells.get(`${ix},${iy}`);
+      if (!bucket) continue;
+      for (const m of bucket) {
+        const dx = m.x - x;
+        const dy = m.y - y;
+        if (dx * dx + dy * dy <= r2 && match(m)) n++;
+      }
+    }
+  }
+  return n;
+}
+
 // Effective relaunch interval for a launcher+weapon. A squadron has one shooter
 // per surviving aircraft, so its volley cadence scales with the flight: a 4-ship
 // flight relaunches a type ~4x faster than a lone survivor. Ships are unchanged
@@ -399,10 +446,21 @@ function threatTimeToImpact(missile, target) {
 }
 
 function inboundRaidCount(sim, ship) {
+  // The inbound raid on a ship is constant for the whole fire-planning cycle
+  // (missiles in flight don't change while planning), yet it is queried once per
+  // threat — so memoize it per cycle to avoid re-counting the same bucket O(raid)
+  // times (the dominant quadratic cost in a saturated defence). Deterministic:
+  // the cached value equals a fresh count.
+  const cache = sim._raidCountCache;
+  if (cache) {
+    const cached = cache.get(ship.id);
+    if (cached !== undefined) return cached;
+  }
   let count = 0;
   for (const missile of sim._missilesByTarget?.get(ship.id) ?? []) {
     if (missile.alive && missile.side !== ship.side) count++;
   }
+  cache?.set(ship.id, count);
   return count;
 }
 
@@ -870,6 +928,8 @@ function planOffensiveFires(sim) {
 export function planEngagements(sim) {
   if (sim.time < (sim.nextFirePlanAt ?? 0)) return;
   sim.nextFirePlanAt = sim.time + 1;
+  // Per-cycle inbound-raid memo: the missile set is stable through planning.
+  sim._raidCountCache = new Map();
   sim._engagementIndex = buildEngagementIndex(sim);
   computeFleetCommand(sim);
   planDefensiveFires(sim);
@@ -878,6 +938,7 @@ export function planEngagements(sim) {
     if (ship.alive) ship.lastFirePlanAt = sim.time;
   }
   sim._engagementIndex = null;
+  sim._raidCountCache = null;
 }
 
 // Subsystem damage model: each hit degrades random subsystems, affecting combat capability.
@@ -977,6 +1038,9 @@ function dragSpeedFactor(missile) {
 }
 
 export function updateMissiles(sim, dt) {
+  // Rebuild the missile saturation grid once per tick (reused by the interceptor
+  // and CIWS saturation models below, and by point defense this same tick).
+  const satGrid = buildMissileGrid(sim, sim._aliveMissiles ?? sim.missiles);
   for (const missile of sim.missiles) {
     if (!missile.alive) continue;
     const spec = missile._spec ?? MISSILES[missile.missileId];
@@ -1079,11 +1143,13 @@ export function updateMissiles(sim, dt) {
       const targetSpeed = target.speed || 270;
       const supersonicPenalty = targetSpeed > 600 ? 0.15 : 0;
       const seaSkimPenalty = target.seaSkimming ? 0.14 : 0;
-      // Defense saturation: when many threats arrive simultaneously, each interceptor is less effective
-      let concurrentThreats = 0;
-      for (const candidate of sim._missilesByTarget?.get(missile.targetId) ?? []) {
-        if (candidate.alive && candidate.side !== missile.side && distance(candidate, missile) < 8 * NM) concurrentThreats++;
-      }
+      // Defense saturation: an interceptor is less effective when the local
+      // airspace is crowded with inbound threats (discrimination/guidance load).
+      // True spatial density of nearby threat (opposite-side) missiles, via the
+      // grid — replaces the old same-target-bucket proxy that counted ~nothing.
+      const interceptorSide = missile.side;
+      const concurrentThreats = countNearbyMissiles(satGrid, missile.x, missile.y, 8 * NM,
+        (m) => m.alive && m.side !== interceptorSide);
       const saturationPenalty = Math.max(0, (concurrentThreats - 2) * 0.04);
       const interceptChance = clamp(
         spec.pk + (missile.terminal ? 0.06 : 0) - supersonicPenalty - seaSkimPenalty - saturationPenalty,
@@ -1185,11 +1251,11 @@ export function pointDefense(sim) {
     // CIWS PK model: base PK per mount, each mount can engage one threat
     const ciwsCount = ship.ciwsCount ?? 1;
     const basePk = 0.45;  // Phalanx 1B baseline single-shot Pk against subsonic ASCM
-    let terminalCount = 0;
-    for (const missile of sim._missilesByTarget?.get(ship.id) ?? []) {
-      if (missile.alive && missile.side !== ship.side && missile.terminal && distance(ship, missile) < 3 * NM) terminalCount++;
-    }
-    // Saturation: multiple simultaneous leakers divide CIWS attention
+    // Saturation: the CIWS is overwhelmed by the local density of terminal
+    // leakers in its point-defence bubble (any nearby terminal threat, not only
+    // those assigned to this ship), via the shared missile grid.
+    const terminalCount = countNearbyMissiles(sim._missileGrid, ship.x, ship.y, 3 * NM,
+      (m) => m.alive && m.side !== ship.side && m.terminal);
     const saturationRatio = Math.min(1, ciwsCount / Math.max(1, terminalCount));
     const seaSkimPenalty = inbound.seaSkimming ? 0.18 : 0;
     const damagePenalty = ship.damage * 0.06;
