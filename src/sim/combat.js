@@ -553,12 +553,18 @@ function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5
     return true;
   });
   if (!candidates.length) return null;
+  // Prefer a high-percentage no-escape-zone shot (target inside this weapon's NEZ)
+  // — e.g. close in for a Sidewinder kill rather than lob a max-range AMRAAM —
+  // then by preferred-range fit, then by reach.
+  const inNez = (id) => (rangeM <= MISSILES[id].rangeM * (MISSILES[id].nezFraction ?? 0.5) ? 0 : 1);
   let best = candidates[0];
   for (let i = 1; i < candidates.length; i++) {
     const candidate = candidates[i];
     const candidateFit = rangeM <= MISSILES[candidate].preferredMaxRangeM ? 0 : 1;
     const bestFit = rangeM <= MISSILES[best].preferredMaxRangeM ? 0 : 1;
-    const comparison = candidateFit - bestFit || MISSILES[candidate].rangeM - MISSILES[best].rangeM;
+    const comparison = inNez(candidate) - inNez(best)
+      || candidateFit - bestFit
+      || MISSILES[candidate].rangeM - MISSILES[best].rangeM;
     if (comparison < 0) best = candidate;
   }
   return best;
@@ -921,6 +927,20 @@ function handleTargetLoss(sim, missile, spec) {
 // while breaking, and infrared seekers can be spoofed outright by flares.
 // May consume one flare and one RNG draw (flare roll); the caller draws the
 // hit roll only when not decoyed, so the RNG order stays deterministic.
+// Closing speed of a missile on its target along the line of sight (m/s).
+// Positive = closing (hot/head-on), negative = opening (tail-chase / out-run).
+function closureRate(missile, target) {
+  const dx = target.x - missile.x;
+  const dy = target.y - missile.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const lx = dx / d;
+  const ly = dy / d;
+  const mvx = Math.cos(missile.heading) * missile.speed;
+  const mvy = Math.sin(missile.heading) * missile.speed;
+  const tv = entityVelocity(target);
+  return (mvx - tv.vx) * lx + (mvy - tv.vy) * ly;
+}
+
 function airDefenseHitChance(sim, missile, spec, target) {
   const cfg = AIRCRAFT_TEMP_CONFIG;
   if (spec.guidance === "infrared" && (target.flares ?? 0) > 0 && (target.evading || missile.terminal)) {
@@ -933,7 +953,15 @@ function airDefenseHitChance(sim, missile, spec, target) {
   let pk = spec.pk - cfg.evasionBase;
   if (target.evading) pk -= cfg.evasionManeuver;
   pk += missile.terminal ? 0.10 : 0;
-  return { decoyed: false, pk: clamp(pk, 0.03, 0.7) };
+  // Air-to-air geometry. No-escape-zone: a shot taken within `nezFraction` of the
+  // weapon's reach keeps its energy and is hard to defeat; a max-range shot is
+  // energy-depleted and far easier to out-run. Aspect: a tail-chase (the target
+  // opening from the missile) loses closure energy. Both are per-missile tunable.
+  const rangeFrac = clamp((missile.flownM ?? 0) / Math.max(1, missile.maxRangeM), 0, 1);
+  const nez = spec.nezFraction ?? 0.5;
+  pk += rangeFrac <= nez ? 0.10 : -0.22 * ((rangeFrac - nez) / Math.max(0.05, 1 - nez));
+  if (closureRate(missile, target) < 0) pk -= 0.12;
+  return { decoyed: false, pk: clamp(pk, 0.03, 0.78) };
 }
 
 // Bounded energy-bleed (drag) model. A missile is fastest at launch and slows

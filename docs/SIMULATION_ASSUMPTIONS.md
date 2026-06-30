@@ -113,6 +113,22 @@ top-down — altitude is a hidden scalar that drives the radar horizon, the drag
 model, and the detail display, not a third movement axis. The per-tick cost is a
 few arithmetic operations per missile.
 
+### Air-to-Air Geometry
+Air-to-air kill probability is shaped by engagement geometry, not just a flat PK:
+
+- **No-escape-zone (NEZ).** A shot taken within a weapon's `nezFraction` of its
+  reach keeps its energy and is hard to defeat; a max-range shot is energy-depleted
+  and far easier to out-run. `nezFraction` is a per-missile, editor-customizable
+  field (AMRAAM 0.5, Sidewinder 0.6).
+- **Aspect / closure.** A tail-chase (the target opening away from the missile)
+  loses closure energy and PK; a head-on shot is hardest to defeat.
+- **AI.** A flight prefers the high-percentage NEZ shot when one is available —
+  closing for a Sidewinder kill rather than lobbing a max-range AMRAAM — so engagements
+  naturally progress from a radar BVR phase to an infrared WVR phase as the merge develops.
+
+These build on the bounded missile energy-bleed model, so a long-range or
+low-altitude shot both arrives slower and is geometrically easier to defeat.
+
 ### Missile Guidance
 
 Weapons no longer steer at the bare current position of the target. Each tick a

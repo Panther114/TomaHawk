@@ -141,6 +141,7 @@ export const MISSILES = {
     maxTurnRateDps: 40,
     seekerRangeM: 16 * NM,
     guidance: "command_inertial_active",
+    nezFraction: 0.5,
     retargetable: false,
     selfDestructOnLoss: true
   },
@@ -168,6 +169,7 @@ export const MISSILES = {
     maxTurnRateDps: 60,
     seekerRangeM: 10 * NM,
     guidance: "infrared",
+    nezFraction: 0.6,
     retargetable: false,
     selfDestructOnLoss: true
   },

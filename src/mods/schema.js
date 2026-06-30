@@ -194,6 +194,7 @@ const AMMO_SCHEMA = {
       num("pk", { en: "Kill probability", zh: "杀伤概率" }, { min: 0, max: 1, step: 0.01 }),
       num("salvo", { en: "Salvo size", zh: "齐射数量" }, { min: 1, max: 16, step: 1 }),
       num("interceptorsPerThreat", { en: "Interceptors per threat", zh: "每目标拦截数" }, { min: 0, max: 8, step: 1 }),
+      num("nezFraction", { en: "No-escape-zone frac", zh: "不可逃逸区比例" }, { min: 0, max: 1, step: 0.05 }),
       num("magazineReserveRatio", { en: "Magazine reserve", zh: "弹药保留比例" }, { min: 0, max: 1, step: 0.01 })
     ] },
     { title: { en: "Timing", zh: "时序" }, fields: [
@@ -248,7 +249,7 @@ export const DEFAULTS = {
     category: "anti_air", symbol: "triangle", target: "missile", defenseLayer: "area",
     rangeNm: 90, preferredMinRangeNm: 8, preferredMaxRangeNm: 90, seekerRangeNm: 14,
     speedMps: 1000, maxTurnRateDps: 30, cellCost: 1, pk: 0.45, salvo: 2,
-    interceptorsPerThreat: 1, magazineReserveRatio: 0.18, launchIntervalS: 2.2, salvoSpacingS: 2.8,
+    interceptorsPerThreat: 1, nezFraction: 0.5, magazineReserveRatio: 0.18, launchIntervalS: 2.2, salvoSpacingS: 2.8,
     ringStyle: "dotted", guidance: "command_inertial", retargetable: false, selfDestructOnLoss: true
   })
 };

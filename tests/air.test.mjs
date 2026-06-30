@@ -232,8 +232,10 @@ test("a squadron breaks evasively when a missile closes in", () => {
 
 test("flares are expended defending against infrared missiles", () => {
   const sim = running(7);
-  const b = placeShip(sim, SIDE.BLUE, -22 * NM, 0, "VFA"); b.fuelS = 1e9;
-  const r = placeShip(sim, SIDE.RED, 22 * NM, 0, "VFA"); r.fuelS = 1e9;
+  // Start inside WVR range so the infrared (Sidewinder) phase actually occurs —
+  // at long range it is a radar BVR (AMRAAM) fight where flares do not apply.
+  const b = placeShip(sim, SIDE.BLUE, -4 * NM, 0, "VFA"); b.fuelS = 1e9;
+  const r = placeShip(sim, SIDE.RED, 4 * NM, 0, "VFA"); r.fuelS = 1e9;
   for (let i = 0; i < 1800; i++) stepSim(sim, 0.25);
   // Sidewinders (IR) reaching a breaking flight consume flares from its pool.
   assert.ok((b.flares < b.flaresMax) || (r.flares < r.flaresMax), "a flight popped flares");
@@ -297,6 +299,13 @@ test("a full flight relaunches faster than a lone survivor (rate scales with air
   const four = launchTimes(4);
   const one = launchTimes(1);
   assert.ok(four < one, `4-plane min gap ${four}s < 1-plane min gap ${one}s`);
+});
+
+test("air-to-air missiles carry a customizable no-escape-zone fraction", () => {
+  for (const id of ["AIM-120", "AIM-9X"]) {
+    const nez = MISSILES[id].nezFraction;
+    assert.ok(Number.isFinite(nez) && nez > 0 && nez <= 1, `${id} nezFraction in (0,1]`);
+  }
 });
 
 test("low-RCS aircraft are detected far closer than ships (RCS-based radar)", () => {

@@ -116,6 +116,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     const cat = form.category;
     if (f.key === "salvo") return cat === "anti_ship" || cat === "dual_role";
     if (f.key === "interceptorsPerThreat") return cat === "anti_air" || cat === "dual_role";
+    if (f.key === "nezFraction") return cat === "anti_air" || cat === "dual_role";
     return true;
   }
 

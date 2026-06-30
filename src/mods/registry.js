@@ -68,6 +68,7 @@ function toMissileSpec(u) {
     preferredMinRangeM: Number(u.preferredMinRangeNm) * NM,
     preferredMaxRangeM: Number(u.preferredMaxRangeNm) * NM,
     interceptorsPerThreat: Math.round(Number(u.interceptorsPerThreat)),
+    nezFraction: Number.isFinite(Number(u.nezFraction)) ? Number(u.nezFraction) : 0.5,
     magazineReserveRatio: Number(u.magazineReserveRatio),
     launchIntervalS: Number(u.launchIntervalS),
     salvoSpacingS: Number(u.salvoSpacingS),
@@ -161,6 +162,7 @@ function fromMissileSpec(id, s) {
     rangeNm: s.rangeM / NM, preferredMinRangeNm: s.preferredMinRangeM / NM, preferredMaxRangeNm: s.preferredMaxRangeM / NM,
     seekerRangeNm: s.seekerRangeM / NM, speedMps: s.speedMps, maxTurnRateDps: s.maxTurnRateDps,
     cellCost: s.cellCost, pk: s.pk, salvo: s.salvo, interceptorsPerThreat: s.interceptorsPerThreat,
+    nezFraction: s.nezFraction ?? 0.5,
     magazineReserveRatio: s.magazineReserveRatio, launchIntervalS: s.launchIntervalS, salvoSpacingS: s.salvoSpacingS,
     ringStyle: s.ringStyle, guidance: s.guidance, retargetable: !!s.retargetable, selfDestructOnLoss: !!s.selfDestructOnLoss
   };
