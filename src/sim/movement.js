@@ -8,6 +8,15 @@ import { firstLandCollisionFraction, isWaterPoint, segmentCrossesLand, terrainCo
 import { shipWaterClearanceM } from "./scenario.js";
 import { iterateTracksForShip } from "./sensors.js";
 
+// Shared empty list: when the per-tick missile-by-target index exists but holds
+// no bucket for a ship, that ship has nothing inbound — iterate nothing rather
+// than falling back to a full O(missiles) scan (the pre-index fallback only).
+const NO_INCOMING = [];
+function incomingMissilesFor(sim, shipId) {
+  if (sim._missilesByTarget) return sim._missilesByTarget.get(shipId) ?? NO_INCOMING;
+  return sim.missiles;
+}
+
 function steeringTurnRate(ship) {
   const speedFrac = ship.maxSpeed > 0 ? ship.speed / ship.maxSpeed : 0;
   return speedFrac > 0.75 && ship.turnRateFlank ? ship.turnRateFlank : ship.turnRate;
@@ -117,6 +126,30 @@ function applyWaterCollisionGuard(sim, ship, nextPosition) {
   };
 }
 
+// Kinematic integration for an air unit: turn toward the waypoint within the
+// airframe turn limit, accelerate/decelerate toward desiredSpeed, advance, and
+// clamp to the map. No terrain interaction (overflies everything). Speed is
+// degraded by attrition (lost aircraft) just like a damaged ship's propulsion.
+function moveAirUnit(sim, ship, dt) {
+  if (ship.waypoint) {
+    const d = distance(ship, ship.waypoint);
+    if (d < 0.4 * NM) {
+      ship.waypoint = null;
+    } else {
+      const desiredHeading = angleTo(ship, ship.waypoint);
+      const effectiveTurn = steeringTurnRate(ship);
+      const delta = clamp(wrapAngle(desiredHeading - ship.heading), -effectiveTurn * dt, effectiveTurn * dt);
+      ship.heading = wrapAngle(ship.heading + delta);
+    }
+  }
+  const accelLimit = (ship.desiredSpeed >= ship.speed ? ship.accel : (ship.decel ?? ship.accel)) * dt;
+  const speedDelta = clamp(ship.desiredSpeed - ship.speed, -accelLimit, accelLimit);
+  const degrade = ship.damageDegrade ?? 0.1;
+  ship.speed = clamp(ship.speed + speedDelta, 0, ship.maxSpeed * Math.max(0.25, 1 - ship.damage * degrade));
+  ship.x = clamp(ship.x + Math.cos(ship.heading) * ship.speed * dt, -sim.widthM / 2, sim.widthM / 2);
+  ship.y = clamp(ship.y + Math.sin(ship.heading) * ship.speed * dt, -sim.heightM / 2, sim.heightM / 2);
+}
+
 export function moveShips(sim, dt) {
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
@@ -124,6 +157,13 @@ export function moveShips(sim, dt) {
     if (ship.isFixed) {
       ship.speed = 0;
       ship.ciwsCooldown = Math.max(0, ship.ciwsCooldown - dt);
+      continue;
+    }
+    // Air units fly directly to their waypoint: they overfly land and water, so
+    // they skip the coastal-detour planner and the water-collision guard that
+    // constrain surface ships. Altitude is not modelled.
+    if (ship.domain === "air") {
+      moveAirUnit(sim, ship, dt);
       continue;
     }
     const steeringTarget = resolveNavigationTarget(sim, ship);
@@ -166,6 +206,9 @@ export function decideShip(sim, ship) {
   // Fixed emplacements have no movement decision (no retreat, station, patrol).
   // They still sense and fire through the shared planning pipeline.
   if (ship.isFixed) return;
+  // Air units run their own decision/state machine (mission/RTB/rearm) — see
+  // updateAircraft in step.js. They do not use the surface-ship movement logic.
+  if (ship.domain === "air") return;
   let nearestEnemy = null;
   let nearestEnemyRange = Infinity;
   for (const track of iterateTracksForShip(sim, ship)) {
@@ -177,7 +220,7 @@ export function decideShip(sim, ship) {
     }
   }
   let incoming = null;
-  for (const missile of sim._missilesByTarget?.get(ship.id) ?? sim.missiles) {
+  for (const missile of incomingMissilesFor(sim, ship.id)) {
     if (!missile.alive || missile.side === ship.side || missile.targetId !== ship.id) continue;
     if (!incoming || (missile.timeToImpactEstimate ?? Infinity) < (incoming.timeToImpactEstimate ?? Infinity)) {
       incoming = missile;

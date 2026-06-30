@@ -101,6 +101,34 @@ behaviourally meaningful level:
   positive-identification quality gate, and an in-flight target-loss policy
   (self-destruct only) govern release. Self-defence is always authorised.
 
+### Missile Altitude & Energy Bleed
+Every weapon carries a cruise altitude (anti-ship rounds sea-skim ~30 m and drop
+to ~12 m for the terminal run-in; air-defence/strike rounds loft to several
+thousand metres) and a bounded drag model: a missile is fastest at launch and
+bleeds speed toward the end of its reach, faster in the denser air at low
+altitude, so a long-range or sea-skimming shot arrives slower than a lofted one.
+The bleed is clamped (a weapon never drops below ~62% of its launch speed) so the
+tuned engagement envelopes and balance stay close to before. The map remains
+top-down — altitude is a hidden scalar that drives the radar horizon, the drag
+model, and the detail display, not a third movement axis. The per-tick cost is a
+few arithmetic operations per missile.
+
+### Air-to-Air Geometry
+Air-to-air kill probability is shaped by engagement geometry, not just a flat PK:
+
+- **No-escape-zone (NEZ).** A shot taken within a weapon's `nezFraction` of its
+  reach keeps its energy and is hard to defeat; a max-range shot is energy-depleted
+  and far easier to out-run. `nezFraction` is a per-missile, editor-customizable
+  field (AMRAAM 0.5, Sidewinder 0.6).
+- **Aspect / closure.** A tail-chase (the target opening away from the missile)
+  loses closure energy and PK; a head-on shot is hardest to defeat.
+- **AI.** A flight prefers the high-percentage NEZ shot when one is available —
+  closing for a Sidewinder kill rather than lobbing a max-range AMRAAM — so engagements
+  naturally progress from a radar BVR phase to an infrared WVR phase as the merge develops.
+
+These build on the bounded missile energy-bleed model, so a long-range or
+low-altitude shot both arrives slower and is geometrically easier to defeat.
+
 ### Missile Guidance
 
 Weapons no longer steer at the bare current position of the target. Each tick a
@@ -168,8 +196,33 @@ performance claims.
 ### Interceptor PK Refinements
 Interceptor PK now includes supersonic penalty (-0.15 for Mach 2+ targets), sea-skimming penalty (-0.14), and defence saturation penalty (concurrent threats degrade each interceptor's PK). CIWS PK uses a base 0.45 × saturation ratio with penalties for sea-skimmer (-0.18), damage (-0.06), and supersonic speed (-0.12).
 
+Saturation is now a **true local spatial density**, not a per-target proxy: both the interceptor penalty and the CIWS saturation ratio count the live threat missiles physically crowding the airspace around the interceptor / point-defence bubble (from any raid), via a pooled per-tick missile grid. This makes a dense, multi-axis raid degrade defences the way a single concentrated raid does, and is bounded to a handful of nearby grid cells rather than a naive scan of every missile.
+
 ### Radar Horizon
 A 4/3 Earth-radius model limits detection probability beyond the geometric horizon (~20 NM ship-to-ship). Beyond the horizon, detection probability falls off over 120 NM to a floor of 0.20.
+
+### RCS- and Altitude-Based Detection
+Detection is no longer a rigid radar-range cutoff. Every unit carries a radar
+cross-section (`rcsM2`) and an altitude (`altitudeM`), and a contact's effective
+detection range scales with the fourth root of its RCS (the radar-range equation),
+referenced to a typical destroyer:
+
+- **RCS.** Surface hulls default their RCS from displacement (so destroyer-vs-
+  destroyer play is near-unchanged), ground structures are large, and an aircraft
+  flight is a small target — a 190 NM ship radar holds another warship out to
+  ~180 NM but a fighter flight only inside ~40 NM. A class may set `rcsM2`
+  directly (e.g. a future low-observable / stealth hull). The factor is capped at
+  the radar's nominal range, so RCS only *shortens* detection for small or
+  stealthy targets; it never extends a radar beyond its rated reach.
+- **Altitude + horizon shadow.** A flying target uses its altitude for the
+  geometric-horizon term, so high-flying aircraft are visible far while ships and
+  sea-skimming weapons are masked beyond the horizon — a radar shadow with no need
+  for terrain elevation (the world surface is uniform sea/ground). Ships and ground
+  units sit at sea level and use their structural mast height as before.
+
+Both are cheap scalars (one `pow` and one height lookup per detection candidate);
+they do not change the O(observers × candidates) sensor cost. Altitude is shown in
+a selected squadron's detail card; it is not drawn on the top-down map.
 
 ### CEC Latency
 Track sharing now has a 1.8s propagation delay. Tracks younger than the latency window are not shared to other units. Shared track quality is degraded (0.85×) with increased uncertainty (+1500m).
@@ -179,10 +232,144 @@ CEC selects from local sensor reports only, so a track cannot relay through mult
 Compact overlay cards showing subsystem health, effective speed, and CIWS ammo. Appears on right-click+drag ship selection. Multiple ships selectable simultaneously. Clears on right-click blank space.
 
 ### Performance
-Persistent entity indexes and per-planning-cycle target, side, queue, track, and engagement indexes avoid repeated O(n) scans in hot paths. Track ageing uses lazy state projection plus an expiry heap; CEC stores one shared side/contact report; sensor scans use a deterministic adaptive spatial broad phase. Terrain uses conservative raster/grid broad phases followed by exact polygon checks, and blocked-route plans are reused for their cache window. The UI caches stable DOM panels and range metadata, clusters labels spatially, resolves targets through entity indexes, and culls offscreen symbols. `npm run bench` reports Open Sea combat throughput and determinism plus an East China Sea route case; `npm run bench:frontend` measures isolated high-density rendering helpers. Results are machine-dependent.
+Persistent entity indexes and per-planning-cycle target, side, queue, track, and engagement indexes avoid repeated O(n) scans in hot paths. The inbound-raid count on each ship is memoized for the fire-planning cycle (it is constant while planning yet queried once per threat), removing the dominant quadratic in a saturated defence; the missile saturation grid is a pooled per-tick uniform grid whose buckets are reused across ticks to keep allocation and GC low. The per-cycle engagement-index Maps are likewise pooled and cleared in place rather than reallocated each second (refilled in the same deterministic order, so behaviour is identical). The event log is intentionally left as a capped newest-first array rather than a ring buffer, because it is consumed as a plain array (indexing, `map`, spread, serialization) in many places and any O(1) ring structure would change its order or representation. Track ageing uses lazy state projection plus an expiry heap; CEC stores one shared side/contact report; sensor scans use a deterministic adaptive spatial broad phase. Terrain uses conservative raster/grid broad phases followed by exact polygon checks, and blocked-route plans are reused for their cache window. The UI caches stable DOM panels and range metadata, clusters labels spatially, resolves targets through entity indexes, and culls offscreen symbols. `npm run bench` reports Open Sea combat throughput and determinism plus an East China Sea route case; `npm run bench:frontend` measures isolated high-density rendering helpers. Results are machine-dependent.
 
 ### Scenario Default
 Default starting distance reduced from 120 NM to 40 NM so engagements begin within 1-2 minutes at 1× speed.
+
+### Air Units (Aircraft Squadrons)
+
+Aircraft are modelled with `domain: "air"` on the same entity as ships, so they
+reuse the sensor, cooperative-engagement, fire-planning, damage, and win-condition
+pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything in
+`AIRCRAFT_TEMP_CONFIG` is intentionally provisional and meant to be retuned.
+
+- **One squadron = one entity, several aircraft.** A squadron costs one ship's
+  worth of latency (one radar, one track-file, one decision, one fire plan) but
+  renders and attrits as a flight. Its hit-point pool **is** the plane count:
+  each missile hit downs exactly one aircraft, and combat power scales with the
+  survivors. This keeps the per-tick budget flat as aircraft (which vastly
+  outnumber ships) are added. "Squadron is a point" is intentional — modelling
+  each airframe individually was judged a large performance cost for little gain.
+- **Movement.** Air units overfly land and sea (no water-collision/seating), are
+  placeable anywhere, and are excluded from OTC/AAWC command roles and AAW sector
+  responsibility (they are mobile strikers, not sectorised pickets).
+- **Survivability.** A squadron is a small, fast, hard target: every missile that
+  reaches it loses a large slice of its terminal PK (`evasionBase`), more while
+  the flight is breaking (`evasionManeuver`), so SAMs cost many shots per kill
+  rather than ~1. When a missile closes inside the reaction envelope the flight
+  performs an **evasive break** (notches perpendicular to the threat at max speed)
+  and pops **flares**; infrared seekers (e.g. Sidewinder) can be decoyed outright.
+- **Two generations.** `VFA` is a **4.5-gen** multirole flight (Super Hornet
+  approx.): a larger radar cross-section, external stores, a bigger magazine — it
+  survives by stand-off and terrain masking, not signature. `VFS` is a **5-gen**
+  low-observable flight (F-35 approx.): a tiny `rcsM2` so hostile radars only see
+  it deep inside their nominal reach (it shoots first and absorbs far fewer SAM
+  shots), an intrinsic `airEvasionBonus` survivability edge, a better sensor, and
+  a smaller internal-carriage magazine. Both are tunable `SHIP_CLASSES` entries.
+- **Mission doctrine (vectored on the fleet picture).** A squadron prosecutes the
+  fused **CEC force picture** — the same picture the ships fire on — so it is
+  cued onto targets by the fleet's long-range radars/datalink instead of only the
+  handful its own short-range set can see. Its geometry then follows its role:
+  - *Stand-off strike.* A striker vectors onto a surface target, **descends to a
+    low-level ingress altitude** (so the radar-horizon model masks it until much
+    closer — the "go low" of a strike run), and holds at a **stand-off ring** just
+    inside its best anti-ship weapon's reach. It fires from there and never bores
+    into the ship's air-defence envelope; if it drifts too close it turns cold and
+    **egresses** to re-open the range. (`standoffFrac`, `egressFrac`,
+    `ingressStartFrac`, `cruiseAltitudeM`, `ingressAltitudeM`.)
+  - *Defensive air-to-air.* A striker breaks off for an enemy flight only when it
+    closes inside self-defence/merge range (`a2aSelfDefenseRangeM`) — it does not
+    abandon its run to chase a distant fighter, so strike packages press their
+    attack instead of every flight collapsing into a furball.
+  - *Sweep.* A flight with no strike to fly (pure air-superiority load, or strike
+    spent) runs down enemy flights for air-to-air (`a2aEngageRangeM`), staying high
+    for energy and closing to a no-escape-zone shot.
+- **Altitude is an attribute, not a movement axis.** A flight's `altitudeM`
+  switches between a high cruise (CAP/sweep/transit — lookout and energy) and a low
+  ingress (strike masking). It drives the sensor radar-horizon only; the map stays
+  top-down. No RNG is involved, so determinism is unaffected.
+- **Air defence of the fleet.** A squadron will hard-kill an inbound anti-ship
+  missile with its long-range radar AAM, but only conservatively — IR rounds are
+  reserved for the dogfight and a heavy (≈70%) reserve of the radar AAM is kept,
+  so a flight does not strip its air-to-air load chasing cruise missiles.
+- **CAP fallback.** With no track held at all, a flight flies a combat air patrol
+  screening the fleet — a station ahead of the formation guide (OTC) along the
+  force's threat axis — instead of wandering independently. Aircraft are excluded
+  from the OTC/AAWC roles and AAW sector division (they are mobile screeners).
+- **Volley scales with the flight.** A squadron's coordinated volley is capped by
+  its surviving aircraft, and its relaunch cadence scales with them (one shooter
+  per plane), so a four-ship flight throws a fast alpha-strike while a lone
+  survivor fires slowly.
+- **Return to base / fuel.** A squadron flies its mission until it is Winchester,
+  has spent its anti-ship (strike) load, or is low on fuel, then returns to the
+  nearest friendly **airfield** to rearm/refuel (a flat timer) and relaunch. With
+  no airfield reachable it limps toward friendly territory and splashes when fuel
+  runs out. A flight will not rearm on a destroyed airfield. Carriers, sortie
+  generation, and per-airframe fuel are out of scope for now.
+- **Airfields.** An airfield (`AFB`, or any ground unit with `isAirfield`) is a
+  fixed unit placeable on land **or** water that rearms/refuels friendly flights.
+- **UI.** The force inventory has an air sub-table (flight strength / lifecycle
+  state / AAW / ASUW), and a selected squadron's detail card shows flight readouts
+  (aircraft, fuel, flares, state, AAW/ASUW) instead of ship subsystems. Rendering
+  draws one dart per surviving aircraft; labels are skipped when zoomed far out
+  (level-of-detail culling) so a large, zoomed-out air battle stays responsive.
+
+### Coordinated Strike Allocation (anti-overcommit)
+
+Offensive fire planning avoids two wasteful failure modes observed in air/surface
+battles:
+
+- **Dedicated strike weapons are preferred over dual-role rounds.** When choosing
+  an anti-ship weapon a shooter picks a dedicated `anti_ship` round (Maritime
+  Strike / Tomahawk / Harpoon) ahead of the dual-role `SM-6`, so the fleet's
+  precious area-air-defence missile is conserved for the air battle instead of
+  being burned as the primary strike weapon. (Selection is otherwise unchanged —
+  range fit, then reach — so a hull whose only in-range option is dedicated is
+  unaffected.)
+- **Raid size is capped by target toughness** in the default/measured postures:
+  the fleet sizes a raid to score the target's remaining hit points through the
+  expected defensive leakage plus a few leakers, rather than dumping a full
+  saturation salvo on a lightly-built ship. A deliberate `saturate` doctrine is
+  exempt — its whole purpose is to overwhelm.
+- **A strike target always keeps a slot.** A high-value enemy flight can outscore
+  every ship; with a narrow target breadth it would monopolise the side's whole
+  salvo and leave the strikers' anti-ship rounds unused. The planner guarantees
+  the top surface/ground target a slot so the fleet keeps prosecuting ships even
+  while fighters are up. (A no-op when every observed target is already surface,
+  so pure-surface play is unchanged.)
+
+### Debug Instrumentation
+
+Two read-only collectors (`src/sim/debug.js`) observe a run without perturbing it
+(they draw no RNG and mutate no sim state) and are persisted to `debug/`,
+**overwritten every run**:
+
+- **`PerfRecorder` → `debug/perf-debug.log`.** A device/workload performance trace:
+  per-tick **sim** cost (avg / p50 / p95 / p99 / max), per-frame **render** cost
+  (browser only), peak concurrent entities, the worst tick and what was alive then,
+  heap growth, and a short lag diagnosis that **attributes a slow frame to the sim
+  step vs the canvas render path**. It is about the *device*, to explain stutter —
+  not the battle. Typical numbers on this hardware: sim p50 ≈ 0.1 ms/tick, p95 ≈ 1
+  ms/tick — so the simulation core is not the bottleneck; browser slowness is the
+  render path (which scales with on-screen ships/missiles/weapon-range-rings/labels
+  and is amplified by zoom and by the **speed multiplier**, which runs many sim
+  ticks per rendered frame), plus the occasional GC pause (a one-off 100–240 ms
+  tick). Lower the speed slider, zoom in, or hide the WEZ rings / tracks to recover
+  frame rate.
+- **`BattleLogger` → `debug/sim-debug.log`.** A tactical trace sampled at a fixed
+  sim-time cadence: every entity's position/heading/speed/altitude/state/stores, a
+  one-line translation of what each unit is *doing and why* (derived from the same
+  fused picture the AI uses), the per-side command posture, and the events since
+  the last frame — enough to "watch" how the battle and the AI unfolded offline.
+
+Both run headless via `npm run debug:sim` — `scripts/sim-debug.mjs` builds a
+**highly asymmetric** deterministic battle (a BLUE air task force of two stealth
+5-gen and two 4.5-gen squadrons + a picket + an airfield, raiding a RED surface
+group that is strong in anti-ship fires but thin on air defence). Unlike a
+mirrored match-up it resolves decisively and exercises the full strike → RTB →
+rearm → relaunch cycle. The same two logs are also written from the browser app,
+which POSTs them to the server (`POST /debug/save`) on every run.
 
 ## Current Weapons (updated)
 
@@ -191,3 +378,6 @@ Default starting distance reduced from 120 NM to 40 NM so engagements begin with
 - `ESSM`: point-defence interceptor, quad-packable (28 NM, Mach 2.9, PK 0.35)
 - `MaritimeStrike` / `MSTK`: subsonic anti-ship cruise missile (120 NM, Mach 0.8, PK 0.42)
 - `TomahawkBlockV` / `TLAM`: long-range surface strike (650 NM, Mach 0.7, PK 0.34)
+- `AIM-120` / `120`: BVR active-radar air-to-air missile (55 NM, PK 0.50, `target: "air"`)
+- `AIM-9X` / `AIM9`: WVR infrared air-to-air missile (18 NM, PK 0.72, flare-decoyable)
+- `AGM-84` / `HPN`: air-launched anti-ship missile (67 NM, subsonic, PK 0.45)

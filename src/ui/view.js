@@ -14,6 +14,12 @@ export function isGroundUnit(unit) {
   return unit?.domain === "ground" || unit?.isFixed === true;
 }
 
+// An air unit (aircraft squadron) gets its own inventory sub-table: flight
+// strength + lifecycle state instead of HP/VLS.
+export function isAirUnit(unit) {
+  return unit?.domain === "air";
+}
+
 // Canonical naval weapon columns, kept in this order when in use. Custom
 // (modded) missiles are appended after these so a new weapon adds a column.
 const VANILLA_COLUMNS = ["SM-2MR", "SM-6", "ESSM", "MaritimeStrike", "TomahawkBlockV"];
@@ -230,6 +236,17 @@ export function inventoryHeadHtml(domain = "sea", columns = VANILLA_COLUMNS) {
       + `<span data-i18n="inv.asuw">ASUW</span>`
       + `</div>`;
   }
+  if (domain === "air") {
+    // Reuses the 5-column ground grid; columns: unit, flight strength, state,
+    // air-to-air count, air-to-surface count.
+    return `<div class="inventory-head ground air">`
+      + `<span data-i18n="inv.unit">UNIT</span>`
+      + `<span data-i18n="inv.ac">A/C</span>`
+      + `<span data-i18n="inv.state">STATE</span>`
+      + `<span data-i18n="inv.aaw">AAW</span>`
+      + `<span data-i18n="inv.asuw">ASUW</span>`
+      + `</div>`;
+  }
   // Weapon headers use the missile short label directly (military nomenclature,
   // not translated); the full id is on the title for hover/identification.
   const weaponHeads = columns
@@ -303,6 +320,33 @@ export function groundRowHtml(unit, selected = false) {
     `;
 }
 
+// Inventory row for an aircraft squadron: tag, flight strength (alive/size),
+// lifecycle state, and air-to-air / air-to-surface effector counts. HP state
+// doubles as flight strength (the squadron's hit-point pool is its plane count).
+const AIR_STATE_ABBR = { mission: "MSN", rtb: "RTB", rearming: "RRM" };
+export function airRowHtml(unit, selected = false) {
+  const hp = shipHpState(unit);
+  let aaw = 0;
+  let asuw = 0;
+  for (const id of Object.keys(unit.loadout || {})) {
+    const spec = MISSILES[id];
+    if (!spec) continue;
+    if (spec.category === "anti_ship") asuw += displayCount(unit, id);
+    else aaw += displayCount(unit, id);
+  }
+  const state = AIR_STATE_ABBR[unit.airState] ?? "MSN";
+  const cell = (value, color) => `<b style="color:${value > 0 ? color : "#4e6972"}">${value > 0 ? value : "·"}</b>`;
+  return `
+      <button class="inventory-row ground air ${unit.side.toLowerCase()} ${unit.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${unit.id}">
+        <span>${shipDisplayName(unit, "-")}</span>
+        <b style="color:${inventoryHpColor(unit)}">${hp.currentHp}/${hp.maxHp}</b>
+        <b>${state}</b>
+        ${cell(aaw, "#5fd58c")}
+        ${cell(asuw, "#f7e7a1")}
+      </button>
+    `;
+}
+
 // Build the full force inventory markup. Units are grouped by faction (BLUE
 // then RED), and within each faction split into a naval sub-table and a ground
 // sub-table — each with its own column header — so sea and ground assets read
@@ -311,15 +355,16 @@ export function inventoryHtml(orderedShips, isSelected = () => false) {
   const out = [];
   // Weapon columns are computed across all naval units (both sides) so the two
   // sub-tables stay aligned and a deployed custom weapon shows everywhere.
-  const columns = weaponColumns(orderedShips.filter((unit) => !isGroundUnit(unit)));
+  const columns = weaponColumns(orderedShips.filter((unit) => !isGroundUnit(unit) && !isAirUnit(unit)));
   let factionEmitted = false;
   for (const side of [SIDE.BLUE, SIDE.RED]) {
     const sideUnits = orderedShips.filter((unit) => unit.side === side);
     if (!sideUnits.length) continue;
     if (factionEmitted) out.push(inventoryDividerHtml());
     factionEmitted = true;
-    const sea = sideUnits.filter((unit) => !isGroundUnit(unit));
+    const sea = sideUnits.filter((unit) => !isGroundUnit(unit) && !isAirUnit(unit));
     const ground = sideUnits.filter((unit) => isGroundUnit(unit));
+    const air = sideUnits.filter((unit) => isAirUnit(unit));
     if (sea.length) {
       out.push(inventoryHeadHtml("sea", columns));
       for (const unit of sea) out.push(inventoryRowHtml(unit, isSelected(unit.id), columns));
@@ -327,6 +372,10 @@ export function inventoryHtml(orderedShips, isSelected = () => false) {
     if (ground.length) {
       out.push(inventoryHeadHtml("ground"));
       for (const unit of ground) out.push(groundRowHtml(unit, isSelected(unit.id)));
+    }
+    if (air.length) {
+      out.push(inventoryHeadHtml("air"));
+      for (const unit of air) out.push(airRowHtml(unit, isSelected(unit.id)));
     }
   }
   return out.join("");

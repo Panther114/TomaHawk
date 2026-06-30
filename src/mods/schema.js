@@ -11,11 +11,11 @@
 
 import { usedCells } from "../sim.js";
 
-export const UNIT_TYPES = ["naval", "ground", "ammo"];
+export const UNIT_TYPES = ["naval", "ground", "aircraft", "ammo"];
 
 // Units that can be placed on the map. Ammo is excluded — it only appears in
-// the loadout pickers of naval/ground units.
-export const DEPLOYABLE_TYPES = ["naval", "ground"];
+// the loadout pickers of naval/ground/aircraft units.
+export const DEPLOYABLE_TYPES = ["naval", "ground", "aircraft"];
 
 const num = (key, label, opts = {}) => ({ key, type: "number", label, ...opts });
 const text = (key, label, opts = {}) => ({ key, type: "text", label, ...opts });
@@ -33,6 +33,7 @@ const SYMBOL_OPTIONS = [
 const TARGET_OPTIONS = [
   { value: "missile", label: { en: "Missile", zh: "导弹" } },
   { value: "ship", label: { en: "Ship", zh: "舰艇" } },
+  { value: "air", label: { en: "Aircraft", zh: "飞机" } },
   { value: "dual", label: { en: "Dual", zh: "两者" } }
 ];
 const LAYER_OPTIONS = [
@@ -48,12 +49,14 @@ const RING_OPTIONS = [
 const GUIDANCE_OPTIONS = [
   { value: "command_inertial", label: { en: "Command + inertial", zh: "指令+惯性" } },
   { value: "command_inertial_active", label: { en: "Command + active", zh: "指令+主动" } },
-  { value: "inertial_active", label: { en: "Inertial + active", zh: "惯性+主动" } }
+  { value: "inertial_active", label: { en: "Inertial + active", zh: "惯性+主动" } },
+  { value: "infrared", label: { en: "Infrared (flare-decoyable)", zh: "红外（可被照明弹诱骗）" } }
 ];
 const GLYPH_OPTIONS = [
   { value: "sam", label: { en: "SAM (triangle)", zh: "防空 (三角)" } },
   { value: "radar", label: { en: "Radar (diamond)", zh: "雷达 (菱形)" } },
-  { value: "bunker", label: { en: "Bunker (square)", zh: "工事 (方块)" } }
+  { value: "bunker", label: { en: "Bunker (square)", zh: "工事 (方块)" } },
+  { value: "airfield", label: { en: "Airfield (runway)", zh: "机场 (跑道)" } }
 ];
 
 const NAVAL_SCHEMA = {
@@ -98,7 +101,10 @@ const GROUND_SCHEMA = {
     { title: { en: "Identity", zh: "标识" }, fields: [
       text("name", { en: "Site name", zh: "阵地名称" }, { placeholder: "Coastal SAM Battery" }),
       text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "SAM", maxlength: 6 }),
-      { key: "glyph", type: "select", label: { en: "Map glyph", zh: "地图符号" }, options: GLYPH_OPTIONS }
+      { key: "glyph", type: "select", label: { en: "Map glyph", zh: "地图符号" }, options: GLYPH_OPTIONS },
+      // An airfield may be placed anywhere (land or water) and rearms friendly
+      // squadrons. Otherwise it behaves like any fixed ground emplacement.
+      { key: "isAirfield", type: "checkbox", label: { en: "Airfield (rearms aircraft, any terrain)", zh: "机场（为飞机补给，可置于任意地形）" } }
     ] },
     { title: { en: "Footprint", zh: "占地" }, fields: [
       num("lengthM", { en: "Length", zh: "长" }, { unit: "m", min: 10, max: 400, step: 1 }),
@@ -118,6 +124,44 @@ const GROUND_SCHEMA = {
     { title: { en: "Defense channels", zh: "防御通道" }, fields: [
       num("defenseArea", { en: "Area", zh: "区域" }, { min: 0, max: 16, step: 1 }),
       num("defensePoint", { en: "Point", zh: "点防御" }, { min: 0, max: 16, step: 1 })
+    ] }
+  ]
+};
+
+const AIRCRAFT_SCHEMA = {
+  type: "aircraft",
+  loadout: true,
+  sections: [
+    { title: { en: "Identity", zh: "标识" }, fields: [
+      text("name", { en: "Squadron name", zh: "中队名称" }, { placeholder: "Strike Fighter Squadron" }),
+      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "VFA", maxlength: 6 })
+    ] },
+    { title: { en: "Squadron", zh: "中队" }, fields: [
+      // The flight's hit-point pool: each hit downs one aircraft (attrition).
+      num("squadronSize", { en: "Aircraft in flight", zh: "编队飞机数" }, { min: 1, max: 16, step: 1 })
+    ] },
+    { title: { en: "Mobility", zh: "机动" }, fields: [
+      num("cruiseSpeedKt", { en: "Cruise speed", zh: "巡航速度" }, { unit: "kt", min: 0, max: 1200, step: 5 }),
+      num("maxSpeedKt", { en: "Max speed", zh: "最大速度" }, { unit: "kt", min: 0, max: 1500, step: 5 }),
+      num("accelMps2", { en: "Accel", zh: "加速" }, { unit: "m/s²", min: 0, max: 20, step: 0.1 }),
+      num("decelMps2", { en: "Decel", zh: "减速" }, { unit: "m/s²", min: 0, max: 20, step: 0.1 }),
+      num("turnRateDps", { en: "Turn", zh: "转向" }, { unit: "°/s", min: 0, max: 30, step: 0.1 }),
+      num("turnRateFlankDps", { en: "Flank turn", zh: "高速转向" }, { unit: "°/s", min: 0, max: 30, step: 0.1 })
+    ] },
+    { title: { en: "Sensors", zh: "传感器" }, fields: [
+      num("radarRangeNm", { en: "Radar range", zh: "雷达距离" }, { unit: "NM", min: 0, max: 600, step: 1 }),
+      num("radarIntervalS", { en: "Radar interval", zh: "扫描间隔" }, { unit: "s", min: 0.5, max: 30, step: 0.5 })
+    ] },
+    { title: { en: "Hardpoints", zh: "挂架" }, fields: [
+      num("vlsCells", { en: "Hardpoints", zh: "挂架数" }, { min: 0, max: 64, step: 1 })
+    ] },
+    { title: { en: "Endurance", zh: "续航" }, fields: [
+      num("enduranceS", { en: "Endurance", zh: "续航时间" }, { unit: "s", min: 30, max: 36000, step: 30 }),
+      num("rearmTimeS", { en: "Rearm time", zh: "补给时间" }, { unit: "s", min: 0, max: 3600, step: 5 })
+    ] },
+    { title: { en: "Survivability", zh: "生存力" }, fields: [
+      num("damageDegrade", { en: "Speed loss per loss", zh: "每损失减速" }, { min: 0, max: 1, step: 0.01 }),
+      num("flares", { en: "Flares (IR decoys)", zh: "照明弹（红外诱饵）" }, { min: 0, max: 999, step: 1 })
     ] }
   ]
 };
@@ -150,6 +194,7 @@ const AMMO_SCHEMA = {
       num("pk", { en: "Kill probability", zh: "杀伤概率" }, { min: 0, max: 1, step: 0.01 }),
       num("salvo", { en: "Salvo size", zh: "齐射数量" }, { min: 1, max: 16, step: 1 }),
       num("interceptorsPerThreat", { en: "Interceptors per threat", zh: "每目标拦截数" }, { min: 0, max: 8, step: 1 }),
+      num("nezFraction", { en: "No-escape-zone frac", zh: "不可逃逸区比例" }, { min: 0, max: 1, step: 0.05 }),
       num("magazineReserveRatio", { en: "Magazine reserve", zh: "弹药保留比例" }, { min: 0, max: 1, step: 0.01 })
     ] },
     { title: { en: "Timing", zh: "时序" }, fields: [
@@ -168,6 +213,7 @@ const AMMO_SCHEMA = {
 export const SCHEMAS = {
   naval: NAVAL_SCHEMA,
   ground: GROUND_SCHEMA,
+  aircraft: AIRCRAFT_SCHEMA,
   ammo: AMMO_SCHEMA
 };
 
@@ -184,18 +230,26 @@ export const DEFAULTS = {
     baseLoadout: { "SM-2MR": 36, ESSM: 32, MaritimeStrike: 16 }
   }),
   ground: () => ({
-    kind: "ground", name: "New Emplacement", prefix: "GND", glyph: "bunker",
+    kind: "ground", name: "New Emplacement", prefix: "GND", glyph: "bunker", isAirfield: false,
     lengthM: 50, beamM: 50, radarRangeNm: 160, radarIntervalS: 4,
     vlsCells: 48, damageResist: 2, damageDegrade: 0.3,
     defenseArea: 3, defensePoint: 2,
     baseLoadout: { "SM-2MR": 24 }
+  }),
+  aircraft: () => ({
+    kind: "aircraft", name: "New Squadron", prefix: "VFX",
+    squadronSize: 4,
+    cruiseSpeedKt: 420, maxSpeedKt: 540, accelMps2: 3.0, decelMps2: 3.0,
+    turnRateDps: 6, turnRateFlankDps: 4, radarRangeNm: 90, radarIntervalS: 3,
+    vlsCells: 20, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1, flares: 60,
+    baseLoadout: { "AIM-120": 8, "AIM-9X": 4, "AGM-84": 8 }
   }),
   ammo: () => ({
     kind: "ammo", name: "NEW-MSL",
     category: "anti_air", symbol: "triangle", target: "missile", defenseLayer: "area",
     rangeNm: 90, preferredMinRangeNm: 8, preferredMaxRangeNm: 90, seekerRangeNm: 14,
     speedMps: 1000, maxTurnRateDps: 30, cellCost: 1, pk: 0.45, salvo: 2,
-    interceptorsPerThreat: 1, magazineReserveRatio: 0.18, launchIntervalS: 2.2, salvoSpacingS: 2.8,
+    interceptorsPerThreat: 1, nezFraction: 0.5, magazineReserveRatio: 0.18, launchIntervalS: 2.2, salvoSpacingS: 2.8,
     ringStyle: "dotted", guidance: "command_inertial", retargetable: false, selfDestructOnLoss: true
   })
 };

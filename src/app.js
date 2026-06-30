@@ -5,6 +5,8 @@ import {
   SIDE,
   SHIP_CLASSES,
   VISUAL_CONFIG,
+  aliveAircraftCount,
+  squadronSize,
   battleSummaryCounts,
   canRunScenario,
   canAddAssets,
@@ -27,6 +29,7 @@ import {
   tracksForShip,
   weaponRangeEntries
 } from "./sim.js";
+import { PerfRecorder, BattleLogger } from "./sim/debug.js";
 import {
   sideColor,
   sideSoftColor,
@@ -96,6 +99,46 @@ let selectionBox = null;
 let selectedIds = new Set([sim.selectedId]);
 let last = performance.now();
 let labelBoxes = [];
+
+// The DOM side-panels are text and don't need 60 fps; rebuilding and diffing
+// their markup every frame is wasted reflow. They refresh at ~20 Hz while the
+// canvas battlefield keeps rendering every frame (so animation stays smooth).
+let lastPanelRenderAt = 0;
+const PANEL_RENDER_INTERVAL_MS = 50;
+// Above this many live missiles, drop the per-missile glow (canvas shadowBlur is
+// very expensive and indistinguishable in a crowded raid — exactly when frame
+// budget is tight).
+const MISSILE_GLOW_CAP = 50;
+
+// --- per-run debug capture --------------------------------------------------
+// Two read-only collectors observe each running simulation and are persisted to
+// debug/ (perf-debug.log + sim-debug.log) via the server, OVERWRITTEN every run,
+// so the AI behaviour and device cost of the last run can be inspected offline.
+// A "run" is one SETUP→RUNNING→ENDED lifecycle; the collectors reset when a new
+// run starts and the logs are saved when it ends (and periodically while live).
+let perfRec = null;
+let battleLog = null;
+let debugRunActive = false;
+let lastDebugSaveAt = 0;
+
+function beginDebugRun() {
+  perfRec = new PerfRecorder({ label: `app run ${new Date().toISOString()}` });
+  battleLog = new BattleLogger({ intervalS: 15, label: `app run ${new Date().toISOString()}` });
+  debugRunActive = true;
+  lastDebugSaveAt = performance.now();
+}
+
+function saveDebugLogs() {
+  if (!perfRec || !battleLog) return;
+  try {
+    fetch("/debug/save", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ perf: perfRec.format(), sim: battleLog.format() }),
+      keepalive: true
+    }).catch(() => {});
+  } catch { /* best-effort; never disrupt the sim */ }
+}
 let feedCollapsed = false;
 let aboutOpen = false;
 const MAX_CAMERA_SCALE = 0.011;
@@ -135,10 +178,16 @@ function replaceHtmlIfChanged(element, html) {
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(innerWidth * dpr);
-  canvas.height = Math.floor(innerHeight * dpr);
-  canvas.style.width = `${innerWidth}px`;
-  canvas.style.height = `${innerHeight}px`;
+  const w = Math.floor(innerWidth * dpr);
+  const h = Math.floor(innerHeight * dpr);
+  canvas.width = w;
+  canvas.height = h;
+  // Size the element from the floored backing store divided by dpr so the
+  // backing maps 1:1 onto physical pixels. Using innerWidth directly leaves a
+  // sub-pixel mismatch at fractional dpr (e.g. 1.5 on Windows 150% scaling):
+  // 625css * 1.5 = 937.5 device px vs a 937 backing → resampling blur.
+  canvas.style.width = `${w / dpr}px`;
+  canvas.style.height = `${h / dpr}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   terrainLayerKey = "";
   clampCamera();
@@ -324,9 +373,17 @@ function collectWeaponRangeRings() {
     const selected = ship.id === sim.selectedId;
     if (mode === "selected" && !selected) continue;
     const p = worldToScreen(ship);
+    // Nearest distance from the viewport rectangle to this ship (ring centre).
+    const nx = Math.max(0, Math.min(p.x, innerWidth));
+    const ny = Math.max(0, Math.min(p.y, innerHeight));
+    const minDistToView = Math.hypot(p.x - nx, p.y - ny);
     for (const entry of cachedWeaponRangeEntries(ship)) {
       const radius = entry.rangeM * camera.scale;
       if (radius < 1.5) continue;
+      // The whole ring is off-screen (too small to reach the viewport): it draws
+      // nothing and clips nothing visible, so skip it entirely. (Rings that
+      // encompass the view are kept — they still bound the union of inner rings.)
+      if (radius < minDistToView - 2) continue;
       rings.push({
         side: ship.side,
         id: entry.id,
@@ -448,6 +505,9 @@ function drawGroundUnit(ship, label) {
     ctx.moveTo(0, -s); ctx.lineTo(s, s); ctx.lineTo(-s, s); ctx.closePath();
   } else if (glyph === "radar") {
     ctx.moveTo(0, -s); ctx.lineTo(s, 0); ctx.lineTo(0, s); ctx.lineTo(-s, 0); ctx.closePath();
+  } else if (glyph === "airfield") {
+    // Rounded "stadium" footprint suggesting a runway/ramp.
+    ctx.rect(-s * 1.15, -s * 0.7, 2.3 * s, 1.4 * s);
   } else {
     ctx.rect(-s, -s, 2 * s, 2 * s);
   }
@@ -459,6 +519,10 @@ function drawGroundUnit(ship, label) {
   ctx.beginPath();
   if (glyph === "radar") {
     ctx.arc(0, 0, s * 0.55, -Math.PI * 0.78, -Math.PI * 0.08);
+  } else if (glyph === "airfield") {
+    // Dashed centreline like a runway.
+    ctx.moveTo(-s * 0.9, 0); ctx.lineTo(-s * 0.2, 0);
+    ctx.moveTo(s * 0.2, 0); ctx.lineTo(s * 0.9, 0);
   } else {
     ctx.moveTo(-s * 0.4, 0); ctx.lineTo(s * 0.4, 0);
     ctx.moveTo(0, -s * 0.4); ctx.lineTo(0, s * 0.4);
@@ -466,15 +530,70 @@ function drawGroundUnit(ship, label) {
   ctx.stroke();
   ctx.restore();
 
+  if (label.alpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
+    ctx.fillStyle = color;
+    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+    ctx.fillText(shipDisplayName(ship, "-"), p.x + s + 4, p.y - 4);
+    ctx.restore();
+  }
+}
+
+// A squadron renders as a small formation of dart glyphs — one per surviving
+// aircraft — so attrition is visible (a 4-ship that has lost a plane shows 3).
+// It is one entity; the darts are pure presentation offsets around its centre.
+function drawAircraft(ship, label) {
+  const p = worldToScreen(ship);
+  if (!screenPointVisible(p, 60)) return;
+  const color = sideColor(ship.side);
+  const selected = ship.id === sim.selectedId;
+  const alive = Math.max(ship.alive ? 1 : 0, aliveAircraftCount(ship));
+  const heading = Number.isFinite(ship.heading) ? ship.heading : 0;
+  const dart = 5;
+  // Wedge formation: lead aircraft ahead, wingmen stepped back on alternating
+  // sides. Offsets are in screen pixels along/across the heading.
+  const along = (i) => -Math.floor((i + 1) / 2) * 7;
+  const across = (i) => (i === 0 ? 0 : (i % 2 === 1 ? 1 : -1) * Math.ceil(i / 2) * 7);
   ctx.save();
-  ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
-  ctx.fillStyle = color;
-  ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
-  ctx.fillText(shipDisplayName(ship, "-"), p.x + s + 4, p.y - 4);
+  ctx.globalAlpha = ship.alive ? 1 : 0.3;
+  for (let i = 0; i < Math.max(1, alive); i++) {
+    const ax = Math.cos(heading) * along(i) - Math.sin(heading) * across(i);
+    const ay = Math.sin(heading) * along(i) + Math.cos(heading) * across(i);
+    ctx.save();
+    ctx.translate(p.x + ax, p.y + ay);
+    ctx.rotate(heading);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(5, 12, 16, .82)";
+    ctx.lineWidth = selected ? 1.1 : 0.7;
+    ctx.beginPath();
+    // Forward-pointing dart (arrowhead) — reads as a fast jet.
+    ctx.moveTo(dart, 0);
+    ctx.lineTo(-dart * 0.7, dart * 0.7);
+    ctx.lineTo(-dart * 0.3, 0);
+    ctx.lineTo(-dart * 0.7, -dart * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.restore();
+
+  // Skip label rendering entirely when zoomed far out (faded) — fillText is the
+  // dominant per-entity cost in a large, zoomed-out battle. Render-only LOD.
+  if (label.alpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
+    ctx.fillStyle = color;
+    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+    const count = `${aliveAircraftCount(ship)}/${squadronSize(ship)}`;
+    ctx.fillText(`${shipDisplayName(ship, "-")} ×${count}`, p.x + 10, p.y - 6);
+    ctx.restore();
+  }
 }
 
 function drawScaledShip(ship, label) {
+  if (ship.domain === "air") return drawAircraft(ship, label);
   if (ship.isFixed || ship.domain === "ground") return drawGroundUnit(ship, label);
   const p = worldToScreen(ship);
   if (!screenPointVisible(p, 48)) return;
@@ -518,12 +637,14 @@ function drawScaledShip(ship, label) {
   ctx.restore();
   ctx.restore();
 
-  ctx.save();
-  ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
-  ctx.fillStyle = color;
-  ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
-  ctx.fillText(shipDisplayName(ship, "-"), p.x + len * 0.48 + 3, p.y - 5);
-  ctx.restore();
+  if (label.alpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
+    ctx.fillStyle = color;
+    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+    ctx.fillText(shipDisplayName(ship, "-"), p.x + len * 0.48 + 3, p.y - 5);
+    ctx.restore();
+  }
 
   if (sim.mode !== SCENARIO_MODE.SETUP && ship.alive && (ship.speed > 0.1 || ship.desiredSpeed > 0.1)) {
     const hasVelocity = Math.hypot(ship.vx ?? 0, ship.vy ?? 0) > 0.1;
@@ -550,6 +671,8 @@ function drawScaledShip(ship, label) {
 function drawSectorResponsibility(ship) {
   // Only meaningful once a fleet exists and a sub-sector has been carved out.
   if (!ship.alive || sim.mode !== SCENARIO_MODE.RUNNING) return;
+  // Aircraft are strikers, not sectorised air-defence pickets — no AAW sector.
+  if (ship.domain === "air") return;
   if (!Number.isFinite(ship.sectorCenter) || !(ship.sectorHalfWidth < Math.PI - 0.05)) return;
   const p = worldToScreen(ship);
   const radius = Math.min(ship.radarRangeM * camera.scale * 0.5, Math.max(innerWidth, innerHeight));
@@ -609,6 +732,9 @@ function drawMissiles(label) {
   const labelFontPx = Math.max(7, VISUAL_CONFIG.shipLabelPx * 0.4 * label.scale);
   const missileLabelsByType = new Map();
   const labelWidths = new Map();
+  // Drop the per-missile glow in a crowded raid (shadowBlur is the most expensive
+  // per-draw op and invisible at that density).
+  const useGlow = (sim._aliveMissiles?.length ?? sim.missiles.length) <= MISSILE_GLOW_CAP;
   ctx.save();
   ctx.font = canvasFont(labelFontPx);
   for (const missile of sim.missiles) {
@@ -648,7 +774,7 @@ function drawMissiles(label) {
     ctx.strokeStyle = iconColor;
     ctx.fillStyle = missile.terminal ? "rgba(247,185,85,.22)" : "rgba(5, 12, 16, .82)";
     ctx.lineWidth = isAntiAir ? 1.05 : 0.65;
-    if (isAntiAir) {
+    if (isAntiAir && useGlow) {
       ctx.shadowColor = iconColor;
       ctx.shadowBlur = 3;
     }
@@ -757,6 +883,11 @@ function renderShipDetails() {
     ship.subsystems?.fireControl,
     ship.subsystems?.ciws,
     ship.subsystems?.cic,
+    // Air units show volatile flight readouts; key on coarse fuel + flares +
+    // state so the card refreshes as they change (a few selected cards, cheap).
+    ship.domain === "air"
+      ? `${Math.round((ship.fuelS / (ship.enduranceS || 1)) * 20)}:${ship.flares}:${ship.airState}:${ship.evading ? 1 : 0}`
+      : 0,
     ...Object.values(ship.loadout)
   ].join(":")).join("|")}`;
   if (panelRenderCache.details === detailKey) return;
@@ -769,7 +900,48 @@ function renderShipDetails() {
   const availableHeight = innerHeight - y - 16;
   shipDetailOverlay.style.cssText = `position:fixed;right:${rightInset}px;top:${y}px;z-index:100;width:${cardWidth}px;max-height:${availableHeight}px;display:flex;flex-direction:column;align-items:stretch;gap:${cardGap}px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color: rgba(142,193,205,0.25) transparent;`;
 
+  const subBar = (val, mode = "health") => {
+    const w = Math.round(Math.max(0, Math.min(1, val)) * 100);
+    const c = mode === "load"
+      ? (val >= 0.8 ? '#5a9' : val >= 0.4 ? '#f7b955' : '#f66')
+      : (val > 0.6 ? '#5a9' : val > 0.3 ? '#f7b955' : '#f66');
+    return `<span class="subsystem-meter"><i style="width:${w}%;background:${c}"></i></span>`;
+  };
+
+  // Aircraft squadrons have no ship subsystems — show flight-relevant readouts
+  // (surviving aircraft, fuel, flares, lifecycle state, and effector counts).
+  const aircraftCardHtml = (s) => {
+    const color = sideColor(s.side);
+    const ac = aliveAircraftCount(s);
+    const size = squadronSize(s);
+    const fuelFrac = s.enduranceS ? (s.fuelS ?? 0) / s.enduranceS : 0;
+    const flareFrac = s.flaresMax ? (s.flares ?? 0) / s.flaresMax : 0;
+    let aaw = 0, asuw = 0;
+    for (const [id, n] of Object.entries(s.loadout || {})) {
+      if (!MISSILES[id]) continue;
+      if (MISSILES[id].category === 'anti_ship') asuw += n; else aaw += n;
+    }
+    const state = ({ mission: 'MSN', rtb: 'RTB', rearming: 'RRM' })[s.airState] ?? 'MSN';
+    const row = (label, val, mode = "health") => `<span>${label}</span>${subBar(val, mode)}<b>${Math.round(Math.max(0, Math.min(1, val)) * 100)}%</b>`;
+    const textRow = (label, value) => `<span>${label}</span><b style="grid-column:2/4;text-align:right">${value}</b>`;
+    return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
+      <div class="ship-detail-heading">
+        <b>${shipDisplayName(s, "")}</b>
+        <span style="color:${ac < size ? '#f7b955' : ''}">${t('detail.ac')} ${ac}/${size}</span>
+      </div>
+      <div class="ship-detail-grid">
+        ${row(t('detail.fuel'), fuelFrac, "load")}
+        ${row(t('detail.flares'), flareFrac, "load")}
+        ${textRow(t('detail.state'), state + (s.evading ? ' !' : ''))}
+        ${textRow(t('detail.alt'), `${((s.altitudeM ?? 0) / 1000).toFixed(1)} km`)}
+        ${textRow(t('detail.aaw'), aaw)}
+        ${textRow(t('detail.asuw'), asuw)}
+      </div>
+    </div>`;
+  };
+
   const cardHtml = (s) => {
+    if (s.domain === "air") return aircraftCardHtml(s);
     const rdr = s.subsystems?.radar ?? 1.0;
     const prop = s.subsystems?.propulsion ?? 1.0;
     const fc = s.subsystems?.fireControl ?? 1.0;
@@ -778,13 +950,6 @@ function renderShipDetails() {
     const hp = shipHpState(s);
     const vls = vlsLoadState(s);
     const color = sideColor(s.side);
-    const subBar = (val, mode = "health") => {
-      const w = Math.round(val * 100);
-      const c = mode === "load"
-        ? (val >= 0.8 ? '#5a9' : val >= 0.4 ? '#f7b955' : '#f66')
-        : (val > 0.6 ? '#5a9' : val > 0.3 ? '#f7b955' : '#f66');
-      return `<span class="subsystem-meter"><i style="width:${w}%;background:${c}"></i></span>`;
-    };
     const row = (label, val, mode = "health") => `
       <span>${label}</span>
       ${subBar(val, mode)}
@@ -840,16 +1005,20 @@ function populateSpawnDropdown() {
   const prev = shipClassSelect.value;
   const naval = [];
   const ground = [];
+  const air = [];
   for (const [hull, cls] of Object.entries(SHIP_CLASSES)) {
-    (cls.domain === "ground" ? ground : naval).push([hull, cls]);
+    const bucket = cls.domain === "ground" ? ground : cls.domain === "air" ? air : naval;
+    bucket.push([hull, cls]);
   }
   const escAttr = (s) => String(s).replace(/"/g, "&quot;");
   const optHtml = (arr) => arr
     .map(([hull, cls]) => `<option value="${escAttr(hull)}">${escAttr(spawnOptionLabel(hull, cls))}</option>`)
     .join("");
+  const group = (label, arr) => arr.length ? `<optgroup label="${escAttr(label)}">${optHtml(arr)}</optgroup>` : "";
   shipClassSelect.innerHTML =
-    `<optgroup label="${escAttr(t("naval.group"))}">${optHtml(naval)}</optgroup>` +
-    `<optgroup label="${escAttr(t("ground.group"))}">${optHtml(ground)}</optgroup>`;
+    group(t("naval.group"), naval) +
+    group(t("ground.group"), ground) +
+    group(t("air.group"), air);
   if ([...shipClassSelect.options].some((o) => o.value === prev)) shipClassSelect.value = prev;
 }
 
@@ -896,7 +1065,15 @@ function drawTerrain() {
     terrainLayerCtx.strokeRect(-MAP_HALF_WIDTH_M, -MAP_HALF_HEIGHT_M, MAP_WIDTH_M, MAP_HEIGHT_M);
     terrainLayerCtx.restore();
   }
-  ctx.drawImage(terrainLayer, 0, 0, innerWidth, innerHeight);
+  // Blit the terrain layer 1:1 in device space. Drawing it at (innerWidth x
+  // innerHeight) under the dpr transform would rescale its backing store
+  // (e.g. 937 → 937.5 px at dpr 1.5) and soften the coastline; an identity
+  // transform maps backing pixels straight onto the matching main-canvas pixels.
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(terrainLayer, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.restore();
 }
 
 function renderScaleBar() {
@@ -1003,8 +1180,15 @@ function render() {
   drawMissiles(label);
   drawRuler();
   drawSelectionBox();
-  renderPanels();
-  renderShipDetails();
+  // Throttle the DOM side-panels to ~20 Hz (the canvas above still draws every
+  // frame). Numbers/events updating 50 ms later is imperceptible, but it avoids
+  // rebuilding the inventory/event-log markup and reflowing on every frame.
+  const nowMs = performance.now();
+  if (nowMs - lastPanelRenderAt >= PANEL_RENDER_INTERVAL_MS) {
+    lastPanelRenderAt = nowMs;
+    renderPanels();
+    renderShipDetails();
+  }
 }
 
 function pickShip(world) {
@@ -1023,15 +1207,32 @@ function pickShip(world) {
 function tick(now) {
   const elapsed = Math.min(0.1, (now - last) / 1000);
   last = now;
+  // Returning to SETUP (a fresh scenario / reset) ends the current capture so
+  // the next run starts clean rather than appending to the previous one.
+  if (sim.mode === SCENARIO_MODE.SETUP) debugRunActive = false;
   if (!sim.paused) {
+    if (!debugRunActive && sim.mode === SCENARIO_MODE.RUNNING) beginDebugRun();
     const rate = Number(speed.value);
     let remaining = elapsed * rate;
     while (remaining > 0) {
+      const t0 = performance.now();
       stepSim(sim, Math.min(0.25, remaining));
+      if (debugRunActive) {
+        perfRec.record(sim, performance.now() - t0);
+        battleLog.sample(sim);
+      }
       remaining -= 0.25;
     }
+    // Persist while live (throttled) and once more the instant the run ends, so
+    // the logs always reflect the latest run even if the tab is closed.
+    if (debugRunActive) {
+      if (sim.mode === SCENARIO_MODE.ENDED) { saveDebugLogs(); debugRunActive = false; }
+      else if (now - lastDebugSaveAt > 5000) { saveDebugLogs(); lastDebugSaveAt = now; }
+    }
   }
+  const renderStart = performance.now();
   render();
+  if (debugRunActive) perfRec.recordRender(performance.now() - renderStart);
   requestAnimationFrame(tick);
 }
 

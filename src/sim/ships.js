@@ -5,6 +5,7 @@
 import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE, WEAPON_STATE, FLEET_ROLE } from "./constants.js";
 import { MISSILES } from "./missiles.js";
 import { clamp } from "./math.js";
+import { initialAircraftState } from "./aircraft.js";
 
 // Monotonic hull id counter. Shared with scenario.js so createScenario can
 // reset it and restoreScenario can fast-forward it past loaded hull ids.
@@ -140,7 +141,33 @@ const SHIP_CLASSES = {
   // anti-ship missiles are usable at range rather than blind beyond a short
   // radar (its own radar must out-reach its primary MaritimeStrike envelope).
   CDB: { hull:"CDB",className:"Coastal Defense Battery approx.",prefix:"CDB",domain:"ground",isFixed:true,glyph:"bunker",lengthM:50,beamM:50,draftM:10,displacementT:5000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:250,radarIntervalS:4,vlsCells:48,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:2,damageDegrade:0.34,baseLoadout:{ MaritimeStrike:32,TomahawkBlockV:8 } },
-  EWR: { hull:"EWR",className:"Early-Warning Radar approx.",prefix:"EWR",domain:"ground",isFixed:true,glyph:"radar",lengthM:40,beamM:40,draftM:14,displacementT:2500,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:400,radarIntervalS:5,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:1,damageDegrade:0.5,baseLoadout:{} }
+  EWR: { hull:"EWR",className:"Early-Warning Radar approx.",prefix:"EWR",domain:"ground",isFixed:true,glyph:"radar",lengthM:40,beamM:40,draftM:14,displacementT:2500,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:400,radarIntervalS:5,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:1,damageDegrade:0.5,baseLoadout:{} },
+
+  // --- Air units (domain:"air") --------------------------------------------
+  // A squadron is one fast-moving entity standing in for a flight of aircraft.
+  // damageResist == plane count, so each hit downs one aircraft (attrition). It
+  // joins the sensor/CEC net automatically via its radar + track-file. Carrier
+  // basing is out of scope; squadrons are spawned directly and rearm at an
+  // airfield. enduranceS / rearmTimeS are TEMP tunables (see aircraft.js).
+  // 4.5-GEN multirole — F/A-18E/F Super Hornet squadron (4 aircraft). Mixed
+  // strike load: AMRAAM + Sidewinder for air-to-air, Harpoon for anti-surface,
+  // carried externally on hardpoints (large radar cross-section). Hardpoints
+  // (vlsCells) hold the flight's aggregate stores; flares are the IR pool. It
+  // relies on stand-off range and terrain masking, not signature, to survive.
+  VFA: { hull:"VFA",className:"Strike Fighter Squadron (4.5-gen) approx.",prefix:"VFA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:20,beamM:14,draftM:5,displacementT:30,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,radarRangeNm:90,radarIntervalS:3,vlsCells:20,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:25,damageResist:4,damageDegrade:0.10,enduranceS:1800,rearmTimeS:90,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120":8,"AIM-9X":4,"AGM-84":8 } },
+  // 5-GEN multirole — low-observable stealth fighter squadron (F-35 approx.).
+  // Carries its weapons internally, so its magazine is smaller, but its tiny
+  // radar cross-section (rcsM2) means hostile radars only see it deep inside
+  // their nominal reach — it shoots first and absorbs far fewer SAM shots per
+  // pass (airEvasionBonus). Better sensor (longer radarRange) reflects fused
+  // sensor fusion. Tunables remain provisional.
+  VFS: { hull:"VFS",className:"Stealth Fighter Squadron (5-gen) approx.",prefix:"VFS",domain:"air",isFixed:false,glyph:"aircraft",lengthM:16,beamM:11,draftM:4,displacementT:28,cruiseSpeedKt:440,maxSpeedKt:560,accelMps2:3.2,decelMps2:3.2,turnRateDps:9,turnRateFlankDps:7,radarRangeNm:110,radarIntervalS:2.5,vlsCells:12,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2,damageResist:4,damageDegrade:0.10,enduranceS:1900,rearmTimeS:100,flares:48,airEvasionBonus:0.08,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-84":4 } },
+
+  // --- Airfield (domain:"ground", placeable anywhere) ----------------------
+  // Behaves like a fixed ground unit but may be placed on land OR water. Serves
+  // as a rearm/refuel node for friendly squadrons. isAirfield gates placement
+  // and the RTB logic (see aircraft.js / scenario.js).
+  AFB: { hull:"AFB",className:"Airfield approx.",prefix:"AFB",domain:"ground",isFixed:true,isAirfield:true,glyph:"airfield",lengthM:80,beamM:80,draftM:10,displacementT:8000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:180,radarIntervalS:4,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},damageResist:3,damageDegrade:0.30,baseLoadout:{} }
 };
 
 // Built-in hull ids captured at module load. Protected from deletion and
@@ -171,27 +198,57 @@ export function unregisterShipClass(hull) {
 
 export { SHIP_CLASSES };
 
+// Default radar cross-section (m²) when a class omits `rcsM2`. Surface ships
+// scale with displacement; ground structures are large; an aircraft flight is a
+// small, hard-to-detect target. A class may override (e.g. a future stealth hull
+// with a deliberately low value). Used by the RCS-based detection model.
+export function defaultRcsM2(cls) {
+  if (Number.isFinite(cls.rcsM2)) return cls.rcsM2;
+  const domain = cls.domain ?? "sea";
+  if (domain === "air") return 25;
+  if (domain === "ground") return 9000;
+  return clamp((cls.displacementT ?? 9000) * 1.3, 3000, 50000);
+}
+
+// Default cruise altitude (m). Only aircraft fly; surface/ground sit at sea
+// level (their radar-reflective height is the structural mast, handled by the
+// sensor model). A class may override via `cruiseAltitudeM`.
+export function defaultAltitudeM(cls) {
+  if (Number.isFinite(cls.cruiseAltitudeM)) return cls.cruiseAltitudeM;
+  return (cls.domain ?? "sea") === "air" ? 9000 : 0;
+}
+
 export function makeShip(side, x, y, hull = "DDG") {
   const cls = SHIP_CLASSES[hull] || SHIP_CLASSES.DDG;
   const seq = nextId++;
   const id = `${cls.prefix}-${seq}`;
   const cruise = cls.cruiseSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER;
+  const loadout = normalizeLoadout(defaultLoadout(hull));
+  const isAir = (cls.domain ?? "sea") === "air";
   return {
     id, name: `${side} ${cls.prefix} ${seq}`, side, hull, className: cls.className, x, y,
     domain: cls.domain ?? "sea", isFixed: cls.isFixed ?? false, glyph: cls.glyph ?? null,
+    isAirfield: cls.isAirfield ?? false,
+    // Air-unit state (squadron lifecycle/fuel/rearm). Empty object for non-air
+    // so consumers can read uniformly; populated only for domain "air".
+    ...(isAir ? initialAircraftState(cls) : {}),
+    // Snapshot the spawned magazine so an airfield can refill it on rearm.
+    baseLoadoutSnapshot: { ...loadout },
     heading: side === SIDE.BLUE ? Math.PI : 0, speed: 0,
     cruiseSpeed: cruise, desiredSpeed: cruise,
     maxSpeed: cls.maxSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER,
     accel: cls.accelMps2 * SHIP_SPEED_MULTIPLIER, decel: cls.decelMps2 * SHIP_SPEED_MULTIPLIER,
     turnRate: cls.turnRateDps * Math.PI / 180, turnRateFlank: cls.turnRateFlankDps * Math.PI / 180,
     lengthM: cls.lengthM, beamM: cls.beamM, draftM: cls.draftM, displacementT: cls.displacementT,
+    // Signature + altitude drive RCS/horizon-based detection (see sensors.js).
+    rcsM2: defaultRcsM2(cls), altitudeM: defaultAltitudeM(cls),
     radarRangeM: cls.radarRangeNm * NM, radarInterval: cls.radarIntervalS, radarCooldown: 0, radarActive: true,
     editable: true, alive: true,
     damage: 0, damageResist: cls.damageResist, damageDegrade: cls.damageDegrade,
     subsystems: { radar: 1.0, vls: 1.0, propulsion: 1.0, fireControl: 1.0, ciws: 1.0, cic: 1.0 },
     waypoint: null,
     navigationWaypoint: null,
-    loadout: normalizeLoadout(defaultLoadout(hull)),
+    loadout,
     vlsCells: cls.vlsCells,
     tracks: new Map(),
     doctrine: { aggression: 0.65, standoffNm: 70, defensiveRangeNm: 22, conserveWeapons: 0.25 },

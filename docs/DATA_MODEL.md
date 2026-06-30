@@ -290,9 +290,21 @@ Three fixed ground emplacement classes share the same object shape but set `doma
 | CDB | coastal anti-ship battery (OTH radar) | CDB | 250 nm | MaritimeStrike×32, TomahawkBlockV×8 |
 | EWR | early-warning radar (no weapons) | EWR | 400 nm | — |
 
+Two air-unit classes set `domain: "air"`: a squadron is one entity whose
+`damageResist` (hit-point pool) **is** its aircraft count, so each hit downs one
+plane. They are placeable anywhere, overfly terrain, and rearm at an airfield.
+`AFB` is an airfield (a ground unit with `isAirfield: true`) placeable on land or
+water that serves as the rearm/refuel node:
+
+| Hull | Role | Prefix | Radar | Default loadout |
+|------|------|--------|------:|-----------------|
+| VFA | 4.5-gen multirole strike-fighter squadron | VFA | 90 nm | AIM-120×8, AIM-9X×4, AGM-84×8 |
+| VFS | 5-gen low-observable multirole squadron | VFS | 110 nm | AIM-120×4, AIM-9X×2, AGM-84×4 |
+| AFB | airfield / rearm-refuel node (land or water) | AFB | 180 nm | — |
+
 Key per-class fields on every ship object:
-- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"EWR"`)
-- `domain` / `isFixed` — `"ground"` + `true` for stationary land emplacements
+- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"EWR"`, `"VFA"`, `"VFS"`, `"AFB"`)
+- `domain` / `isFixed` — `"ground"` + `true` for stationary land emplacements; `"air"` for aircraft squadrons
 - `vlsCells` — total VLS capacity; every missile draws from this one pool by its `cellCost`
 - `damageResist` — whole-hit damage points before mission-kill
 - `damageDegrade` — speed/manoeuvre penalty per damage point

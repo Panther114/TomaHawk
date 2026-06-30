@@ -5,7 +5,8 @@
       "name": "tomahawk",
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.mjs"],
-      "port": 4173
+      "port": 4172,
+      "autoPort": true
     }
   ]
 }

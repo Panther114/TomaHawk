@@ -119,10 +119,10 @@ test("loadout validation enforces 96-cell VLS capacity", () => {
 
 test("default loadouts fill each hull's VLS capacity with integer counts", () => {
   for (const hull of Object.keys(SHIP_CLASSES)) {
-    // Fixed ground emplacements carry an explicit, type-specific magazine that
-    // intentionally does not fill (or even use) VLS cells — only naval hulls
-    // are topped off to capacity.
-    if (SHIP_CLASSES[hull].domain === "ground") continue;
+    // Units with an explicit type-specific magazine (ground emplacements, air
+    // squadrons) intentionally do not fill VLS cells — only naval hulls that
+    // rely on the scaled default loadout are topped off to capacity.
+    if (SHIP_CLASSES[hull].baseLoadout) continue;
     const cap = SHIP_CLASSES[hull].vlsCells;
     const loadout = defaultLoadout(hull);
     const used = usedCells(loadout);

@@ -1,10 +1,10 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 
 const root = resolve(process.cwd());
 const host = process.env.HOST || "0.0.0.0";
-const port = Number(process.env.PORT || 4173);
+const port = Number(process.env.PORT || 4172);
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -22,6 +22,30 @@ createServer(async (req, res) => {
     if (url.pathname === "/health") {
       res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
       res.end("ok");
+      return;
+    }
+    // Debug-log sink: the browser app POSTs its per-run performance + tactical
+    // logs here so they are written to debug/ (overwritten every run), the same
+    // files the headless runner produces. Local-only convenience; ignored if the
+    // payload is malformed.
+    if (url.pathname === "/debug/save" && req.method === "POST") {
+      const chunks = [];
+      for await (const chunk of req) {
+        chunks.push(chunk);
+        if (chunks.reduce((n, c) => n + c.length, 0) > 8 * 1024 * 1024) break; // 8MB cap
+      }
+      try {
+        const { perf, sim: simLog } = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        const dir = resolve(root, "debug");
+        await mkdir(dir, { recursive: true });
+        if (typeof perf === "string") await writeFile(resolve(dir, "perf-debug.log"), perf, "utf8");
+        if (typeof simLog === "string") await writeFile(resolve(dir, "sim-debug.log"), simLog, "utf8");
+        res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+        res.end("saved");
+      } catch {
+        res.writeHead(400);
+        res.end("bad debug payload");
+      }
       return;
     }
     const rel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);

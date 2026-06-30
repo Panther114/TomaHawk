@@ -10,6 +10,11 @@ import { currentTrack } from "./sensors.js";
 
 const offensivePriorCache = new Map();
 
+// Threat weight of an observed enemy aircraft squadron in the force estimate.
+// Smaller than a destroyer's strike prior (a flight throws a modest salvo) but
+// non-trivial. Provisional — tune alongside the air-unit model.
+const AIR_OFFENSE_PRIOR = 12;
+
 // ---------------------------------------------------------------------------
 // Cooperative Engagement Capability (CEC) — composite fire-control tracks.
 //
@@ -27,6 +32,7 @@ function mergeTrack(fused, track) {
     fused.set(track.id, {
       id: track.id,
       side: track.side,
+      domain: track.domain ?? "sea",
       classification: track.classification,
       x: track.x,
       y: track.y,
@@ -203,6 +209,13 @@ function observedMissilePressure(sim, side) {
 }
 
 export function offensiveTargetValue(track) {
+  // Air platforms (squadrons) are priority air-defence targets: killing the
+  // shooter is worth more than chasing its missiles. Valued on track firmness.
+  if (track?.domain === "air") {
+    const quality = clamp(track?.quality ?? 0.35, 0.05, 0.99);
+    const uncertaintyPenalty = Math.min(18, (track?.uncertainty ?? 0) / NM * 0.75);
+    return 78 + quality * 34 - uncertaintyPenalty;
+  }
   const hull = trackHullEstimate(track);
   // Ground emplacements are high-priority strike targets: killing the radar
   // blinds the coast, killing the SAM opens the strike lane, the battery is a
@@ -261,8 +274,15 @@ function observedForceMetrics(sim, side) {
       metrics.missilePressure += 1;
       continue;
     }
-    const hull = trackHullEstimate(track) || "DDG";
     const quality = clamp(track.quality ?? 0.35, 0.05, 0.99);
+    if (track.domain === "air") {
+      // Enemy aircraft carry strike weapons (a real offensive threat) but no VLS
+      // magazine — counting them as a destroyer would over-state enemy strength.
+      metrics.offense += AIR_OFFENSE_PRIOR * (0.55 + 0.45 * quality);
+      metrics.targets += 1;
+      continue;
+    }
+    const hull = trackHullEstimate(track) || "DDG";
     metrics.offense += offensivePriorForHull(hull) * (0.55 + 0.45 * quality);
     metrics.vls += estimatedVlsCapacity(track);
     metrics.targets += 1;
@@ -305,7 +325,9 @@ export function computeFleetCommand(sim) {
     // ground emplacements are never chosen as OTC/AAWC unless no sea unit
     // survives on the side.
     const ordered = [...ships].sort((a, b) => fleetCapability(b) - fleetCapability(a) || a.id.localeCompare(b.id));
-    const mobileOrdered = ordered.filter((ship) => !ship.isFixed);
+    // The guide anchors the surface formation, so it must be a mobile surface
+    // combatant — never a fixed emplacement and never an air squadron.
+    const mobileOrdered = ordered.filter((ship) => !ship.isFixed && ship.domain !== "air");
     const otc = mobileOrdered[0] ?? ordered[0];
     otc.isOTC = true;
     otc.fleetRole = FLEET_ROLE.OTC;
@@ -327,13 +349,27 @@ export function computeFleetCommand(sim) {
       if (sx !== 0 || sy !== 0) axis = Math.atan2(sy, sx);
     }
 
-    // Split AAW sectors around the threat axis among the units; the OTC owns
-    // the central sector straddling the axis.
-    const n = ships.length;
+    // Split AAW sectors around the threat axis among the air-defence units.
+    // Aircraft are mobile strikers, not sectorised air-defence pickets, so they
+    // are excluded from the sector division and own no sector (a full-circle
+    // half-width disables the sector overlay for them) and no formation station.
+    // Derive from `ordered` (capability-sorted) so the non-air ordering — and
+    // thus every sector assignment — is byte-identical to the pre-air behaviour
+    // when no aircraft are present.
+    const sectorShips = ordered.filter((ship) => ship.domain !== "air");
+    for (const ship of ships) {
+      if (ship.domain === "air") {
+        ship.sectorCenter = side === SIDE.BLUE ? 0 : Math.PI;
+        ship.sectorHalfWidth = Math.PI;
+        ship.station = null;
+      }
+    }
+    const n = sectorShips.length;
     const sectorWidth = (2 * Math.PI) / Math.max(1, n);
     const stationRing = 6 * NM; // screen radius around the guide
-    const sectorOrder = [otc, ...ordered.filter((ship) => ship !== otc)];
+    const sectorOrder = [otc, ...sectorShips.filter((ship) => ship !== otc)];
     sectorOrder.forEach((ship, idx) => {
+      if (ship.domain === "air") return;
       // idx 0 (OTC) -> centred on axis; others fan out alternately.
       const slot = idx === 0 ? 0 : (idx % 2 === 1 ? Math.ceil(idx / 2) : -Math.ceil(idx / 2));
       ship.sectorCenter = wrapAngle(axis + slot * sectorWidth);

@@ -47,6 +47,11 @@
 - Pre-computed indexes for hot-path functions.
 - Machine-independent complexity-score performance-regression guard in the test suite.
 - Large-battle performance headroom with thousands of ticks/sec on multi-ship seeds.
+- **Air units (aircraft squadrons):** one entity per flight with attrition = plane count; two generations (4.5-gen `VFA`, 5-gen low-observable `VFS`); low-altitude stand-off strike doctrine with ingress/egress, radar-air-to-air and infrared dogfighting, evasive breaks, and flares; **airfields** (placeable on land or water) with a return-to-base / rearm / refuel / relaunch cycle.
+- **Detection realism:** radar-cross-section-limited detection range and an altitude / radar-horizon "shadow" model; per-missile cruise altitude with a bounded energy-bleed (drag) speed model; air-to-air no-escape-zone geometry; air weapons `AIM-120`, `AIM-9X`, `AGM-84`.
+- **Anti-overcommit fire planning:** dedicated anti-ship weapons preferred over the dual-role SM-6, raid size capped by target toughness outside a deliberate saturation doctrine.
+- **Unit Workshop:** browser-stored, schema-driven custom naval/ground/ammo units (IndexedDB; import/export; vanilla units locked).
+- **Debug logging:** read-only per-run performance trace (sim vs render attribution) and a tactical narrative log, written to `debug/` headless (`npm run debug:sim`) or from the browser.
 
 ## Current Defaults
 

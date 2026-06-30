@@ -8,6 +8,7 @@ import { MISSILES, missileDisplayRole } from "./missiles.js";
 import { availableCount, setAvailableCount, defaultLoadout, defaultRoe } from "./ships.js";
 import { addEvent } from "./events.js";
 import { currentTrack, markContactDead } from "./sensors.js";
+import { AIRCRAFT_TEMP_CONFIG, aliveAircraftCount } from "./aircraft.js";
 import {
   forceTrack,
   inSector,
@@ -22,6 +23,72 @@ import {
 // Use the per-tick id indexes built in stepSim when present, falling back to a
 // linear scan so functions called directly from tests (without a full tick)
 // still behave. All return the same result as the original `.find`/`.filter`.
+
+// When the per-tick missile-by-target index exists, an absent bucket means the
+// ship has nothing inbound — iterate an empty list instead of falling back to a
+// full O(missiles) scan. The scan fallback is only for callers without an index
+// (e.g. direct unit tests). Shared frozen empty array avoids per-call allocation.
+const NO_INCOMING = [];
+function incomingMissilesFor(sim, shipId) {
+  if (sim._missilesByTarget) return sim._missilesByTarget.get(shipId) ?? NO_INCOMING;
+  return sim.missiles;
+}
+
+// --- missile spatial grid (saturation density) ------------------------------
+// A pooled per-tick uniform grid bucketing live missiles by position. It lets
+// the saturation models ask "how crowded is the airspace around this point" as a
+// true LOCAL density (missiles from any raid), which is both more realistic than
+// the old same-target-bucket proxy and bounded to a handful of nearby cells
+// instead of a naive O(missiles) scan per query. Buckets are reused across ticks
+// (only the previously-filled ones are cleared) to keep allocation — and GC
+// pressure on low-RAM machines — low. Cell size ≈ the largest saturation radius.
+const SAT_CELL_M = 8 * NM;
+function buildMissileGrid(sim, missiles) {
+  let grid = sim._missileGrid;
+  if (!grid) grid = sim._missileGrid = { cells: new Map(), used: [] };
+  for (const bucket of grid.used) bucket.length = 0;
+  grid.used.length = 0;
+  for (const m of missiles) {
+    if (!m.alive) continue;
+    const key = `${Math.floor(m.x / SAT_CELL_M)},${Math.floor(m.y / SAT_CELL_M)}`;
+    let bucket = grid.cells.get(key);
+    if (!bucket) { bucket = []; grid.cells.set(key, bucket); }
+    if (bucket.length === 0) grid.used.push(bucket);
+    bucket.push(m);
+  }
+  return grid;
+}
+// Count live missiles within `radiusM` of (x,y) that satisfy `match`. Scans only
+// the cells overlapping the radius; the count is order-independent (deterministic).
+function countNearbyMissiles(grid, x, y, radiusM, match) {
+  if (!grid) return 0;
+  const span = Math.ceil(radiusM / SAT_CELL_M);
+  const cx = Math.floor(x / SAT_CELL_M);
+  const cy = Math.floor(y / SAT_CELL_M);
+  const r2 = radiusM * radiusM;
+  let n = 0;
+  for (let ix = cx - span; ix <= cx + span; ix++) {
+    for (let iy = cy - span; iy <= cy + span; iy++) {
+      const bucket = grid.cells.get(`${ix},${iy}`);
+      if (!bucket) continue;
+      for (const m of bucket) {
+        const dx = m.x - x;
+        const dy = m.y - y;
+        if (dx * dx + dy * dy <= r2 && match(m)) n++;
+      }
+    }
+  }
+  return n;
+}
+
+// Effective relaunch interval for a launcher+weapon. A squadron has one shooter
+// per surviving aircraft, so its volley cadence scales with the flight: a 4-ship
+// flight relaunches a type ~4x faster than a lone survivor. Ships are unchanged
+// (returns the raw spec interval), so the surface launch path is byte-identical.
+function effectiveLaunchIntervalS(launcher, spec) {
+  if (launcher.domain !== "air") return spec.launchIntervalS;
+  return spec.launchIntervalS / Math.max(1, aliveAircraftCount(launcher));
+}
 
 function aliveShipById(sim, id) {
   const s = sim._shipById ? sim._shipById.get(id) : sim.ships.find((x) => x.id === id);
@@ -67,6 +134,7 @@ function makeLaunchOrder(sim, launcher, track, missileId, sequence = 0) {
     missileId,
     targetId: track.id,
     targetSide: track.side,
+    targetDomain: track.domain ?? "sea",
     targetClassification: track.classification,
     targetX: track.x,
     targetY: track.y,
@@ -107,7 +175,7 @@ function launchMissile(sim, launcher, order) {
   const queueReadyAt = order.defensive ? (launcher.nextDefensiveLaunchAt || 0) : (launcher.nextLaunchAt || 0);
   if (sim.time < Math.max(order.readyAt, queueReadyAt)) return false;
   const lastTypeLaunch = launcher.lastLaunchAtByMissile[order.missileId] ?? -Infinity;
-  if (sim.time - lastTypeLaunch < spec.launchIntervalS) return false;
+  if (sim.time - lastTypeLaunch < effectiveLaunchIntervalS(launcher, spec)) return false;
   setAvailableCount(launcher, order.missileId, availableCount(launcher, order.missileId) - 1);
   const lane = ((order.launchSequence ?? 0) % 5) - 2;
   const laneOffset = lane * 38;
@@ -128,7 +196,12 @@ function launchMissile(sim, launcher, order) {
     launcherId: launcher.id,
     targetId: order.targetId,
     missileId: order.missileId,
-    launchRole: spec.category === "dual_role" ? (order.defensive ? "anti_air" : "anti_ship") : spec.category,
+    // Dual-role role is "anti_air" when engaging an in-flight missile OR an
+    // aircraft platform, else "anti_ship". (Identical to the old defensive-based
+    // rule for vanilla, where air targets never occur.)
+    launchRole: spec.category === "dual_role"
+      ? ((String(order.targetId).startsWith("M-") || order.targetDomain === "air") ? "anti_air" : "anti_ship")
+      : spec.category,
     x: launchPos.x,
     y: launchPos.y,
     heading: wrapAngle(heading + lane * 0.006),
@@ -140,6 +213,11 @@ function launchMissile(sim, launcher, order) {
     aimX: lead.x,
     aimY: lead.y,
     phase: spec.category === "anti_ship" ? "cruise" : "boost",
+    // Cruise altitude (m): anti-ship weapons sea-skim, air-defence/strike rounds
+    // loft. Drives the energy-bleed (drag) model and the detail display; the map
+    // stays top-down (altitude is not a third movement axis).
+    altitudeM: spec.category === "anti_ship" ? 30 : 7000,
+    launchSpeedMps: spec.speedMps,
     terminalReason: null,
     seaSkimming: false,
     maneuvering: spec.category === "anti_ship",
@@ -173,7 +251,7 @@ function launchMissile(sim, launcher, order) {
     // missile-specific interval above still prevents same-round overlap.
     launcher.nextDefensiveLaunchAt = sim.time + 0.45;
   } else {
-    launcher.nextLaunchAt = sim.time + spec.launchIntervalS;
+    launcher.nextLaunchAt = sim.time + effectiveLaunchIntervalS(launcher, spec);
   }
   addEvent(sim, `${launcher.name} launched ${spec.shortLabel} at ${order.targetClassification}.`, launcher.side);
   return true;
@@ -189,7 +267,7 @@ export function processLaunchQueues(sim) {
       if (!spec || availableCount(ship, order.missileId) <= 0) continue;
       const queueReadyAt = order.defensive ? (ship.nextDefensiveLaunchAt || 0) : (ship.nextLaunchAt || 0);
       const lastTypeLaunch = ship.lastLaunchAtByMissile?.[order.missileId] ?? -Infinity;
-      if (sim.time < Math.max(order.readyAt, queueReadyAt) || sim.time - lastTypeLaunch < spec.launchIntervalS) continue;
+      if (sim.time < Math.max(order.readyAt, queueReadyAt) || sim.time - lastTypeLaunch < effectiveLaunchIntervalS(ship, spec)) continue;
       if (selectedIndex < 0) {
         selectedIndex = index;
         continue;
@@ -237,13 +315,34 @@ function shipThreatEngagementCount(sim, ship, targetId) {
 }
 
 function buildEngagementIndex(sim) {
-  const countsBySide = new Map();
-  const queuedByTarget = new Map();
-  const activeTargetsBySide = new Map();
-  const queuedTargetsByLauncher = new Map();
-  const defensiveCountsByLauncher = new Map();
-  const solutionsByTarget = new Map();
-  const bestLocalMissileTracks = new Map([[SIDE.BLUE, new Map()], [SIDE.RED, new Map()]]);
+  // Pool the top-level index structures across fire-planning cycles and clear
+  // them in place rather than reallocating seven Maps every second. Each is
+  // refilled in the same deterministic order, so a cleared+refilled Map iterates
+  // identically to a fresh one — no behavioural change, just less GC churn. (The
+  // small dynamic nested structures are still made fresh; pooling those is not
+  // worth the bookkeeping risk.) The index is transient (nulled at the end of
+  // planEngagements) so no stale data survives between cycles.
+  const pool = sim._engPool ?? (sim._engPool = {
+    countsBySide: new Map(),
+    queuedByTarget: new Map(),
+    activeTargetsBySide: new Map(),
+    queuedTargetsByLauncher: new Map(),
+    defensiveCountsByLauncher: new Map(),
+    solutionsByTarget: new Map(),
+    bestLocalMissileTracks: new Map([[SIDE.BLUE, new Map()], [SIDE.RED, new Map()]])
+  });
+  const {
+    countsBySide, queuedByTarget, activeTargetsBySide, queuedTargetsByLauncher,
+    defensiveCountsByLauncher, solutionsByTarget, bestLocalMissileTracks
+  } = pool;
+  countsBySide.clear();
+  queuedByTarget.clear();
+  activeTargetsBySide.clear();
+  queuedTargetsByLauncher.clear();
+  defensiveCountsByLauncher.clear();
+  solutionsByTarget.clear();
+  bestLocalMissileTracks.get(SIDE.BLUE).clear();
+  bestLocalMissileTracks.get(SIDE.RED).clear();
   const increment = (side, targetId, missileId) => {
     let byTarget = countsBySide.get(side);
     if (!byTarget) {
@@ -368,10 +467,21 @@ function threatTimeToImpact(missile, target) {
 }
 
 function inboundRaidCount(sim, ship) {
+  // The inbound raid on a ship is constant for the whole fire-planning cycle
+  // (missiles in flight don't change while planning), yet it is queried once per
+  // threat — so memoize it per cycle to avoid re-counting the same bucket O(raid)
+  // times (the dominant quadratic cost in a saturated defence). Deterministic:
+  // the cached value equals a fresh count.
+  const cache = sim._raidCountCache;
+  if (cache) {
+    const cached = cache.get(ship.id);
+    if (cached !== undefined) return cached;
+  }
   let count = 0;
   for (const missile of sim._missilesByTarget?.get(ship.id) ?? []) {
     if (missile.alive && missile.side !== ship.side) count++;
   }
+  cache?.set(ship.id, count);
   return count;
 }
 
@@ -491,13 +601,81 @@ function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.
     return true;
   });
   if (!candidates.length) return null;
+  // Prefer a DEDICATED anti-ship weapon over a dual-role round so the fleet's
+  // SM-6 (its precious area air-defence missile) is conserved for the air battle
+  // instead of being burned as the primary strike weapon — then by range fit,
+  // then by reach. (For a vanilla hull whose only in-range anti-ship option is a
+  // dedicated weapon this is unchanged; it only changes the SM-6-vs-strike tie.)
+  const dual = (id) => (MISSILES[id].category === "dual_role" ? 1 : 0);
   let best = candidates[0];
   for (let i = 1; i < candidates.length; i++) {
     const candidate = candidates[i];
     const candidateRangeFit = rangeM <= MISSILES[candidate].preferredMaxRangeM ? 0 : 1;
     const bestRangeFit = rangeM <= MISSILES[best].preferredMaxRangeM ? 0 : 1;
-    const comparison = candidateRangeFit - bestRangeFit || MISSILES[candidate].rangeM - MISSILES[best].rangeM;
+    const comparison = dual(candidate) - dual(best)
+      || candidateRangeFit - bestRangeFit
+      || MISSILES[candidate].rangeM - MISSILES[best].rangeM;
     if (comparison < 0) best = candidate;
+  }
+  return best;
+}
+
+// Pick a weapon to engage an enemy aircraft *platform* (not an in-flight
+// missile). Candidates are anti-air-capable rounds actually in the magazine
+// (anti_air or dual_role), keeping a defensive reserve unless authorised to
+// commit it. Mirrors chooseAntiShipWeapon's longest-reach-fit selection.
+function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5) {
+  const rangeM = distance(ship, track);
+  const hull = ship.hull || "DDG";
+  const baseLoad = defaultLoadout(hull);
+  const candidates = Object.keys(ship.loadout).filter((id) => {
+    const spec = MISSILES[id];
+    if (!spec) return false;
+    const antiAirCapable = spec.category === "anti_air" || spec.category === "dual_role"
+      || spec.target === "missile" || spec.target === "dual";
+    if (!antiAirCapable) return false;
+    if (rangeM > spec.rangeM) return false;
+    const reserve = allowReserve ? 0 : Math.ceil((baseLoad[id] ?? ship.loadout[id]) * (spec.magazineReserveRatio || 0));
+    if (!ship.loadout[id] || ship.loadout[id] <= reserve) return false;
+    return true;
+  });
+  if (!candidates.length) return null;
+  // Prefer a high-percentage no-escape-zone shot (target inside this weapon's NEZ)
+  // — e.g. close in for a Sidewinder kill rather than lob a max-range AMRAAM —
+  // then by preferred-range fit, then by reach.
+  const inNez = (id) => (rangeM <= MISSILES[id].rangeM * (MISSILES[id].nezFraction ?? 0.5) ? 0 : 1);
+  let best = candidates[0];
+  for (let i = 1; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    const candidateFit = rangeM <= MISSILES[candidate].preferredMaxRangeM ? 0 : 1;
+    const bestFit = rangeM <= MISSILES[best].preferredMaxRangeM ? 0 : 1;
+    const comparison = inNez(candidate) - inNez(best)
+      || candidateFit - bestFit
+      || MISSILES[candidate].rangeM - MISSILES[best].rangeM;
+    if (comparison < 0) best = candidate;
+  }
+  return best;
+}
+
+// Aircraft hard-kill of an inbound anti-ship missile (outer air battle). Kept
+// deliberately conservative so a flight does not strip its air-to-air load to
+// chase cruise missiles: only the long-range RADAR AAM is used (IR seekers do
+// poorly against a cold sea-skimmer), only against ASCMs, and only while a heavy
+// reserve of that round remains for the dogfight. Returns null otherwise.
+function chooseAirInterceptWeapon(ship, threat) {
+  if (MISSILES[threat.missileId]?.category !== "anti_ship") return null;
+  const rangeM = distance(ship, threat);
+  const baseLoad = defaultLoadout(ship.hull || "VFA");
+  let best = null;
+  for (const id in ship.loadout) {
+    const spec = MISSILES[id];
+    if (!spec) continue;
+    if (spec.category !== "anti_air" && spec.category !== "dual_role") continue;
+    if (spec.guidance === "infrared") continue; // WVR IR poor vs sea-skimmer; save for A2A
+    if (rangeM > spec.rangeM) continue;
+    const reserve = Math.ceil((baseLoad[id] ?? ship.loadout[id]) * 0.7); // keep 70% for air-to-air
+    if (ship.loadout[id] <= reserve) continue;
+    if (!best || spec.rangeM > MISSILES[best].rangeM) best = id;
   }
   return best;
 }
@@ -606,10 +784,14 @@ function planDefensiveFires(sim) {
         const defenderShotCap = need.needShootShoot ? 2 : 1;
         if (defenderAssigned >= defenderShotCap) continue;
         if (!need.needShootShoot && !need.needPromptShot && hasPendingOrActiveEngagement(sim, defender, missile.id)) continue;
-        const weapon = chooseDefensiveWeapon(sim, defender, missile, {
-          urgent: need.needPromptShot,
-          preferCheapFollowup: defenderAssigned > 0 && need.preferCheapLayer(distance(defender, missile))
-        });
+        // Aircraft defend the fleet with AAMs (conservatively); ships use their
+        // layered SAM doctrine. Branching keeps the surface path byte-identical.
+        const weapon = defender.domain === "air"
+          ? chooseAirInterceptWeapon(defender, missile)
+          : chooseDefensiveWeapon(sim, defender, missile, {
+              urgent: need.needPromptShot,
+              preferCheapFollowup: defenderAssigned > 0 && need.preferCheapLayer(distance(defender, missile))
+            });
         if (!weapon) continue;
         const threatTrack = {
           id: missile.id,
@@ -676,6 +858,16 @@ function planOffensiveFires(sim) {
     const targetLimit = Math.max(1, Math.min(observedTargets.length, posture.targetBreadth ?? 1));
     const targetPlan = new Map();
     const selectedTargets = observedTargets.slice(0, targetLimit);
+    // A high-value enemy flight can outrank every ship and, with a narrow target
+    // breadth, monopolise the side's whole salvo — leaving the strikers' anti-
+    // ship rounds unused. Guarantee the top surface/ground target a slot so the
+    // fleet keeps prosecuting ships even while fighters are up. (When every
+    // observed target is already surface this is a no-op, so pure-surface play is
+    // unchanged.)
+    if (selectedTargets.length && selectedTargets.every((it) => (it.track.domain ?? "sea") === "air")) {
+      const topSurface = observedTargets.find((it) => (it.track.domain ?? "sea") !== "air");
+      if (topSurface) selectedTargets.push(topSurface);
+    }
     const scoreTotal = selectedTargets.reduce((sum, item) => sum + item.score, 0) || 1;
     for (const item of selectedTargets) {
       const scoreShare = item.score / scoreTotal;
@@ -686,13 +878,35 @@ function planOffensiveFires(sim) {
           : posture.mode === "focus"
             ? (posture.raidDepth ?? 3) * (1.05 + scoreShare * 1.35)
             : (posture.raidDepth ?? 2) * (0.65 + scoreShare);
-      const desired = Math.max(
+      let desired = Math.max(
         posture.mode === "saturate" ? 3 : 1,
         Math.min(
           posture.mode === "saturate" ? 16 : 12,
           Math.round(desiredBase)
         )
       );
+      // Cap the raid by the target's toughness so the fleet does not dump a
+      // 16-deep saturation salvo on a 1-HP frigate. Size it to score the
+      // remaining hits through expected defensive leakage plus a few leakers —
+      // enough to kill, not the whole magazine. (Posture still governs how the
+      // shots are paced and split.)
+      // A deliberate saturation doctrine is *meant* to overwhelm, so the cap
+      // only reins in the default/measured postures (the casual overcommit) —
+      // the SM-6→dedicated-weapon preference already curbs magazine waste in
+      // every mode.
+      const tgt = posture.mode === "saturate" ? null : aliveShipById(sim, item.track.id);
+      if (tgt) {
+        const remainingHits = Math.max(1, Math.ceil(tgt.damageResist ?? 1) - Math.round(tgt.damage ?? 0));
+        const desiredLeakers = ships[0]?.offenseDoctrine?.desiredLeakers ?? 2;
+        // Against a layered SAM defence only a fraction of a strike salvo leaks
+        // through and hits, so size the raid to score the remaining hits at that
+        // leakage plus a few extra leakers — generous enough to kill a defended
+        // ship, but not the whole magazine on a lone frigate (a 2-HP hull caps at
+        // ~8 instead of the 16-deep saturation salvo).
+        const expectedLeakFrac = 0.35;
+        const hpCap = Math.ceil(remainingHits / expectedLeakFrac) + desiredLeakers;
+        desired = Math.min(desired, hpCap);
+      }
       targetPlan.set(item.track.id, {
         track: item.track,
         score: item.score,
@@ -731,16 +945,29 @@ function planOffensiveFires(sim) {
           if (!track) continue;
           const targetScore = state.score;
           const targetAllowReserve = allowReserve || shooterAggression > 0.72 || targetScore > 120;
-          const weapon = chooseAntiShipWeapon(shooter, track, targetAllowReserve, shooterAggression);
+          // Engaging an aircraft platform draws anti-air rounds; ships/ground
+          // draw anti-ship rounds. Routing by target domain keeps the surface
+          // path byte-identical when no air units are present.
+          const targetIsAir = targetShip.domain === "air";
+          const weapon = targetIsAir
+            ? chooseAntiAirWeapon(shooter, track, targetAllowReserve, shooterAggression)
+            : chooseAntiShipWeapon(shooter, track, targetAllowReserve, shooterAggression);
           if (!weapon) continue;
           const alreadyAssigned = countSideWeaponsOnTarget(sim, side, item.track.id);
           if (alreadyAssigned >= state.desired) continue;
-          const ownPending = (shooter.launchQueue || []).some((order) => order.targetId === item.track.id && MISSILES[order.missileId]?.category === "anti_ship")
-            || missilesTargeting(sim, item.track.id).some((m) => m.launcherId === shooter.id && MISSILES[m.missileId]?.category === "anti_ship");
+          const offensiveCat = targetIsAir
+            ? ((c) => c === "anti_air" || c === "dual_role")
+            : ((c) => c === "anti_ship");
+          const ownPending = (shooter.launchQueue || []).some((order) => order.targetId === item.track.id && offensiveCat(MISSILES[order.missileId]?.category))
+            || missilesTargeting(sim, item.track.id).some((m) => m.launcherId === shooter.id && offensiveCat(MISSILES[m.missileId]?.category));
           const saturationHold = posture.mode === "saturate" ? 0.92 : shooterAggression > 0.74 ? 0.75 : 0.5;
           if (ownPending && alreadyAssigned >= Math.ceil(state.desired * saturationHold)) continue;
           const salvoBonus = posture.mode === "saturate" && shooterAggression > 0.82 ? 1 : 0;
-          const count = Math.min(MISSILES[weapon].salvo + salvoBonus, state.desired - alreadyAssigned, availableCount(shooter, weapon));
+          // A squadron's coordinated volley is capped by its surviving aircraft:
+          // one shooter per plane, so an attrited flight throws fewer per cycle.
+          // Infinity for ships keeps the surface path byte-identical.
+          const flightCap = shooter.domain === "air" ? Math.max(1, aliveAircraftCount(shooter)) : Infinity;
+          const count = Math.min(MISSILES[weapon].salvo + salvoBonus, state.desired - alreadyAssigned, availableCount(shooter, weapon), flightCap);
           if (count > 0 && queueSalvo(sim, shooter, track, weapon, count, {
             readyAtOverride: state.coordinatedReadyAt,
             priorityOverride: posture.mode === "saturate" ? 40 : 50
@@ -762,6 +989,8 @@ function planOffensiveFires(sim) {
 export function planEngagements(sim) {
   if (sim.time < (sim.nextFirePlanAt ?? 0)) return;
   sim.nextFirePlanAt = sim.time + 1;
+  // Per-cycle inbound-raid memo: the missile set is stable through planning.
+  sim._raidCountCache = new Map();
   sim._engagementIndex = buildEngagementIndex(sim);
   computeFleetCommand(sim);
   planDefensiveFires(sim);
@@ -770,6 +999,7 @@ export function planEngagements(sim) {
     if (ship.alive) ship.lastFirePlanAt = sim.time;
   }
   sim._engagementIndex = null;
+  sim._raidCountCache = null;
 }
 
 // Subsystem damage model: each hit degrades random subsystems, affecting combat capability.
@@ -814,14 +1044,74 @@ function handleTargetLoss(sim, missile, spec) {
   return false;
 }
 
+// Terminal survivability roll for a missile reaching an aircraft squadron. The
+// flight is a small, fast, hard target (large inherent evasion), harder still
+// while breaking, and infrared seekers can be spoofed outright by flares.
+// May consume one flare and one RNG draw (flare roll); the caller draws the
+// hit roll only when not decoyed, so the RNG order stays deterministic.
+// Closing speed of a missile on its target along the line of sight (m/s).
+// Positive = closing (hot/head-on), negative = opening (tail-chase / out-run).
+function closureRate(missile, target) {
+  const dx = target.x - missile.x;
+  const dy = target.y - missile.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const lx = dx / d;
+  const ly = dy / d;
+  const mvx = Math.cos(missile.heading) * missile.speed;
+  const mvy = Math.sin(missile.heading) * missile.speed;
+  const tv = entityVelocity(target);
+  return (mvx - tv.vx) * lx + (mvy - tv.vy) * ly;
+}
+
+function airDefenseHitChance(sim, missile, spec, target) {
+  const cfg = AIRCRAFT_TEMP_CONFIG;
+  if (spec.guidance === "infrared" && (target.flares ?? 0) > 0 && (target.evading || missile.terminal)) {
+    target.flares -= 1;
+    if (sim.rng.next() < cfg.flareDecoyChance) {
+      addEvent(sim, `${target.name} decoyed ${missile.missileId} with flares.`, target.side);
+      return { decoyed: true, pk: 0 };
+    }
+  }
+  let pk = spec.pk - cfg.evasionBase - (target.airEvasionBonus ?? 0);
+  if (target.evading) pk -= cfg.evasionManeuver;
+  pk += missile.terminal ? 0.10 : 0;
+  // Air-to-air geometry. No-escape-zone: a shot taken within `nezFraction` of the
+  // weapon's reach keeps its energy and is hard to defeat; a max-range shot is
+  // energy-depleted and far easier to out-run. Aspect: a tail-chase (the target
+  // opening from the missile) loses closure energy. Both are per-missile tunable.
+  const rangeFrac = clamp((missile.flownM ?? 0) / Math.max(1, missile.maxRangeM), 0, 1);
+  const nez = spec.nezFraction ?? 0.5;
+  pk += rangeFrac <= nez ? 0.10 : -0.22 * ((rangeFrac - nez) / Math.max(0.05, 1 - nez));
+  if (closureRate(missile, target) < 0) pk -= 0.12;
+  return { decoyed: false, pk: clamp(pk, 0.03, 0.78) };
+}
+
+// Bounded energy-bleed (drag) model. A missile is fastest at launch and slows
+// toward the end of its reach; denser air at low altitude bleeds energy faster,
+// so a sea-skimmer arrives slower than a high-altitude round. Clamped so a weapon
+// never stalls and engagement balance stays close to the tuned envelopes. Cheap:
+// a handful of arithmetic ops per missile per tick.
+function dragSpeedFactor(missile) {
+  const flownFrac = clamp((missile.flownM ?? 0) / Math.max(1, missile.maxRangeM), 0, 1);
+  const alt = missile.altitudeM ?? 1000;
+  const densityFactor = alt < 100 ? 1.15 : (alt > 4000 ? 0.65 : 0.9);
+  return clamp(1 - 0.32 * flownFrac * densityFactor, 0.62, 1);
+}
+
 export function updateMissiles(sim, dt) {
+  // Rebuild the missile saturation grid once per tick (reused by the interceptor
+  // and CIWS saturation models below, and by point defense this same tick).
+  const satGrid = buildMissileGrid(sim, sim._aliveMissiles ?? sim.missiles);
   for (const missile of sim.missiles) {
     if (!missile.alive) continue;
     const spec = missile._spec ?? MISSILES[missile.missileId];
     if (!missile._spec) Object.defineProperty(missile, "_spec", { value: spec, writable: true, configurable: true });
     const launchRole = missileDisplayRole(missile);
-    const isInterceptor = launchRole === "anti_air";
-    let target = spec.target === "missile" || isInterceptor
+    // Resolve the target by id namespace, not by weapon role: in-flight missiles
+    // have "M-…" ids, every platform (ship/ground/air) has a hull id. This lets a
+    // SAM (anti_air) engage either an incoming missile OR an enemy aircraft.
+    const targetIsInFlightMissile = String(missile.targetId).startsWith("M-");
+    let target = targetIsInFlightMissile
       ? aliveMissileById(sim, missile.targetId)
       : aliveShipById(sim, missile.targetId);
 
@@ -829,7 +1119,7 @@ export function updateMissiles(sim, dt) {
     // abort or self-destruct — never coast on a dead datum.
     if (!target) {
       if (!handleTargetLoss(sim, missile, spec)) continue;
-      target = spec.target === "missile" || isInterceptor
+      target = targetIsInFlightMissile
         ? sim.missiles.find((m) => m.id === missile.targetId && m.alive)
         : sim.ships.find((s) => s.id === missile.targetId && s.alive);
       if (!target) { deactivateMissile(sim, missile); continue; }
@@ -837,14 +1127,21 @@ export function updateMissiles(sim, dt) {
 
     const distToTarget = distance(missile, target);
     missile.timeToImpactEstimate = timeToImpact(missile, target);
-    const isAntiShipTarget = launchRole === "anti_ship";
-    const isInterceptorTarget = launchRole === "anti_air";
-    if (isAntiShipTarget && distToTarget < spec.seekerRangeM) {
+    // Anti-surface strike vs a platform; otherwise (intercepting a missile, or a
+    // SAM running down an aircraft) it is an air-intercept engagement.
+    const isAntiShipTarget = !targetIsInFlightMissile && launchRole === "anti_ship";
+    if (targetIsInFlightMissile && distToTarget < 4 * NM) {
+      missile.terminal = true;
+      missile.phase = "terminal";
+      missile.terminalReason = "intercept endgame";
+    } else if (isAntiShipTarget && distToTarget < spec.seekerRangeM) {
       missile.terminal = true;
       missile.phase = "terminal";
       missile.terminalReason = "terminal attack phase";
       missile.seaSkimming = true;
-    } else if (isInterceptorTarget && distToTarget < 4 * NM) {
+      missile.altitudeM = 12; // drop to sea-skim for the terminal run-in
+    } else if (!targetIsInFlightMissile && !isAntiShipTarget && distToTarget < spec.seekerRangeM) {
+      // SAM/AAM closing on an aircraft squadron.
       missile.terminal = true;
       missile.phase = "terminal";
       missile.terminalReason = "intercept endgame";
@@ -894,23 +1191,26 @@ export function updateMissiles(sim, dt) {
     const baseTurn = (spec.maxTurnRateDps ?? 12) * Math.PI / 180;
     const maxTurn = baseTurn * (missile.terminal ? 1.5 : 1) * dt;
     missile.heading = wrapAngle(missile.heading + clamp(wrapAngle(losAngle - missile.heading), -maxTurn, maxTurn));
+    // Energy bleed: recompute speed from the launch value and the drag model so
+    // long-range / low-altitude shots arrive slower (deterministic; no RNG).
+    missile.speed = (missile.launchSpeedMps ?? spec.speedMps) * dragSpeedFactor(missile);
     const travel = missile.speed * dt;
     missile.x += Math.cos(missile.heading) * travel;
     missile.y += Math.sin(missile.heading) * travel;
     missile.flownM += travel;
-    const targetIsMissile = isInterceptorTarget;
-    const targetIsShip = isAntiShipTarget;
-    if (target && targetIsMissile && distance(missile, target) < 850) {
+    if (target && targetIsInFlightMissile && distance(missile, target) < 850) {
       // Interceptor PK: base PK modified by target kinematics and defense saturation
       // Sea-skimming targets are harder to engage; supersonic targets reduce engagement window
       const targetSpeed = target.speed || 270;
       const supersonicPenalty = targetSpeed > 600 ? 0.15 : 0;
       const seaSkimPenalty = target.seaSkimming ? 0.14 : 0;
-      // Defense saturation: when many threats arrive simultaneously, each interceptor is less effective
-      let concurrentThreats = 0;
-      for (const candidate of sim._missilesByTarget?.get(missile.targetId) ?? []) {
-        if (candidate.alive && candidate.side !== missile.side && distance(candidate, missile) < 8 * NM) concurrentThreats++;
-      }
+      // Defense saturation: an interceptor is less effective when the local
+      // airspace is crowded with inbound threats (discrimination/guidance load).
+      // True spatial density of nearby threat (opposite-side) missiles, via the
+      // grid — replaces the old same-target-bucket proxy that counted ~nothing.
+      const interceptorSide = missile.side;
+      const concurrentThreats = countNearbyMissiles(satGrid, missile.x, missile.y, 8 * NM,
+        (m) => m.alive && m.side !== interceptorSide);
       const saturationPenalty = Math.max(0, (concurrentThreats - 2) * 0.04);
       const interceptChance = clamp(
         spec.pk + (missile.terminal ? 0.06 : 0) - supersonicPenalty - seaSkimPenalty - saturationPenalty,
@@ -924,31 +1224,53 @@ export function updateMissiles(sim, dt) {
         addEvent(sim, `${missile.missileId} failed to intercept ${target.missileId}.`, missile.side);
       }
       deactivateMissile(sim, missile);
-    } else if (target && targetIsShip && distance(missile, target) < 420) {
-      // Hit chance: base PK modified by terminal phase, sea state, target damage
-      // Large ships (BBG) are easier to hit, fast/maneuvering ships harder
-      const maneuverPenalty = target.speed > 12 ? 0.06 : 0;
-      const sizeBonus = Math.min(0.08, (target.displacementT || 9200) / 200000);
-      const hitChance = clamp(
-        spec.pk + (missile.terminal ? 0.18 : 0) - target.damage * 0.03 + sizeBonus - maneuverPenalty,
-        0.10, 0.88
-      );
-      if (sim.rng.next() < hitChance) {
+    } else if (target && !targetIsInFlightMissile && distance(missile, target) < 420) {
+      const isAir = target.domain === "air";
+      let hitChance;
+      let decoyed = false;
+      if (isAir) {
+        // Aircraft survivability: small, fast, hard-maneuvering target with IR
+        // countermeasures — a far cry from a ship's near-certain terminal hit.
+        const air = airDefenseHitChance(sim, missile, spec, target);
+        hitChance = air.pk;
+        decoyed = air.decoyed;
+      } else {
+        // Hit chance: base PK modified by terminal phase, sea state, target damage
+        // Large ships (BBG) are easier to hit, fast/maneuvering ships harder
+        const maneuverPenalty = target.speed > 12 ? 0.06 : 0;
+        const sizeBonus = Math.min(0.08, (target.displacementT || 9200) / 200000);
+        hitChance = clamp(
+          spec.pk + (missile.terminal ? 0.18 : 0) - target.damage * 0.03 + sizeBonus - maneuverPenalty,
+          0.10, 0.88
+        );
+      }
+      // No hit roll is drawn when a flare already spoofed the seeker.
+      const hit = !decoyed && sim.rng.next() < hitChance;
+      if (hit) {
         target.damage += 1;
-        // Subsystem damage: each hit degrades random subsystems
-        applySubsystemDamage(sim, target);
+        // Subsystem damage applies to ships/emplacements, not aircraft flights
+        // (a squadron has no radar/VLS/CIWS subsystems — a hit just downs a plane).
+        if (!isAir) applySubsystemDamage(sim, target);
         const damageShown = Math.max(0, Math.round(target.damage));
         const resistShown = Math.max(1, Math.ceil(target.damageResist ?? 3.0));
-        addEvent(sim, `${target.name} hit by ${missile.missileId}. Damage: ${damageShown}/${resistShown}.`, missile.side);
-        // Mission kill at per-class damageResist threshold
+        if (isAir) {
+          const remaining = Math.max(0, resistShown - damageShown);
+          addEvent(sim, `${target.name} lost an aircraft to ${missile.missileId} (${remaining} of ${resistShown} remaining).`, missile.side);
+        } else {
+          addEvent(sim, `${target.name} hit by ${missile.missileId}. Damage: ${damageShown}/${resistShown}.`, missile.side);
+        }
+        // Mission kill (or last aircraft downed) at the damageResist threshold.
         if (target.damage >= (target.damageResist ?? 3.0)) {
           target.alive = false;
           target.speed = 0;
           markContactDead(sim, target.id);
           sim._entityIndexesDirty = true;
-          addEvent(sim, `${target.name} mission-killed — ${damageShown} hits sustained (class limit ${resistShown}).`, missile.side);
+          const killMsg = isAir
+            ? `${target.name} squadron destroyed — all ${resistShown} aircraft downed.`
+            : `${target.name} mission-killed — ${damageShown} hits sustained (class limit ${resistShown}).`;
+          addEvent(sim, killMsg, missile.side);
         }
-      } else {
+      } else if (!decoyed) {
         addEvent(sim, `${missile.missileId} missed ${target.name}.`, missile.side);
       }
       deactivateMissile(sim, missile);
@@ -971,7 +1293,7 @@ export function pointDefense(sim) {
     if (!(ship.roe?.ciwsRelease ?? true)) continue;
     const ciwsRange = 1.6 * NM;
     let inbound = null;
-    for (const missile of sim._missilesByTarget?.get(ship.id) ?? sim.missiles) {
+    for (const missile of incomingMissilesFor(sim, ship.id)) {
       if (!missile.alive || missile.side === ship.side || missile.targetId !== ship.id || !missile.terminal) continue;
       if (distance(ship, missile) >= ciwsRange) continue;
       if (!inbound || (missile.timeToImpactEstimate ?? Infinity) < (inbound.timeToImpactEstimate ?? Infinity)) {
@@ -990,11 +1312,11 @@ export function pointDefense(sim) {
     // CIWS PK model: base PK per mount, each mount can engage one threat
     const ciwsCount = ship.ciwsCount ?? 1;
     const basePk = 0.45;  // Phalanx 1B baseline single-shot Pk against subsonic ASCM
-    let terminalCount = 0;
-    for (const missile of sim._missilesByTarget?.get(ship.id) ?? []) {
-      if (missile.alive && missile.side !== ship.side && missile.terminal && distance(ship, missile) < 3 * NM) terminalCount++;
-    }
-    // Saturation: multiple simultaneous leakers divide CIWS attention
+    // Saturation: the CIWS is overwhelmed by the local density of terminal
+    // leakers in its point-defence bubble (any nearby terminal threat, not only
+    // those assigned to this ship), via the shared missile grid.
+    const terminalCount = countNearbyMissiles(sim._missileGrid, ship.x, ship.y, 3 * NM,
+      (m) => m.alive && m.side !== ship.side && m.terminal);
     const saturationRatio = Math.min(1, ciwsCount / Math.max(1, terminalCount));
     const seaSkimPenalty = inbound.seaSkimming ? 0.18 : 0;
     const damagePenalty = ship.damage * 0.06;

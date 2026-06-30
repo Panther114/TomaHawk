@@ -63,6 +63,13 @@ const strings = {
   "detail.fcs":   { en: "FCS",   zh: "射控" },
   "detail.ciws":  { en: "CIWS",  zh: "近防" },
   "detail.cic":   { en: "CIC",   zh: "战情" },
+  "detail.ac":    { en: "A/C",   zh: "飞机" },
+  "detail.fuel":  { en: "FUEL",  zh: "燃油" },
+  "detail.flares":{ en: "FLARE", zh: "诱饵" },
+  "detail.state": { en: "STATE", zh: "状态" },
+  "detail.alt":   { en: "ALT",   zh: "高度" },
+  "detail.aaw":   { en: "AAW",   zh: "防空" },
+  "detail.asuw":  { en: "ASUW",  zh: "反舰" },
 
   // Ship class labels (for select and descriptions)
   "ship.ddg":  { en: "DDG", zh: "驱逐舰" },
@@ -94,6 +101,8 @@ const strings = {
   "inv.rdr":   { en: "RDR",   zh: "雷达" },
   "inv.aaw":   { en: "AAW",   zh: "防空" },
   "inv.asuw":  { en: "ASUW",  zh: "反舰" },
+  "inv.ac":    { en: "A/C",   zh: "飞机" },
+  "inv.state": { en: "STATE", zh: "状态" },
 
   // Ground unit class labels / descriptions
   "ground.sam": { en: "SAM", zh: "防空" },
@@ -101,9 +110,12 @@ const strings = {
   "ground.ewr": { en: "EWR", zh: "预警" },
   "ground.group": { en: "Ground", zh: "陆基" },
   "naval.group":  { en: "Naval",  zh: "海上" },
+  "air.group":    { en: "Air",    zh: "空中" },
   "ship.sam":  { en: "SAM", zh: "防空" },
   "ship.cdb":  { en: "CDB", zh: "岸舰" },
   "ship.ewr":  { en: "EWR", zh: "预警" },
+  "ship.vfa":  { en: "VFA", zh: "战机" },
+  "ship.afb":  { en: "AFB", zh: "机场" },
 
   // Placement / setup
   "place.addBlue": { en: "Add blue ship", zh: "添加蓝方舰艇" },
@@ -115,7 +127,7 @@ const strings = {
 
   // About overlay
   "about.title":      { en: "TOMAHAWK",            zh: "TOMAHAWK" },
-  "about.subtitle":   { en: "Naval Sandbox v0.2",   zh: "海战沙盘 v0.2" },
+  "about.subtitle":   { en: "Naval Sandbox v0.3",   zh: "海战沙盘 v0.3" },
   "about.desc1":      {
     en: "A real-time naval combat sandbox for experimenting with fleet compositions, doctrine settings, and tactical engagements. Place ships, configure loadouts and ROE, then watch the AI command structure execute multi-axis strike and defense plans.",
     zh: "实时海战沙盘，用于试验舰队编成、作战条令和战术交战。部署舰艇，配置载弹和交战规则，观察AI指挥体系执行多轴打击和防御计划。"
