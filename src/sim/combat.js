@@ -315,13 +315,34 @@ function shipThreatEngagementCount(sim, ship, targetId) {
 }
 
 function buildEngagementIndex(sim) {
-  const countsBySide = new Map();
-  const queuedByTarget = new Map();
-  const activeTargetsBySide = new Map();
-  const queuedTargetsByLauncher = new Map();
-  const defensiveCountsByLauncher = new Map();
-  const solutionsByTarget = new Map();
-  const bestLocalMissileTracks = new Map([[SIDE.BLUE, new Map()], [SIDE.RED, new Map()]]);
+  // Pool the top-level index structures across fire-planning cycles and clear
+  // them in place rather than reallocating seven Maps every second. Each is
+  // refilled in the same deterministic order, so a cleared+refilled Map iterates
+  // identically to a fresh one — no behavioural change, just less GC churn. (The
+  // small dynamic nested structures are still made fresh; pooling those is not
+  // worth the bookkeeping risk.) The index is transient (nulled at the end of
+  // planEngagements) so no stale data survives between cycles.
+  const pool = sim._engPool ?? (sim._engPool = {
+    countsBySide: new Map(),
+    queuedByTarget: new Map(),
+    activeTargetsBySide: new Map(),
+    queuedTargetsByLauncher: new Map(),
+    defensiveCountsByLauncher: new Map(),
+    solutionsByTarget: new Map(),
+    bestLocalMissileTracks: new Map([[SIDE.BLUE, new Map()], [SIDE.RED, new Map()]])
+  });
+  const {
+    countsBySide, queuedByTarget, activeTargetsBySide, queuedTargetsByLauncher,
+    defensiveCountsByLauncher, solutionsByTarget, bestLocalMissileTracks
+  } = pool;
+  countsBySide.clear();
+  queuedByTarget.clear();
+  activeTargetsBySide.clear();
+  queuedTargetsByLauncher.clear();
+  defensiveCountsByLauncher.clear();
+  solutionsByTarget.clear();
+  bestLocalMissileTracks.get(SIDE.BLUE).clear();
+  bestLocalMissileTracks.get(SIDE.RED).clear();
   const increment = (side, targetId, missileId) => {
     let byTarget = countsBySide.get(side);
     if (!byTarget) {
