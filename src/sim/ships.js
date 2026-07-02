@@ -273,7 +273,12 @@ export function makeShip(side, x, y, hull = "DDG") {
     maxGLoad: cls.maxGLoad ?? 7,
     lengthM: cls.lengthM, beamM: cls.beamM, draftM: cls.draftM, displacementT: cls.displacementT,
     // Signature + altitude drive RCS/horizon-based detection (see sensors.js).
-    rcsM2: defaultRcsM2(cls), altitudeM: defaultAltitudeM(cls),
+    rcsM2: defaultRcsM2(cls),
+    // altitudeM is the PHYSICAL altitude, climbed/descended toward
+    // targetAltitudeM at a bounded rate (see moveAirUnit in movement.js) —
+    // the AI layer commands a target, it does not teleport the aircraft
+    // there. Irrelevant for surface/ground hulls (both stay at 0).
+    altitudeM: defaultAltitudeM(cls), targetAltitudeM: defaultAltitudeM(cls),
     radarRangeM: cls.radarRangeNm * NM, radarInterval: cls.radarIntervalS, radarCooldown: 0, radarActive: true,
     editable: true, alive: true,
     damage: 0, damageResist: cls.damageResist, damageDegrade: cls.damageDegrade,

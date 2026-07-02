@@ -409,7 +409,7 @@ export function decideAircraft(sim, ship) {
     ship._a2aBreak = closeRange;
     if (closeRange || !canStrike) {
       setPhase(sim, ship, "a2a-defensive", `${air.id} @ ${(airRangeM / NM).toFixed(0)}NM`);
-      ship.altitudeM = cfg.cruiseAltitudeM;
+      ship.targetAltitudeM = cfg.cruiseAltitudeM;
       ship.waypoint = { x: air.x, y: air.y };
       ship.desiredSpeed = ship.maxSpeed;
       return;
@@ -423,7 +423,7 @@ export function decideAircraft(sim, ship) {
   if (surf && strikeRangeM > 0) {
     const standoffM = strikeRangeM * cfg.standoffFrac;
     const r = surfRangeM;
-    ship.altitudeM = r <= standoffM * cfg.ingressStartFrac ? cfg.ingressAltitudeM : cfg.cruiseAltitudeM;
+    ship.targetAltitudeM = r <= standoffM * cfg.ingressStartFrac ? cfg.ingressAltitudeM : cfg.cruiseAltitudeM;
     // Sub-phase hysteresis: which boundary applies depends on which sub-phase
     // the flight is ALREADY in, opening a dead zone the range must fully cross
     // before it flips again (see the config comment on the *Enter/*Exit pairs).
@@ -475,7 +475,7 @@ export function decideAircraft(sim, ship) {
   //    air-superiority load, or strike spent but AAMs remain): run it down.
   if (air && aam) {
     setPhase(sim, ship, "a2a-sweep", `${air.id} @ ${(airRangeM / NM).toFixed(0)}NM`);
-    ship.altitudeM = cfg.cruiseAltitudeM;
+    ship.targetAltitudeM = cfg.cruiseAltitudeM;
     ship.waypoint = { x: air.x, y: air.y };
     ship.desiredSpeed = ship.maxSpeed;
     return;
@@ -485,7 +485,7 @@ export function decideAircraft(sim, ship) {
   //    station ahead of the formation guide (OTC) along the force's threat axis,
   //    taken from the shared command picture. Cruise high for lookout.
   setPhase(sim, ship, "cap");
-  ship.altitudeM = cfg.cruiseAltitudeM;
+  ship.targetAltitudeM = cfg.cruiseAltitudeM;
   ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
   const cmd = sim.fleetCommand?.get(ship.side);
   if (cmd?.otc?.alive && cmd.otc.domain !== "air" && Number.isFinite(cmd.axis)) {

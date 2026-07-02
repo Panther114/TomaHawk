@@ -41,6 +41,10 @@ const AIR_TRANSIT_G = 2.2;
 const AIR_MIN_TURN_SPEED_MPS = 60; // floor so omega doesn't blow up near zero airspeed
 const AIR_MIN_TURN_RATE = 1.0 * DEG2RAD;
 const AIR_MAX_TURN_RATE = 25 * DEG2RAD;
+// Bounded vertical rate (m/s) — a fighter-class climb/descent rate (~19,700
+// ft/min), fast enough that a strike's cruise-to-ingress descent (9000m ->
+// 150m) takes roughly a minute and a half rather than one decision tick.
+const AIR_VERTICAL_RATE_MPS = 100;
 
 function isAggressiveAirManeuver(ship) {
   return ship.evading === true || ship._phase === "a2a-defensive" || ship._phase === "a2a-sweep";
@@ -187,6 +191,14 @@ function moveAirUnit(sim, ship, dt) {
   const speedDelta = clamp(targetSpeed - ship.speed, -accelLimit, accelLimit);
   const degrade = ship.damageDegrade ?? 0.1;
   ship.speed = clamp(ship.speed + speedDelta, 0, ship.maxSpeed * Math.max(0.25, 1 - ship.damage * degrade));
+  // Altitude is a commanded TARGET (targetAltitudeM, set by the AI layer in
+  // aircraft.js), climbed/descended toward at a bounded vertical rate rather
+  // than snapped — a strike descending from cruise to ingress altitude
+  // (9000m -> 150m) previously teleported there in one decision tick.
+  if (Number.isFinite(ship.targetAltitudeM)) {
+    const altDelta = clamp(ship.targetAltitudeM - ship.altitudeM, -AIR_VERTICAL_RATE_MPS * dt, AIR_VERTICAL_RATE_MPS * dt);
+    ship.altitudeM = Math.max(0, ship.altitudeM + altDelta);
+  }
   ship.x = clamp(ship.x + Math.cos(ship.heading) * ship.speed * dt, -sim.widthM / 2, sim.widthM / 2);
   ship.y = clamp(ship.y + Math.sin(ship.heading) * ship.speed * dt, -sim.heightM / 2, sim.heightM / 2);
 }
