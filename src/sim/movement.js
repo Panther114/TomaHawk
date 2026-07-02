@@ -22,6 +22,37 @@ function steeringTurnRate(ship) {
   return speedFrac > 0.75 && ship.turnRateFlank ? ship.turnRateFlank : ship.turnRate;
 }
 
+// --- aircraft turn-rate/speed model -----------------------------------------
+// A fixed-wing aircraft's turn rate is not a flat per-class number: for a given
+// load factor (G) it falls off with airspeed (omega = g*sqrt(n^2-1)/v — the
+// standard coordinated-turn formula), so the SAME airframe turns tighter at low
+// speed and wider at high speed. Reusing the ship-style flat turnRateDps/
+// turnRateFlankDps switch for aircraft made every course correction turn at
+// near-max-performance rate regardless of context, which reads as unrealistic
+// snap-turns. Two G tiers stand in for pilot intent: a gentle standard-rate
+// bank for routine navigation (ingress run, CAP vectoring, RTB, on-station
+// repositioning) and the airframe's real combat G-limit only for genuinely
+// aggressive moments (evasive break, a merge/intercept). `aggressive` is
+// derived from state the AI layer already tracks (ship.evading / ship._phase),
+// so no extra bookkeeping is needed here.
+const G_MPS2 = 9.80665;
+const DEG2RAD = Math.PI / 180;
+const AIR_TRANSIT_G = 2.2;
+const AIR_MIN_TURN_SPEED_MPS = 60; // floor so omega doesn't blow up near zero airspeed
+const AIR_MIN_TURN_RATE = 1.0 * DEG2RAD;
+const AIR_MAX_TURN_RATE = 25 * DEG2RAD;
+
+function isAggressiveAirManeuver(ship) {
+  return ship.evading === true || ship._phase === "a2a-defensive" || ship._phase === "a2a-sweep";
+}
+
+function aircraftTurnRateRadPerS(ship, aggressive) {
+  const g = aggressive ? (ship.maxGLoad ?? 7) : AIR_TRANSIT_G;
+  const v = Math.max(ship.speed, AIR_MIN_TURN_SPEED_MPS);
+  const omega = (G_MPS2 * Math.sqrt(Math.max(0, g * g - 1))) / v;
+  return clamp(omega, AIR_MIN_TURN_RATE, AIR_MAX_TURN_RATE);
+}
+
 function strategicTarget(ship) {
   return ship.navigationWaypoint ?? ship.waypoint ?? null;
 }
@@ -131,19 +162,29 @@ function applyWaterCollisionGuard(sim, ship, nextPosition) {
 // clamp to the map. No terrain interaction (overflies everything). Speed is
 // degraded by attrition (lost aircraft) just like a damaged ship's propulsion.
 function moveAirUnit(sim, ship, dt) {
+  // Full signed heading error (unclamped) — used both to limit this tick's
+  // turn and, below, to bleed a little commanded speed proportional to how
+  // hard the turn is (induced drag rises with bank angle; a real jet can't
+  // hold max speed through a hard break). 0 when flying straight/no waypoint.
+  let headingErrorRad = 0;
   if (ship.waypoint) {
     const d = distance(ship, ship.waypoint);
     if (d < 0.4 * NM) {
       ship.waypoint = null;
     } else {
+      const aggressive = isAggressiveAirManeuver(ship);
       const desiredHeading = angleTo(ship, ship.waypoint);
-      const effectiveTurn = steeringTurnRate(ship);
-      const delta = clamp(wrapAngle(desiredHeading - ship.heading), -effectiveTurn * dt, effectiveTurn * dt);
+      headingErrorRad = wrapAngle(desiredHeading - ship.heading);
+      const effectiveTurn = aircraftTurnRateRadPerS(ship, aggressive);
+      const delta = clamp(headingErrorRad, -effectiveTurn * dt, effectiveTurn * dt);
       ship.heading = wrapAngle(ship.heading + delta);
     }
   }
-  const accelLimit = (ship.desiredSpeed >= ship.speed ? ship.accel : (ship.decel ?? ship.accel)) * dt;
-  const speedDelta = clamp(ship.desiredSpeed - ship.speed, -accelLimit, accelLimit);
+  const errFrac = Math.abs(headingErrorRad) / Math.PI; // 0 = on-heading, 1 = reversing course
+  const bleed = 1 - (isAggressiveAirManeuver(ship) ? 0.30 : 0.10) * errFrac;
+  const targetSpeed = ship.desiredSpeed * bleed;
+  const accelLimit = (targetSpeed >= ship.speed ? ship.accel : (ship.decel ?? ship.accel)) * dt;
+  const speedDelta = clamp(targetSpeed - ship.speed, -accelLimit, accelLimit);
   const degrade = ship.damageDegrade ?? 0.1;
   ship.speed = clamp(ship.speed + speedDelta, 0, ship.maxSpeed * Math.max(0.25, 1 - ship.damage * degrade));
   ship.x = clamp(ship.x + Math.cos(ship.heading) * ship.speed * dt, -sim.widthM / 2, sim.widthM / 2);
