@@ -348,8 +348,23 @@ export function computeFleetCommand(sim) {
     const observedTargets = observed.targets;
     const ownPower = ownOffense + ownVls * 0.14;
     const enemyPower = enemyOffenseEstimate + enemyVlsEstimate * 0.14;
-    const advantage = clamp(
+    const prevState = sim.commandState?.get(side) ?? null;
+    // Rate-limited like aggression below: raw advantage is a ratio of two
+    // small, noisy, ever-changing estimates (a single detection/track-quality
+    // blip on a nearly-even force can swing it end to end), so it is smoothed
+    // before anything downstream (mode selection, aggression) reads it.
+    // Without this, a small force's command mode/target-breadth/raid-depth
+    // could flap every fire-planning cycle (observed: advantage +1.00 -> -0.46
+    // in one 8s cycle in the debug log) even though nothing tactically
+    // changed.
+    const rawAdvantage = clamp(
       (ownPower - enemyPower) / Math.max(1, ownPower + enemyPower),
+      -1,
+      1
+    );
+    const prevAdvantage = prevState?.advantage ?? rawAdvantage;
+    const advantage = clamp(
+      prevAdvantage + clamp(rawAdvantage - prevAdvantage, -0.15, 0.15),
       -1,
       1
     );
@@ -358,7 +373,6 @@ export function computeFleetCommand(sim) {
       0.08,
       0.98
     );
-    const prevState = sim.commandState?.get(side) ?? null;
     const prevAggression = prevState?.aggression ?? rawAggression;
     const aggression = clamp(
       prevAggression + clamp(rawAggression - prevAggression, -0.05, 0.09),
