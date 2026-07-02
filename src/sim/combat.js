@@ -168,10 +168,24 @@ function queueSalvo(sim, launcher, track, missileId, count, options = {}) {
   return queued;
 }
 
+// An air-to-air shot needs the launching AIRCRAFT to be facing roughly toward
+// the target (see the a2aLaunchConeDeg config comment in aircraft.js); ship
+// and ground VLS launches fire in any direction, so this is a no-op for them.
+function withinAirLaunchCone(launcher, targetX, targetY) {
+  if (launcher.domain !== "air") return true;
+  const coneRad = (AIRCRAFT_TEMP_CONFIG.a2aLaunchConeDeg * Math.PI) / 180;
+  const bearing = angleTo(launcher, { x: targetX, y: targetY });
+  return Math.abs(wrapAngle(bearing - launcher.heading)) <= coneRad;
+}
+
 function launchMissile(sim, launcher, order) {
   const spec = MISSILES[order.missileId];
   launcher.lastLaunchAtByMissile ||= {};
   if (!spec || availableCount(launcher, order.missileId) <= 0) return false;
+  if (
+    (spec.category === "anti_air" || spec.category === "dual_role")
+    && !withinAirLaunchCone(launcher, order.targetX, order.targetY)
+  ) return false;
   const queueReadyAt = order.defensive ? (launcher.nextDefensiveLaunchAt || 0) : (launcher.nextLaunchAt || 0);
   if (sim.time < Math.max(order.readyAt, queueReadyAt)) return false;
   const lastTypeLaunch = launcher.lastLaunchAtByMissile[order.missileId] ?? -Infinity;

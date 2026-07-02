@@ -82,6 +82,17 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   // a2aSelfDefenseRangeM — hysteresis so a fighter loitering near the merge
   // line doesn't flip the striker between "break" and "resume run" every tick.
   a2aSelfDefenseExitFrac: 1.3,
+  // An air-to-air missile needs its own radar/IR seeker (or the launching
+  // aircraft's radar for mid-course guidance) looking roughly at the target
+  // to get a valid shot — unlike a ship's vertical-launch SAM, which fires in
+  // any direction and turns onto the intercept course after launch, a fighter
+  // cannot employ a forward-firing weapon at something well behind its own
+  // nose. Permissive on purpose (this allows a beam or even a high-aspect
+  // shot, reflecting real off-boresight seeker/HMD capability) — it only
+  // blocks the clearly-unrealistic rear-hemisphere case. Enforced in
+  // combat.js (launchMissile) and applies to aircraft launchers only; ship
+  // and ground VLS launches are unaffected. See docs/SIMULATION_ASSUMPTIONS.md.
+  a2aLaunchConeDeg: 100,
   // Minimum fused-track quality a squadron will vector a strike/intercept on
   // when picking a FRESH target. Once locked, a flight keeps the SAME target
   // as long as it appears anywhere in the fused picture at all (see

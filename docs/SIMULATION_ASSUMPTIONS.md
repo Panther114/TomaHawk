@@ -288,14 +288,34 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   - *Defensive air-to-air.* A striker breaks off for an enemy flight only when it
     closes inside self-defence/merge range (`a2aSelfDefenseRangeM`) — it does not
     abandon its run to chase a distant fighter, so strike packages press their
-    attack instead of every flight collapsing into a furball.
+    attack instead of every flight collapsing into a furball. The break/resume
+    boundary is hysteresis-gated (`a2aSelfDefenseExitFrac`) so a fighter loitering
+    right at the merge line doesn't flip the striker every tick.
   - *Sweep.* A flight with no strike to fly (pure air-superiority load, or strike
     spent) runs down enemy flights for air-to-air (`a2aEngageRangeM`), staying high
     for energy and closing to a no-escape-zone shot.
-- **Altitude is an attribute, not a movement axis.** A flight's `altitudeM`
-  switches between a high cruise (CAP/sweep/transit — lookout and energy) and a low
-  ingress (strike masking). It drives the sensor radar-horizon only; the map stays
-  top-down. No RNG is involved, so determinism is unaffected.
+  - *Target lock persistence.* A flight keeps vectoring on the same locked target
+    as long as it appears anywhere in the fused picture, and **coasts** on the
+    target's last known (smoothed) position for up to `trackCoastS` if it briefly
+    drops out of the picture entirely (one missed radar sweep at long range),
+    before conceding the lock and picking a fresh target. The steering aim point
+    itself is exponentially filtered (not the raw noisy per-detection track
+    position) so the flight flies a clean course instead of visibly chasing sensor
+    noise. Both are pure deterministic filters on already-sampled data — no new
+    RNG draws.
+- **Air-to-air missiles need a facing shot.** A fighter cannot employ a forward-
+  firing AAM at a target well behind its own nose — unlike a ship's/battery's
+  vertical-launch SAM, which fires in any direction and turns onto the intercept
+  course after launch. `a2aLaunchConeDeg` (permissive: allows a beam or high-aspect
+  shot, reflecting real off-boresight seeker/HMD capability) gates every aircraft
+  AAM launch, offensive or the anti-ship-missile hard-kill below; ship and ground
+  VLS launches are unaffected.
+- **Altitude is an attribute, not a movement axis.** A flight's `altitudeM` climbs
+  or descends toward an AI-commanded `targetAltitudeM` (high cruise for CAP/sweep/
+  transit — lookout and energy; low for a strike ingress — masking) at a bounded
+  vertical rate, rather than teleporting between them. It drives the sensor
+  radar-horizon only; the map stays top-down. No RNG is involved, so determinism
+  is unaffected.
 - **Air defence of the fleet.** A squadron will hard-kill an inbound anti-ship
   missile with its long-range radar AAM, but only conservatively — IR rounds are
   reserved for the dogfight and a heavy (≈70%) reserve of the radar AAM is kept,
