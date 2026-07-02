@@ -70,6 +70,8 @@ const strings = {
   "detail.alt":   { en: "ALT",   zh: "高度" },
   "detail.aaw":   { en: "AAW",   zh: "防空" },
   "detail.asuw":  { en: "ASUW",  zh: "反舰" },
+  "detail.load":  { en: "LOAD",  zh: "弹药" },
+  "detail.rdr":   { en: "RDR",   zh: "雷达距" },
 
   // Ship class labels (for select and descriptions)
   "ship.ddg":  { en: "DDG", zh: "驱逐舰" },

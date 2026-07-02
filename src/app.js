@@ -33,9 +33,8 @@ import { PerfRecorder, BattleLogger } from "./sim/debug.js";
 import {
   sideColor,
   sideSoftColor,
-  shipHpState,
   shipDisplayName,
-  vlsLoadState,
+  shipDetailCardHtml,
   renderBattleStatus,
   inventoryHtml,
   clusterProximityLabels,
@@ -929,77 +928,10 @@ function renderShipDetails() {
   const availableHeight = innerHeight - y - 16;
   shipDetailOverlay.style.cssText = `position:fixed;right:${rightInset}px;top:${y}px;z-index:100;width:${cardWidth}px;max-height:${availableHeight}px;display:flex;flex-direction:column;align-items:stretch;gap:${cardGap}px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color: rgba(142,193,205,0.25) transparent;`;
 
-  const subBar = (val, mode = "health") => {
-    const w = Math.round(Math.max(0, Math.min(1, val)) * 100);
-    const c = mode === "load"
-      ? (val >= 0.8 ? '#5a9' : val >= 0.4 ? '#f7b955' : '#f66')
-      : (val > 0.6 ? '#5a9' : val > 0.3 ? '#f7b955' : '#f66');
-    return `<span class="subsystem-meter"><i style="width:${w}%;background:${c}"></i></span>`;
-  };
-
-  // Aircraft squadrons have no ship subsystems — show flight-relevant readouts
-  // (surviving aircraft, fuel, flares, lifecycle state, and effector counts).
-  const aircraftCardHtml = (s) => {
-    const color = sideColor(s.side);
-    const ac = aliveAircraftCount(s);
-    const size = squadronSize(s);
-    const fuelFrac = s.enduranceS ? (s.fuelS ?? 0) / s.enduranceS : 0;
-    const flareFrac = s.flaresMax ? (s.flares ?? 0) / s.flaresMax : 0;
-    let aaw = 0, asuw = 0;
-    for (const [id, n] of Object.entries(s.loadout || {})) {
-      if (!MISSILES[id]) continue;
-      if (MISSILES[id].category === 'anti_ship') asuw += n; else aaw += n;
-    }
-    const state = ({ mission: 'MSN', rtb: 'RTB', rearming: 'RRM' })[s.airState] ?? 'MSN';
-    const row = (label, val, mode = "health") => `<span>${label}</span>${subBar(val, mode)}<b>${Math.round(Math.max(0, Math.min(1, val)) * 100)}%</b>`;
-    const textRow = (label, value) => `<span>${label}</span><b style="grid-column:2/4;text-align:right">${value}</b>`;
-    return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
-      <div class="ship-detail-heading">
-        <b>${shipDisplayName(s, "")}</b>
-        <span style="color:${ac < size ? '#f7b955' : ''}">${t('detail.ac')} ${ac}/${size}</span>
-      </div>
-      <div class="ship-detail-grid">
-        ${row(t('detail.fuel'), fuelFrac, "load")}
-        ${row(t('detail.flares'), flareFrac, "load")}
-        ${textRow(t('detail.state'), state + (s.evading ? ' !' : ''))}
-        ${textRow(t('detail.alt'), `${((s.altitudeM ?? 0) / 1000).toFixed(1)} km`)}
-        ${textRow(t('detail.aaw'), aaw)}
-        ${textRow(t('detail.asuw'), asuw)}
-      </div>
-    </div>`;
-  };
-
-  const cardHtml = (s) => {
-    if (s.domain === "air") return aircraftCardHtml(s);
-    const rdr = s.subsystems?.radar ?? 1.0;
-    const prop = s.subsystems?.propulsion ?? 1.0;
-    const fc = s.subsystems?.fireControl ?? 1.0;
-    const ciws = s.subsystems?.ciws ?? 1.0;
-    const cic = s.subsystems?.cic ?? 1.0;
-    const hp = shipHpState(s);
-    const vls = vlsLoadState(s);
-    const color = sideColor(s.side);
-    const row = (label, val, mode = "health") => `
-      <span>${label}</span>
-      ${subBar(val, mode)}
-      <b>${Math.round(val * 100)}%</b>
-    `;
-    return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
-      <div class="ship-detail-heading">
-        <b>${shipDisplayName(s, "")}</b>
-        <span style="color:${hp.currentHp < hp.maxHp ? '#f7b955' : ''}">HP ${hp.currentHp}/${hp.maxHp}</span>
-      </div>
-      <div class="ship-detail-grid">
-        ${row(t('detail.radar'), rdr)}
-        ${row(t('detail.prop'), prop)}
-        ${row(t('detail.vls'), vls.fill, "load")}
-        ${row(t('detail.fcs'), fc)}
-        ${row(t('detail.ciws'), ciws)}
-        ${row(t('detail.cic'), cic)}
-      </div>
-    </div>`;
-  };
-  replaceHtmlIfChanged(shipDetailOverlay, detailShips.map(s => cardHtml(s)).join(''));
+  // Card layout/coloring lives in ui/view.js (shipDetailCardHtml), dispatched
+  // by unit TYPE (domain/isFixed) rather than hull name, and unit-tested
+  // there — this is just wiring selection state to it.
+  replaceHtmlIfChanged(shipDetailOverlay, detailShips.map((s) => shipDetailCardHtml(s, cardWidth)).join(''));
 }
 
 
