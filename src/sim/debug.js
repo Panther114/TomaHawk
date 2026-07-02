@@ -21,6 +21,7 @@ import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE } from "./constants.js";
 import { distance } from "./math.js";
 import { MISSILES } from "./missiles.js";
 import { isAircraft, isAirfield, aliveAircraftCount, squadronSize, AIR_STATE } from "./aircraft.js";
+import { offensiveMissileCount } from "./ships.js";
 
 const MPS_TO_KT = 1 / (KNOT * SHIP_SPEED_MULTIPLIER);
 
@@ -106,12 +107,23 @@ function describeAircraftIntent(sim, ship) {
   return "CAP screen (no track held)";
 }
 
+// Mirrors decideShip's decision order exactly (see movement.js) so the log
+// never narrates a posture the ship isn't actually flying. The ammo-exhausted
+// retreat branch in particular used to be invisible here: a ship with an
+// empty magazine permanently retreats (decideShip has no "return to port to
+// rearm" concept for surface ships — only aircraft RTB/rearm at an airfield),
+// but this function kept reporting range-based posture ("close to engage")
+// as if it were still trying to fight, which reads as a live contradiction
+// once you check the ship's actual heading/position over time.
 function describeShipIntent(sim, ship) {
   if (isAirfield(ship)) return "airfield (rearm/refuel node)";
   if (ship.isFixed) return "fixed emplacement";
   // Inbound missile defence dominates the movement decision.
   for (const m of sim.missiles) {
     if (m.alive && m.side !== ship.side && m.targetId === ship.id) return "DEFENDING — combing away from inbound";
+  }
+  if (offensiveMissileCount(ship, false) <= 0) {
+    return "WINCHESTER — retreating (no rearm-at-sea; permanent unless resupply is added)";
   }
   const surf = nearestEnemy(sim, ship, isSurface);
   const role = ship.isOTC ? "OTC " : ship.fleetRole === "AAWC" ? "AAWC " : "";
