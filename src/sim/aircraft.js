@@ -304,6 +304,34 @@ function refillFromBase(ship) {
   ship.lastLaunchAtByMissile = {};
 }
 
+// Bingo fuel: the fuel level (s) at which a flight must turn for home RIGHT
+// NOW to have any chance of making it. A flat fraction of total endurance
+// (the old rtbFuelThresholdFrac alone) is blind to how far the flight
+// actually is from its base — a CAP screen or a strike that ranged out 70+NM
+// can trigger RTB with a fixed-percentage fuel margin that is nowhere near
+// enough to physically cover the return distance, guaranteeing a splash en
+// route (confirmed in the debug log: an F22 triggered RTB with 340s of fuel
+// while 72.4NM/450s-at-max-speed from its field — a 110s shortfall before it
+// even turned around). Bingo is instead computed from the CURRENT distance to
+// the nearest friendly field (time to fly it at max speed — the same speed
+// RTB actually flies — plus a reserve) so the margin scales with reality, not
+// a fixed percentage. The reserve absorbs what the straight-line max-speed
+// estimate doesn't capture — accelerating up from cruise takes real time and
+// distance (not instantaneous), and the transit-turn speed bleed briefly
+// costs a little more (see movement.js) — plus ordinary decision latency;
+// tuned against the debug log to a comfortable margin. Falls back to the flat
+// fraction only when no friendly field exists to compute a distance to (the
+// flight then limps toward friendly territory anyway; there is nothing to
+// reach in time regardless of the threshold).
+const AIR_FUEL_RESERVE_FRAC = 0.18;
+function bingoFuelS(sim, ship) {
+  const base = nearestFriendlyAirfield(sim, ship);
+  const reserve = ship.enduranceS * AIR_FUEL_RESERVE_FRAC;
+  if (!base) return ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac;
+  const timeToBaseS = distance(ship, base) / (ship.maxSpeed || AIR_MAX_MPS);
+  return Math.max(ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac, timeToBaseS + reserve);
+}
+
 // Debug-only: log a one-line event whenever a flight's behavioural phase
 // changes (e.g. ingress -> on-station -> egress, or strike -> defensive A2A).
 // This is the cheapest way to see the AI's actual decision history in the
@@ -345,7 +373,7 @@ export function decideAircraft(sim, ship) {
     return;
   }
 
-  const lowFuel = ship.fuelS <= ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac;
+  const lowFuel = ship.fuelS <= bingoFuelS(sim, ship);
   const winchester = totalWeapons(ship) <= 0;
   // A striker returns once its stand-off (anti-ship) load is spent, even if it
   // still has air-to-air missiles for self-escort.
