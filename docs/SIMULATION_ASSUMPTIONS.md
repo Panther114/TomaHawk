@@ -214,11 +214,19 @@ referenced to a typical destroyer:
   directly (e.g. a future low-observable / stealth hull). The factor is capped at
   the radar's nominal range, so RCS only *shortens* detection for small or
   stealthy targets; it never extends a radar beyond its rated reach.
-- **Altitude + horizon shadow.** A flying target uses its altitude for the
-  geometric-horizon term, so high-flying aircraft are visible far while ships and
-  sea-skimming weapons are masked beyond the horizon — a radar shadow with no need
-  for terrain elevation (the world surface is uniform sea/ground). Ships and ground
-  units sit at sea level and use their structural mast height as before.
+- **Altitude + horizon shadow.** A flying entity uses its altitude for the
+  geometric-horizon term — on BOTH sides of a detection pair, observer as well as
+  target, so a high-flying aircraft not only is seen far but itself looks (and
+  looks *down*) far too, while a ship or a sea-skimming weapon is masked beyond
+  the horizon — a radar shadow with no need for terrain elevation (the world
+  surface is uniform sea/ground). Ships and ground units sit at sea level and use
+  their structural mast height, on either side of the pair, as before. (An
+  earlier version only applied altitude to the target side; an aircraft acting as
+  the *observer* was silently treated as sitting at ~18m regardless of its actual
+  altitude, capping e.g. a 9,000m-cruising fighter's look-down range against a
+  sea-skimming missile at ~19NM instead of the 200+NM its altitude actually
+  affords — fixed, since it made every aircraft's own radar performance far
+  worse than its altitude should allow.)
 
 Both are cheap scalars (one `pow` and one height lookup per detection candidate);
 they do not change the O(observers × candidates) sensor cost. Altitude is shown in

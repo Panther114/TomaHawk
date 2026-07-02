@@ -105,6 +105,25 @@ test("AGM-154 has its own tuned radar detection envelope, distinct from AGM-84's
   assert.notEqual(jsowEnvelope.targetHeightM, harpoonEnvelope.targetHeightM, "JSOW should not silently copy AGM-84's sea-skim profile");
 });
 
+test("a cruising aircraft's own altitude extends its radar horizon (observer side, not just target side)", () => {
+  // Regression test: the observer side of the radar-horizon calculation used
+  // to call the ship-only mast-height formula directly, ignoring altitude
+  // entirely -- so a 9,000m-cruising fighter's look-down range against a
+  // sea-skimming missile was capped as if it were sitting at sea level (~19NM)
+  // instead of the 200+NM its altitude actually affords. A sea-level ship and
+  // a high-flying aircraft should NOT get the same horizon against the same
+  // low-flying missile.
+  const ship = makeShip(SIDE.BLUE, 0, 0, "DDG");
+  const aircraft = makeShip(SIDE.BLUE, 0, 0, "F15C");
+  assert.ok(aircraft.altitudeM > 1000, "the aircraft fixture actually cruises high");
+  const shipEnvelope = missileDetectionEnvelope(ship, { missileId: "AGM-84", terminal: false });
+  const aircraftEnvelope = missileDetectionEnvelope(aircraft, { missileId: "AGM-84", terminal: false });
+  assert.ok(
+    aircraftEnvelope.horizonM > shipEnvelope.horizonM * 5,
+    `a cruising aircraft's horizon (${(aircraftEnvelope.horizonM / NM).toFixed(0)}NM) should be far beyond a sea-level ship's (${(shipEnvelope.horizonM / NM).toFixed(0)}NM) against the same sea-skimming missile`
+  );
+});
+
 test("a squadron seeds flight state: HP pool == plane count, fuel, mission, snapshot", () => {
   const f15n = makeShip(SIDE.BLUE, 0, 0, "F15N");
   assert.equal(isAircraft(f15n), true);
