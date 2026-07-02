@@ -125,6 +125,10 @@ function beginDebugRun() {
   battleLog = new BattleLogger({ intervalS: 15, label: `app run ${new Date().toISOString()}` });
   debugRunActive = true;
   lastDebugSaveAt = performance.now();
+  // Emit AI phase-transition events into the log while a debug capture is
+  // live (see setPhase in aircraft.js) — off by default so normal play's
+  // event feed isn't spammed with every squadron's internal state changes.
+  sim.debugPhaseLog = true;
 }
 
 function saveDebugLogs() {
