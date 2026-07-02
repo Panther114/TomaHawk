@@ -83,12 +83,24 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   // line doesn't flip the striker between "break" and "resume run" every tick.
   a2aSelfDefenseExitFrac: 1.3,
   // Minimum fused-track quality a squadron will vector a strike/intercept on
-  // when picking a FRESH target.
+  // when picking a FRESH target. Once locked, a flight keeps the SAME target
+  // as long as it appears anywhere in the fused picture at all (see
+  // resolveLockedTrack) — it does not re-apply this floor to a target it is
+  // already committed to.
   acquireTrackQuality: 0.14,
-  // Lower hysteresis floor for a target the flight is ALREADY committed to —
-  // keeps a locked target through routine quality jitter so the flight
-  // doesn't re-sort to "nearest" every decision tick (see pickStickyTarget).
-  releaseTrackQuality: 0.06,
+  // How long (s) to keep steering at a locked target's last known position
+  // after it drops out of the fused picture entirely, before conceding the
+  // lock and picking a fresh target. At long range a single radar sweep can
+  // legitimately miss a contact for a cycle or two even though nothing about
+  // the target changed; without a coast window that momentary gap reads as
+  // "target lost" and the flight instantly retargets onto whatever else is
+  // nearest — repeatedly, every time the original contact blips back out —
+  // producing a visibly wobbling, indecisive flight path (confirmed in the
+  // debug log: "CAP screen (no track held)" wedged between ingress legs
+  // toward three different contacts within seconds, well before any of them
+  // was actually destroyed). A real fire-control system coasts a track
+  // through exactly this kind of brief dropout instead of dropping it.
+  trackCoastS: 8,
   // --- survivability / countermeasures (all provisional) ------------------
   // Default IR-countermeasure (flare) pool when a class omits `flares`.
   flares: 60,
@@ -197,24 +209,33 @@ function nearestFriendlyAirfield(sim, ship) {
 // targets held by the fleet's long-range radars, not just the handful its own
 // short-range set can see. Falls back to the unit's own/shared tracks when no
 // force picture has been built yet (e.g. a direct unit-test call).
-// Target-lock hysteresis: once a flight commits to a surface or air target it
-// keeps vectoring on that SAME track — down to the lower `releaseTrackQuality`
-// floor — instead of re-sorting to "nearest track" every decision tick (1s).
-// Without this, two similarly-ranged contacts (e.g. a SAM battery and a
-// coastal battery 15NM apart) whose track quality jitters with each noisy
-// radar update cause the flight to ping-pong its heading between them —
-// visible in the debug log as rapid strike-ingress/cap churn that can burn
-// several minutes of a sortie without ever closing on anything. A lock is
-// only dropped (falling through to a fresh "nearest" pick) once its track has
-// actually left the fused picture (destroyed) or decayed past the release
-// floor, which is exactly the "target genuinely lost" case a mission should
-// retask on.
-function pickStickyTarget(all, ship, wantAir, currentId) {
+// Target-lock hysteresis + coast: once a flight commits to a surface or air
+// target it keeps vectoring on that SAME track — appearing anywhere at all in
+// the fused picture, not re-applying the acquisition quality floor — instead
+// of re-sorting to "nearest track" every decision tick (1s). Without this,
+// two similarly-ranged contacts (e.g. a SAM battery and a coastal battery
+// 15NM apart) cause the flight to ping-pong its heading between them.
+// If the locked track disappears from the picture ENTIRELY for a tick (a
+// single missed radar sweep at long range, not a real loss), the flight
+// coasts on the last known position for up to `trackCoastS` before conceding
+// the lock — see the config comment. Only once neither a live update nor the
+// coast window is available does it fall through to a fresh "nearest" pick,
+// which is the "target genuinely lost" case a mission should retask on.
+function resolveLockedTrack(sim, ship, all, wantAir, keyPrefix) {
   const cfg = AIRCRAFT_TEMP_CONFIG;
+  const idKey = `_${keyPrefix}TargetId`;
+  const seenKey = `_${keyPrefix}LastSeenAt`;
+  const xKey = `_${keyPrefix}AimX`;
+  const yKey = `_${keyPrefix}AimY`;
+  const currentId = ship[idKey];
   if (currentId) {
-    const current = all.find((t) => t.id === currentId);
-    if (current && (current.quality ?? 0) > cfg.releaseTrackQuality) {
-      return { track: current, rangeM: distance(ship, current) };
+    const current = all.find((t) => t && t.id === currentId);
+    if (current) {
+      ship[seenKey] = sim.time;
+      return current;
+    }
+    if (Number.isFinite(ship[seenKey]) && Number.isFinite(ship[xKey]) && sim.time - ship[seenKey] < cfg.trackCoastS) {
+      return { id: currentId, x: ship[xKey], y: ship[yKey] };
     }
   }
   let best = null; let bestD = Infinity;
@@ -226,21 +247,55 @@ function pickStickyTarget(all, ship, wantAir, currentId) {
     const d = distance(ship, track);
     if (d < bestD) { bestD = d; best = track; }
   }
-  return best ? { track: best, rangeM: bestD } : null;
+  ship[idKey] = best?.id ?? null;
+  if (best) ship[seenKey] = sim.time;
+  return best;
+}
+
+// Fire-control filtered aim point: a raw radar track's reported position
+// carries per-detection noise (scanSensors in sensors.js scatters it by up to
+// several NM depending on track quality) that can differ meaningfully sample
+// to sample even for a target that hasn't materially moved. Steering straight
+// at that raw sample every decision tick (1s) makes a flight visibly "chase
+// the noise" — a wobbling, indecisive-looking flight path even while it is
+// steadily pursuing one locked, unchanging target (confirmed in the debug
+// log: heading swinging 20-40 degrees tick to tick during a plain straight-
+// line ingress, with no phase change and no retarget in between). A real
+// fire-control/nav solution filters successive returns instead of reacting to
+// each one; this is a simple exponential filter on the track's reported x/y,
+// keyed to the locked target id so retargeting snaps cleanly to the new
+// contact instead of blending two different targets' positions together.
+const AIM_SMOOTHING_ALPHA = 0.25;
+function smoothedAimPoint(ship, keyPrefix, track) {
+  if (!track) return null;
+  const idKey = `_${keyPrefix}AimId`;
+  const xKey = `_${keyPrefix}AimX`;
+  const yKey = `_${keyPrefix}AimY`;
+  if (ship[idKey] !== track.id) {
+    ship[idKey] = track.id;
+    ship[xKey] = track.x;
+    ship[yKey] = track.y;
+  } else {
+    ship[xKey] += (track.x - ship[xKey]) * AIM_SMOOTHING_ALPHA;
+    ship[yKey] += (track.y - ship[yKey]) * AIM_SMOOTHING_ALPHA;
+  }
+  // Keep every other field (id, quality, domain, classification, ...) from
+  // the live track; only the steering-relevant x/y is filtered.
+  return { ...track, x: ship[xKey], y: ship[yKey] };
 }
 
 function acquireAirTargets(sim, ship) {
   const picture = sim.forcePicture?.get(ship.side);
   const all = picture ? [...picture.values()] : [...iterateTracksForShip(sim, ship)];
-  const surfPick = pickStickyTarget(all, ship, false, ship._surfTargetId);
-  const airPick = pickStickyTarget(all, ship, true, ship._airTargetId);
-  ship._surfTargetId = surfPick?.track.id ?? null;
-  ship._airTargetId = airPick?.track.id ?? null;
+  const surfTrack = resolveLockedTrack(sim, ship, all, false, "surf");
+  const airTrack = resolveLockedTrack(sim, ship, all, true, "air");
+  const surf = smoothedAimPoint(ship, "surf", surfTrack);
+  const air = smoothedAimPoint(ship, "air", airTrack);
   return {
-    surf: surfPick?.track ?? null,
-    surfRangeM: surfPick?.rangeM ?? Infinity,
-    air: airPick?.track ?? null,
-    airRangeM: airPick?.rangeM ?? Infinity
+    surf,
+    surfRangeM: surf ? distance(ship, surf) : Infinity,
+    air,
+    airRangeM: air ? distance(ship, air) : Infinity
   };
 }
 
