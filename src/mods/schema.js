@@ -134,7 +134,7 @@ const AIRCRAFT_SCHEMA = {
   sections: [
     { title: { en: "Identity", zh: "标识" }, fields: [
       text("name", { en: "Squadron name", zh: "中队名称" }, { placeholder: "Strike Fighter Squadron" }),
-      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "VFA", maxlength: 6 })
+      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "F22", maxlength: 6 })
     ] },
     { title: { en: "Squadron", zh: "中队" }, fields: [
       // The flight's hit-point pool: each hit downs one aircraft (attrition).

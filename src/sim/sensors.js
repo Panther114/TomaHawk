@@ -92,6 +92,11 @@ export function missileDetectionEnvelope(observer, missile) {
       visibilityFactor = missile.terminal ? 0.22 : 0.19;
       baseChance = 0.74;
       break;
+    case "AGM-154": // air-launched stand-off glide weapon (anti-ground), not sea-skimming
+      targetHeightM = missile.terminal ? 10 : 40;
+      visibilityFactor = missile.terminal ? 0.22 : 0.24;
+      baseChance = 0.74;
+      break;
     case "AIM-120": // BVR air-to-air, fast high-flyer
       targetHeightM = missile.terminal ? 3000 : 8000;
       visibilityFactor = missile.terminal ? 0.55 : 0.5;

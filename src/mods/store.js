@@ -82,7 +82,7 @@ export async function loadMods() {
     // mis-route to ship registration and be silently dropped. The record key is
     // `kind:id`, so recover the kind from it and persist the repair.
     const keyKind = String(rec._key || "").split(":")[0];
-    if (!["naval", "ground", "ammo"].includes(rec.kind) && ["naval", "ground", "ammo"].includes(keyKind)) {
+    if (!["naval", "ground", "aircraft", "ammo"].includes(rec.kind) && ["naval", "ground", "aircraft", "ammo"].includes(keyKind)) {
       rec = { ...rec, kind: keyKind };
       try { await dbPut(db, rec); } catch { /* registration below still matters */ }
     }

@@ -11,8 +11,8 @@ test("Chinese tactical feed localization preserves identifiers and translates fu
     "蓝方 DDG-1 向 红方 DDG-2 发射 SM-6。"
   );
   assert.equal(
-    translateEventText("RED DDG-2 intercepted incoming SM-6 with SM-2MR."),
-    "红方 DDG-2 使用 SM-2MR 拦截来袭的 SM-6。"
+    translateEventText("SM-2MR intercepted incoming SM-6."),
+    "SM-2MR 拦截来袭的 SM-6。"
   );
   assert.equal(
     translateEventText("BLUE side controls the battlespace. Simulation ended."),

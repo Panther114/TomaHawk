@@ -103,7 +103,7 @@
       <div class="about-card">
         <h1 data-i18n="about.title">TOMAHAWK</h1>
         <span class="about-version" data-i18n="about.subtitle">Naval Sandbox v0.3</span>
-        <p data-i18n="about.desc1">A real-time naval combat sandbox for experimenting with fleet compositions, doctrine settings, and tactical engagements. Place ships, configure loadouts and ROE, then watch the AI command structure execute multi-axis strike and defense plans.</p>
+        <p data-i18n="about.desc1">TomaHawk is a real-time naval-warfare sandbox. Place a Blue and a Red fleet, press Play, and watch two autonomous AI commands fight it out with radar detection, cooperative engagement, and layered missile defense. A side wins the instant the other has no ship left alive — there's no other scoring.</p>
         <h2 data-i18n="about.h2controls">Controls</h2>
         <div class="kb-grid">
           <kbd>Space</kbd><span data-i18n="about.kbSpace">Play / Pause simulation</span>
@@ -118,10 +118,12 @@
           <kbd>MMB</kbd><span data-i18n="about.kbMmb">Pan map</span>
           <kbd>Scroll</kbd><span data-i18n="about.kbScroll">Zoom in / out</span>
         </div>
+        <h2 data-i18n="about.h2setup">Setup</h2>
+        <p data-i18n="about.descSetup">Pick BLUE or RED, choose a unit type — naval, ground, or air — from the class list, then click the map to place it. Ships need water and ground units need land; an illegal drop snaps back to the nearest legal spot. Drag a placed unit to reposition it, right-click to inspect it, and press Delete to remove your selection. Everything here locks the moment the battle starts.</p>
         <h2 data-i18n="about.h2mechanics">Mechanics</h2>
-        <p data-i18n="about.descMech1"><b style="color:var(--blue)">Blue</b> vs <b style="color:var(--red)">Red</b> fleets. Each ship has a VLS cell count, subsystem health (radar, propulsion, fire control, CIWS, CIC), and doctrine settings that control engagement behavior.</p>
-        <p data-i18n="about.descMech2">Weapons: <b>SM-2MR</b> (area AA), <b>SM-6</b> (long-range AA/AS), <b>ESSM</b> (point defense), <b>MaritimeStrike</b> (ASuW), <b>TLAM</b> (land attack). CIWS provides a last-ditch defense against incoming missiles.</p>
-        <p data-i18n="about.descMech3">The command AI assesses force balance and adjusts aggression automatically. Right-click ships to inspect subsystem details in real time.</p>
+        <p data-i18n="about.descMech1">Each ship carries its own VLS magazine, six subsystems (radar, propulsion, fire control, CIWS, CIC) that degrade hit by hit, and a doctrine that governs how aggressively it fights. No unit ever sees the enemy's exact position — every contact is a radar track with quality and uncertainty that fades over time.</p>
+        <p data-i18n="about.descMech2">SM-2MR and SM-6 are long-range air-defense interceptors, ESSM is the faster point-defense layer, and CIWS is the last-ditch gun. MaritimeStrike and TLAM are anti-ship strike missiles; AIM-120, AIM-9X, and AGM-84 arm your fighter squadrons for air-to-air combat and air-launched strikes.</p>
+        <p data-i18n="about.descMech3">The command AI weighs its own strength against whatever it can actually observe of the enemy, then settles into a posture from cautious survival to an all-out saturation strike — a concentrated, coordinated raid is what breaks through layered defenses, not a wide, thin one. Every ship always fires in self-defense, no matter its rules of engagement. Right-click any ship (or drag to select several) to inspect its live subsystem health and loadout.</p>
         <button class="about-close" id="about-close" data-i18n="about.close">CLOSE</button>
       </div>
     </div>

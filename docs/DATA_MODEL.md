@@ -290,20 +290,29 @@ Three fixed ground emplacement classes share the same object shape but set `doma
 | CDB | coastal anti-ship battery (OTH radar) | CDB | 250 nm | MaritimeStrike×32, TomahawkBlockV×8 |
 | EWR | early-warning radar (no weapons) | EWR | 400 nm | — |
 
-Two air-unit classes set `domain: "air"`: a squadron is one entity whose
+Six air-unit classes set `domain: "air"`: a squadron is one entity whose
 `damageResist` (hit-point pool) **is** its aircraft count, so each hit downs one
 plane. They are placeable anywhere, overfly terrain, and rearm at an airfield.
-`AFB` is an airfield (a ground unit with `isAirfield: true`) placeable on land or
-water that serves as the rearm/refuel node:
+Each hull has a **rigid** default loadout — `vlsCells` is sized to exactly fit
+it — that fixes its role: an air-superiority hull carries no strike weapon at
+all, an anti-ground hull carries `AGM-154` (JSOW) and no `AGM-84`, an anti-ship
+hull carries `AGM-84` and no `AGM-154`. Two generations (5th-gen low-observable,
+4.5-gen non-stealth) cross the three roles. `AFB` is an airfield (a ground unit
+with `isAirfield: true`) placeable on land or water that serves as the
+rearm/refuel node:
 
 | Hull | Role | Prefix | Radar | Default loadout |
 |------|------|--------|------:|-----------------|
-| VFA | 4.5-gen multirole strike-fighter squadron | VFA | 90 nm | AIM-120×8, AIM-9X×4, AGM-84×8 |
-| VFS | 5-gen low-observable multirole squadron | VFS | 110 nm | AIM-120×4, AIM-9X×2, AGM-84×4 |
+| F22 | 5th-gen air-superiority-only squadron (F-22 approx.) | F22 | 120 nm | AIM-120×6, AIM-9X×2 |
+| F35A | 5th-gen anti-ground strike squadron (F-35A approx.) | F35A | 110 nm | AIM-120×4, AIM-9X×2, AGM-154×8 |
+| F35C | 5th-gen anti-ship strike squadron (F-35C approx.) | F35C | 110 nm | AIM-120×4, AIM-9X×2, AGM-84×8 |
+| F15E | 4.5-gen anti-ground strike squadron (F-15E approx.) | F15E | 90 nm | AIM-120×4, AIM-9X×2, AGM-154×10 |
+| F15N | 4.5-gen anti-ship strike squadron (fictional) | F15N | 90 nm | AIM-120×4, AIM-9X×2, AGM-84×10 |
+| F15C | 4.5-gen air-superiority-only squadron (F-15C approx.) | F15C | 95 nm | AIM-120×8, AIM-9X×4 |
 | AFB | airfield / rearm-refuel node (land or water) | AFB | 180 nm | — |
 
 Key per-class fields on every ship object:
-- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"EWR"`, `"VFA"`, `"VFS"`, `"AFB"`)
+- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"EWR"`, `"F22"`, `"F35A"`, `"F35C"`, `"F15E"`, `"F15N"`, `"F15C"`, `"AFB"`)
 - `domain` / `isFixed` — `"ground"` + `true` for stationary land emplacements; `"air"` for aircraft squadrons
 - `vlsCells` — total VLS capacity; every missile draws from this one pool by its `cellCost`
 - `damageResist` — whole-hit damage points before mission-kill

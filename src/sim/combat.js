@@ -665,7 +665,7 @@ function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5
 function chooseAirInterceptWeapon(ship, threat) {
   if (MISSILES[threat.missileId]?.category !== "anti_ship") return null;
   const rangeM = distance(ship, threat);
-  const baseLoad = defaultLoadout(ship.hull || "VFA");
+  const baseLoad = defaultLoadout(ship.hull || "F15C");
   let best = null;
   for (const id in ship.loadout) {
     const spec = MISSILES[id];

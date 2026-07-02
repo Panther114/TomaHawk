@@ -260,13 +260,20 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   rather than ~1. When a missile closes inside the reaction envelope the flight
   performs an **evasive break** (notches perpendicular to the threat at max speed)
   and pops **flares**; infrared seekers (e.g. Sidewinder) can be decoyed outright.
-- **Two generations.** `VFA` is a **4.5-gen** multirole flight (Super Hornet
-  approx.): a larger radar cross-section, external stores, a bigger magazine — it
-  survives by stand-off and terrain masking, not signature. `VFS` is a **5-gen**
-  low-observable flight (F-35 approx.): a tiny `rcsM2` so hostile radars only see
-  it deep inside their nominal reach (it shoots first and absorbs far fewer SAM
-  shots), an intrinsic `airEvasionBonus` survivability edge, a better sensor, and
-  a smaller internal-carriage magazine. Both are tunable `SHIP_CLASSES` entries.
+- **Six fixed-identity airframes, two generations × three roles.** Each hull has
+  a **rigid** default loadout that defines its role — `vlsCells` is sized to
+  exactly fit it, so a squadron spawns as (and stays) purpose-built rather than
+  a generic hardpoint budget a player reconfigures. `AGM-154` (JSOW) is the
+  dedicated anti-ground stand-off weapon and `AGM-84` (Harpoon) the dedicated
+  anti-ship weapon — a strike airframe never carries both, and an
+  air-superiority airframe carries neither: `F22` and `F15C` are air-to-air
+  only, `F35A`/`F15E` carry JSOW, `F35C`/`F15N` carry Harpoon. The 5th-gen trio
+  (`F22`, `F35A`, `F35C`) has a tiny `rcsM2` so hostile radars only see them
+  deep inside their nominal reach (they shoot first and absorb far fewer SAM
+  shots) plus an intrinsic `airEvasionBonus`; the 4.5-gen trio (`F15E`, `F15N`,
+  `F15C`) is non-stealth — a larger radar cross-section and no evasion bonus,
+  but the biggest magazines of the roster (they survive by stand-off and
+  terrain masking, not signature). All six are tunable `SHIP_CLASSES` entries.
 - **Mission doctrine (vectored on the fleet picture).** A squadron prosecutes the
   fused **CEC force picture** — the same picture the ships fire on — so it is
   cued onto targets by the fleet's long-range radars/datalink instead of only the
@@ -302,7 +309,8 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   per plane), so a four-ship flight throws a fast alpha-strike while a lone
   survivor fires slowly.
 - **Return to base / fuel.** A squadron flies its mission until it is Winchester,
-  has spent its anti-ship (strike) load, or is low on fuel, then returns to the
+  has spent its strike load (anti-ship `AGM-84` or anti-ground `AGM-154`,
+  whichever it carries), or is low on fuel, then returns to the
   nearest friendly **airfield** to rearm/refuel (a flat timer) and relaunch. With
   no airfield reachable it limps toward friendly territory and splashes when fuel
   runs out. A flight will not rearm on a destroyed airfield. Carriers, sortie

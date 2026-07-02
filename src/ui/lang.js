@@ -114,7 +114,12 @@ const strings = {
   "ship.sam":  { en: "SAM", zh: "防空" },
   "ship.cdb":  { en: "CDB", zh: "岸舰" },
   "ship.ewr":  { en: "EWR", zh: "预警" },
-  "ship.vfa":  { en: "VFA", zh: "战机" },
+  "ship.f22":  { en: "F-22",  zh: "猛禽" },
+  "ship.f35a": { en: "F-35A", zh: "隐攻" },
+  "ship.f35c": { en: "F-35C", zh: "隐舰" },
+  "ship.f15e": { en: "F-15E", zh: "攻鹰" },
+  "ship.f15n": { en: "F-15N", zh: "舰鹰" },
+  "ship.f15c": { en: "F-15C", zh: "空鹰" },
   "ship.afb":  { en: "AFB", zh: "机场" },
 
   // Placement / setup
@@ -129,22 +134,27 @@ const strings = {
   "about.title":      { en: "TOMAHAWK",            zh: "TOMAHAWK" },
   "about.subtitle":   { en: "Naval Sandbox v0.3",   zh: "海战沙盘 v0.3" },
   "about.desc1":      {
-    en: "A real-time naval combat sandbox for experimenting with fleet compositions, doctrine settings, and tactical engagements. Place ships, configure loadouts and ROE, then watch the AI command structure execute multi-axis strike and defense plans.",
-    zh: "实时海战沙盘，用于试验舰队编成、作战条令和战术交战。部署舰艇，配置载弹和交战规则，观察AI指挥体系执行多轴打击和防御计划。"
+    en: "TomaHawk is a real-time naval-warfare sandbox. Place a Blue and a Red fleet, press Play, and watch two autonomous AI commands fight it out with radar detection, cooperative engagement, and layered missile defense. A side wins the instant the other has no ship left alive — there's no other scoring.",
+    zh: "战斧是一款实时海战沙盘。为蓝、红双方部署舰队，按下播放键，观看两套自主 AI 指挥体系用雷达探测、协同交战与分层导弹防御展开较量。只要一方失去全部舰艇，对方立即获胜——没有其他计分方式。"
   },
   "about.h2controls": { en: "Controls",     zh: "操作" },
+  "about.h2setup":    { en: "Setup",        zh: "部署" },
+  "about.descSetup":  {
+    en: "Pick BLUE or RED, choose a unit type — naval, ground, or air — from the class list, then click the map to place it. Ships need water and ground units need land; an illegal drop snaps back to the nearest legal spot. Drag a placed unit to reposition it, right-click to inspect it, and press Delete to remove your selection. Everything here locks the moment the battle starts.",
+    zh: "选择 BLUE 或 RED，从类别列表中选取海上、陆基或空中单位，点击地图放置。舰艇需部署在水域，陆基单位需部署在陆地——放到非法位置会自动吸附回最近的合法位置。拖动已放置的单位可调整位置，右键可查看详情，按 Delete 可删除选中项。战斗一旦开始，这些操作全部锁定。"
+  },
   "about.h2mechanics":{ en: "Mechanics",    zh: "机制" },
   "about.descMech1":  {
-    en: "Blue vs Red fleets. Each ship has a VLS cell count, subsystem health (radar, propulsion, fire control, CIWS, CIC), and doctrine settings that control engagement behavior.",
-    zh: "蓝方对红方舰队。每艘舰拥有垂发单元数、子系统状态（雷达、动力、射控、近防、战情）及控制交战行为的条令设定。"
+    en: "Each ship carries its own VLS magazine, six subsystems (radar, propulsion, fire control, CIWS, CIC) that degrade hit by hit, and a doctrine that governs how aggressively it fights. No unit ever sees the enemy's exact position — every contact is a radar track with quality and uncertainty that fades over time.",
+    zh: "每艘舰艇都有自己的垂发弹药库、六个会随命中逐步受损的子系统（雷达、动力、射控、近防、战情），以及决定其交战积极程度的条令。没有任何单位能看到敌方的精确坐标——每个目标都只是一条带质量与不确定性、并会随时间衰减的雷达航迹。"
   },
   "about.descMech2":  {
-    en: "Weapons: SM-2MR (area AA), SM-6 (long-range AA/AS), ESSM (point defense), MaritimeStrike (ASuW), TLAM (land attack). CIWS provides a last-ditch defense against incoming missiles.",
-    zh: "武器：SM-2MR（区域防空）、SM-6（远程防空/反舰）、ESSM（点防御）、MaritimeStrike（反舰）、TLAM（对地攻击）。近防系统为最后防线。"
+    en: "SM-2MR and SM-6 are long-range air-defense interceptors, ESSM is the faster point-defense layer, and CIWS is the last-ditch gun. MaritimeStrike and TLAM are anti-ship strike missiles; AIM-120, AIM-9X, and AGM-84 arm your fighter squadrons for air-to-air combat and air-launched strikes.",
+    zh: "SM-2MR 与 SM-6 是远程防空拦截弹，ESSM 是反应更快的点防御层，近防系统是最后一道防线；MaritimeStrike 与 TLAM 是反舰打击导弹；AIM-120、AIM-9X 与 AGM-84 则装备于战斗机中队，用于空战与机载对海打击。"
   },
   "about.descMech3":  {
-    en: "The command AI assesses force balance and adjusts aggression automatically. Right-click ships to inspect subsystem details in real time.",
-    zh: "指挥AI自动评估兵力对比并调整攻势等级。右键点击舰艇可实时检查子系统状态。"
+    en: "The command AI weighs its own strength against whatever it can actually observe of the enemy, then settles into a posture from cautious survival to an all-out saturation strike — a concentrated, coordinated raid is what breaks through layered defenses, not a wide, thin one. Every ship always fires in self-defense, no matter its rules of engagement. Right-click any ship (or drag to select several) to inspect its live subsystem health and loadout.",
+    zh: "指挥 AI 会将己方实力与观测到的敌情进行比较，并据此在“自保”与“全力饱和打击”之间切换姿态——真正能突破分层防御的，是集中、协同的齐射，而非分散的火力。无论交战规则如何设定，每艘舰艇始终会自卫还击。右键点击任意舰艇（或拖动多选）即可实时查看子系统状态与弹药情况。"
   },
   "about.kbSpace":    { en: "Play / Pause simulation",          zh: "播放 / 暂停模拟" },
   "about.kbDot":      { en: "Step forward 0.25 s",              zh: "前进 0.25 秒" },
@@ -278,8 +288,8 @@ export function translateEventText(text) {
   const sentencePatterns = [
     [/^(.*?) launched (.*?) at (.*?)\.?$/, "$1 向 $3 发射 $2。"],
     [/^(.*?) queued (.*?) at (.*?)\.?$/, "$1 已安排使用 $2 攻击 $3。"],
-    [/^(.*?) intercepted incoming (.*?) with (.*?)\.?$/, "$1 使用 $3 拦截来袭的 $2。"],
-    [/^(.*?) failed to intercept incoming (.*?)\.?$/, "$1 未能拦截来袭的 $2。"],
+    [/^(.*?) intercepted incoming (.*?)\.?$/, "$1 拦截来袭的 $2。"],
+    [/^(.*?) failed to intercept (.*?)\.?$/, "$1 未能拦截 $2。"],
     [/^(.*?) hit by (.*?)\. Damage: (.*?)\.?$/, "$1 被 $2 命中。损伤：$3。"],
     [/^(.*?) CIWS destroyed incoming (.*?)\.?$/, "$1 的近防系统击毁来袭的 $2。"],
     [/^(.*?) CIWS failed against (.*?)\.?$/, "$1 的近防系统未能拦截 $2。"],

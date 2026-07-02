@@ -98,7 +98,6 @@ let rulers = [];
 let selectionBox = null;
 let selectedIds = new Set([sim.selectedId]);
 let last = performance.now();
-let labelBoxes = [];
 
 // The DOM side-panels are text and don't need 60 fps; rebuilding and diffing
 // their markup every frame is wasted reflow. They refresh at ~20 Hz while the
@@ -286,24 +285,6 @@ function labelAlpha(force = false) {
   return Math.max(0, Math.min(1, (camera.scale - 0.0007) / 0.0016));
 }
 
-function reserveLabel(text, x, y, font, critical = false) {
-  ctx.save();
-  ctx.font = font;
-  const metrics = ctx.measureText(text);
-  ctx.restore();
-  const h = Math.max(7, Number(font.match(/([\d.]+)px/)?.[1] ?? 7) + 2);
-  const box = {
-    left: x - 2,
-    right: x + metrics.width + 2,
-    top: y - h + 2,
-    bottom: y + 3
-  };
-  const collides = labelBoxes.some((b) => box.left < b.right && box.right > b.left && box.top < b.bottom && box.bottom > b.top);
-  if (collides && !critical) return false;
-  labelBoxes.push(box);
-  return true;
-}
-
 function drawGrid() {
   if (!filters.grid.classList.contains("active")) return;
   const leftTop = screenToWorld(0, 0);
@@ -432,6 +413,46 @@ function drawWeaponRangeRings() {
     }
     group.push(ring);
   }
+  // A merged cluster of overlapping same-type/same-faction rings should show
+  // exactly one label, not one per ring. Union-find the group by the same
+  // overlap test used for clipping, then keep a single label owner per
+  // connected cluster (preferring a selected ring so its label still wins).
+  const labelOwners = new Set();
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      labelOwners.add(group[0]);
+      continue;
+    }
+    const parent = group.map((_, index) => index);
+    const find = (index) => {
+      while (parent[index] !== index) {
+        parent[index] = parent[parent[index]];
+        index = parent[index];
+      }
+      return index;
+    };
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const a = group[i];
+        const b = group[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const reach = a.radius + b.radius;
+        if (dx * dx + dy * dy < reach * reach) {
+          const rootA = find(i);
+          const rootB = find(j);
+          if (rootA !== rootB) parent[Math.max(rootA, rootB)] = Math.min(rootA, rootB);
+        }
+      }
+    }
+    const ownerByRoot = new Map();
+    for (let i = 0; i < group.length; i++) {
+      const root = find(i);
+      const current = ownerByRoot.get(root);
+      if (!current || (group[i].selected && !current.selected)) ownerByRoot.set(root, group[i]);
+    }
+    for (const owner of ownerByRoot.values()) labelOwners.add(owner);
+  }
   ctx.save();
   for (const ring of rings) {
     const group = groups.get(`${ring.side}|${ring.id}`);
@@ -465,12 +486,16 @@ function drawWeaponRangeRings() {
     }
     const showRingLabel = shouldShowWeaponLabels(camera.scale)
       && ring.radius > 10
-      && (ring.selected || ring.category === "anti_air");
+      && (ring.selected || ring.category === "anti_air")
+      && labelOwners.has(ring);
     if (showRingLabel) {
       ctx.setLineDash([]);
-      ctx.globalAlpha = ring.selected ? labelAlpha(true) * 0.86 : 0.74;
+      // 30% more transparent and 30% smaller than the ring stroke's own label
+      // used to be, so a merged cluster's single label reads as a light,
+      // secondary annotation rather than competing with the ring itself.
+      ctx.globalAlpha = (ring.selected ? labelAlpha(true) * 0.86 : 0.74) * 0.7;
       ctx.fillStyle = ring.category === "anti_ship" ? "#f7e7a1" : sideColor(ring.side);
-      ctx.font = canvasFont(VISUAL_CONFIG.rangeLabelPx);
+      ctx.font = canvasFont(VISUAL_CONFIG.rangeLabelPx * 0.7);
       const labelX = Math.max(54, Math.min(innerWidth - 48, ring.x + ring.radius + 3));
       const antiAirOffset = ring.id === "ESSM" ? 8 : ring.id === "SM-2MR" ? -2 : 0;
       const labelY = Math.max(78, Math.min(innerHeight - 48, ring.y - 3 + antiAirOffset));
@@ -704,7 +729,7 @@ function drawSectorResponsibility(ship) {
 
 function drawTracks() {
   for (const ship of sim.ships) {
-    if (ship.id !== sim.selectedId) continue;
+    if (!selectedIds.has(ship.id)) continue;
     for (const track of tracksForShip(sim, ship)) {
       const p = worldToScreen(track);
       const r = Math.max(3, track.uncertainty * camera.scale);
@@ -1164,7 +1189,6 @@ function setFeedCollapsed(nextCollapsed) {
 }
 
 function render() {
-  labelBoxes = [];
   clampCamera();
   drawSceneBase();
   drawGrid();

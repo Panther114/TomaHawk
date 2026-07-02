@@ -3,6 +3,17 @@
 All notable changes to this repository will be documented in this file.
 本文件记录仓库的全部重要变更。
 
+## Unreleased
+
+### Changed — Air unit roster overhaul / 空中单位阵容重做
+- **Replaced the generic `VFA`/`VFS` pair with six fixed-identity squadron hulls** spanning two generations and three roles: 5th-gen low-observable `F22` (air-superiority only), `F35A` (anti-ground strike), `F35C` (anti-ship strike), and 4.5-gen non-stealth `F15E` (anti-ground strike), `F15N` (anti-ship strike, fictional), `F15C` (air-superiority only). Each hull's default loadout is now **rigid** — `vlsCells` is sized to exactly fit it — so a squadron spawns as, and stays, purpose-built rather than a generic multirole hardpoint budget.
+- **Added `AGM-154` (JSOW)**, a dedicated air-launched stand-off anti-ground weapon with its own range/speed/detection profile, distinct from the anti-ship `AGM-84` (Harpoon). It reuses the existing anti-ship engagement pipeline (fixed ground emplacements were already valid targets for that category), so no new targeting logic was needed — only a genuinely separate weapon so anti-ground-loadout squadrons are no longer stuck repurposing an anti-ship missile against SAM/CDB/EWR sites.
+- 移除通用的 `VFA`/`VFS`，替换为六型固定身份的中队机型，覆盖两代、三种定位：5 代隐身 `F22`（纯空优）、`F35A`（对地打击）、`F35C`（反舰打击）；4.5 代非隐身 `F15E`（对地打击）、`F15N`（反舰打击，虚构型号）、`F15C`（纯空优）。每型飞机的默认装载现在是**固定**的——`vlsCells` 精确匹配该装载——因此中队诞生时即为专用机型，而非可自由搭配的通用多用途弹药预算。新增 `AGM-154`（JSOW）防区外对地打击武器，射程/速度/探测特征均与反舰用的 `AGM-84` 不同，复用现有反舰交战流程（陆基阵地本就是该类别的合法目标），无需新的目标分配逻辑。
+
+### Fixed — UI / UI 修复
+- Overlapping same-type/same-faction weapon-range rings merged into one visual outline but still drew one label per underlying ring; a merged cluster now draws exactly one label (30% more transparent, 30% smaller than before) regardless of how many rings feed it.
+- 同类型同阵营合并后的武器射程圈此前仍会按舰艇数量重复绘制标签；现在每个合并后的圈仅绘制一个标签（透明度降低 30%，字号缩小 30%）。
+
 ## v0.3.0 — 2026-06-30
 
 ### Release summary

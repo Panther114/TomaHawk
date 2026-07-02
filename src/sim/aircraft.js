@@ -166,18 +166,6 @@ function nearestFriendlyAirfield(sim, ship) {
   return best;
 }
 
-function nearestEnemyTrack(sim, ship) {
-  let best = null;
-  let bestD = Infinity;
-  for (const track of iterateTracksForShip(sim, ship)) {
-    if (track.side === ship.side || track.quality <= 0.18) continue;
-    if (String(track.id).startsWith("M-")) continue; // ignore in-flight missiles for nav
-    const d = distance(ship, track);
-    if (d < bestD) { bestD = d; best = track; }
-  }
-  return best;
-}
-
 // Acquire the nearest enemy surface and air contacts a squadron can be vectored
 // onto. A flight is networked into the fleet's Cooperative Engagement (CEC)
 // picture — the same fused force picture the ships fire on — so it can prosecute

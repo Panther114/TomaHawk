@@ -121,11 +121,18 @@ Air units (`domain: "air"`):
 
 | Unit | Role | Radar | Weapons |
 | --- | --- | ---: | --- |
-| `VFA` | 4.5-gen multirole strike-fighter squadron | 90 nm | `AIM-120`, `AIM-9X`, `AGM-84` |
-| `VFS` | 5-gen low-observable multirole squadron | 110 nm | `AIM-120`, `AIM-9X`, `AGM-84` |
+| `F22` | 5th-gen air-superiority-only squadron (F-22 approx.) | 120 nm | `AIM-120`, `AIM-9X` |
+| `F35A` | 5th-gen anti-ground strike squadron (F-35A approx.) | 110 nm | `AIM-120`, `AIM-9X`, `AGM-154` |
+| `F35C` | 5th-gen anti-ship strike squadron (F-35C approx.) | 110 nm | `AIM-120`, `AIM-9X`, `AGM-84` |
+| `F15E` | 4.5-gen anti-ground strike squadron (F-15E approx.) | 90 nm | `AIM-120`, `AIM-9X`, `AGM-154` |
+| `F15N` | 4.5-gen anti-ship strike squadron (fictional) | 90 nm | `AIM-120`, `AIM-9X`, `AGM-84` |
+| `F15C` | 4.5-gen air-superiority-only squadron (F-15C approx.) | 95 nm | `AIM-120`, `AIM-9X` |
 | `AFB` | airfield / rearm-refuel node (placeable on land **or** water) | 180 nm | — |
 
-A squadron is **one** entity whose hit-point pool equals its plane count, so each
+Each hull has a **rigid** default loadout that fixes its role: an
+air-superiority hull carries no strike weapon at all, an anti-ground hull
+carries `AGM-154` (JSOW) and no `AGM-84`, an anti-ship hull carries `AGM-84`
+and no `AGM-154`. A squadron is **one** entity whose hit-point pool equals its plane count, so each
 hit downs one aircraft and its combat power scales with the survivors. It flies a
 low-altitude stand-off strike (ingress → masked descent → release at the
 stand-off ring → egress), dogfights with radar BVR and infrared WVR missiles
@@ -155,6 +162,7 @@ Defined in `src/sim/missiles.js`:
 | `AIM-120` | `120` | BVR active-radar air-to-air | 102 km |
 | `AIM-9X` | `AIM9` | WVR infrared air-to-air (flare-decoyable) | 33 km |
 | `AGM-84` | `HPN` | air-launched sea-skimming anti-ship | 124 km |
+| `AGM-154` | `JSOW` | air-launched stand-off anti-ground strike | 130 km |
 
 Weapons encode range, speed, Pk, salvo size, launch interval, spacing, seeker
 transition, guidance style, reserve behavior, and (for air-to-air) the no-escape-zone fraction.
@@ -308,6 +316,25 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 陆基单位必须部署在陆地，永不移动、不担任编队指挥、也不会被重置到水面；其余方面与
 舰艇共享对象结构、CEC 态势图与交战流程。
 
+空中单位（`domain: "air"`）：
+
+| 单位 | 定位 | 雷达 | 武器 |
+| --- | --- | ---: | --- |
+| `F22` | 5 代纯空优中队（F-22 近似型） | 120 海里 | `AIM-120`、`AIM-9X` |
+| `F35A` | 5 代对地打击中队（F-35A 近似型） | 110 海里 | `AIM-120`、`AIM-9X`、`AGM-154` |
+| `F35C` | 5 代反舰打击中队（F-35C 近似型） | 110 海里 | `AIM-120`、`AIM-9X`、`AGM-84` |
+| `F15E` | 4.5 代对地打击中队（F-15E 近似型） | 90 海里 | `AIM-120`、`AIM-9X`、`AGM-154` |
+| `F15N` | 4.5 代反舰打击中队（虚构型号） | 90 海里 | `AIM-120`、`AIM-9X`、`AGM-84` |
+| `F15C` | 4.5 代纯空优中队（F-15C 近似型） | 95 海里 | `AIM-120`、`AIM-9X` |
+| `AFB` | 机场 / 再装挂-加油节点（可部署于陆地**或**水面） | 180 海里 | — |
+
+每型飞机都有**固定**的默认装载，直接决定其定位：纯空优机型完全不携带对面武器，
+对地机型携带 `AGM-154`（JSOW）且不携带 `AGM-84`，反舰机型携带 `AGM-84` 且不携带
+`AGM-154`。一个中队是**单个**实体，其生命值池即为存活飞机数，每次命中击落一架，
+战斗力随存活数量下降。它执行低空防区外打击（突防 → 下降规避 → 环绕发射 → 脱
+离），使用雷达超视距与红外近距导弹格斗（机动规避 + 红外诱饵），并返回友方机场
+再装挂、加油后重新出击。完整条令见 `docs/SIMULATION_ASSUMPTIONS.md`。
+
 每个舰艇对象都包含：
 - 机动参数；
 - 雷达状态；
@@ -328,6 +355,10 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 | `MaritimeStrike` | `MSTK` | 对海巡航打击 | 222 公里 |
 | `TomahawkBlockV` | `TLAM` | 远程对海打击 | 1,204 公里 |
 | `SM-6` | `SM6` | 防空/对海双用途 | 370 公里 |
+| `AIM-120` | `120` | 超视距主动雷达空空导弹 | 102 公里 |
+| `AIM-9X` | `AIM9` | 近距红外空空导弹（可被诱饵弹欺骗） | 33 公里 |
+| `AGM-84` | `HPN` | 机载海面掠飞反舰导弹 | 124 公里 |
+| `AGM-154` | `JSOW` | 机载防区外对地打击武器 | 130 公里 |
 
 武器定义中包含射程、速度、Pk、齐射规模、发射间隔、末段 seeker 距离、制导方式与保留比例等参数。
 

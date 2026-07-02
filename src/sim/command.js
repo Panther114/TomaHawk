@@ -171,43 +171,6 @@ function estimatedVlsCapacity(track) {
   return offensivePriorForHull(hull) * (0.7 + quality * 0.45);
 }
 
-function observedOffensiveCapacity(sim, side) {
-  const fused = sim.forcePicture?.get(side);
-  if (!fused) return 0;
-  let total = 0;
-  for (const track of fused.values()) {
-    if (String(track.id).startsWith("M-")) continue;
-    const hull = trackHullEstimate(track);
-    const prior = offensivePriorForHull(hull || "DDG");
-    const quality = clamp(track.quality ?? 0.35, 0.05, 0.99);
-    total += prior * (0.55 + 0.45 * quality);
-  }
-  return total;
-}
-
-function observedVlsCapacity(sim, side) {
-  const fused = sim.forcePicture?.get(side);
-  if (!fused) return 0;
-  let total = 0;
-  for (const track of fused.values()) {
-    if (String(track.id).startsWith("M-")) continue;
-    total += estimatedVlsCapacity(track);
-  }
-  return total;
-}
-
-function observedMissilePressure(sim, side) {
-  const fused = sim.forcePicture?.get(side);
-  if (!fused) return 0;
-  let total = 0;
-  for (const track of fused.values()) {
-    if (!String(track.id).startsWith("M-")) continue;
-    if (track.side === side) continue;
-    total += 1;
-  }
-  return total;
-}
-
 export function offensiveTargetValue(track) {
   // Air platforms (squadrons) are priority air-defence targets: killing the
   // shooter is worth more than chasing its missiles. Valued on track firmness.
@@ -251,17 +214,6 @@ export function coordinatedRaidDelayS(posture, trackCount, scoreShare) {
   if (mode === "pressure") return clamp(0.9 + (trackCount - 1) * 0.2 - scoreShare * 0.15, 0.65, 1.6);
   if (mode === "focus") return clamp(1.15 + (trackCount - 1) * 0.22 - scoreShare * 0.12, 0.85, 1.9);
   return clamp(1.45 + (trackCount - 1) * 0.22, 1.0, 2.2);
-}
-
-function observedHostileUnitCount(sim, side) {
-  const fused = sim.forcePicture?.get(side);
-  if (!fused) return 0;
-  let total = 0;
-  for (const track of fused.values()) {
-    if (track.side === side || String(track.id).startsWith("M-")) continue;
-    total += 1;
-  }
-  return total;
 }
 
 function observedForceMetrics(sim, side) {
