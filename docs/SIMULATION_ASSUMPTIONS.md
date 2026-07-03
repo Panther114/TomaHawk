@@ -282,6 +282,24 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   `F15C`) is non-stealth — a larger radar cross-section and no evasion bonus,
   but the biggest magazines of the roster (they survive by stand-off and
   terrain masking, not signature). All six are tunable `SHIP_CLASSES` entries.
+- **A seventh, unarmed hull: AWAC (AEW&C) as a command hub.** `AWAC` carries no
+  weapons at all (`baseLoadout: {}`) and models a single, high-value, moving
+  radar (`damageResist: 1` — one aircraft, not a 4-ship flight; any hit is a
+  mission kill, matching the real vulnerability of an unescorted AEW&C
+  aircraft), with the longest radar (`radarRangeNm: 350`) and slowest, least
+  manoeuvrable airframe (`maxGLoad: 3`) of the roster. Because every combat
+  branch in `decideAircraft` is gated on carrying a strike or air-to-air
+  weapon, an unarmed flight falls through to the fallback branch automatically
+  — no aircraft-specific code path was needed to make it never fight. That
+  fallback itself distinguishes armed from unarmed: an armed flight screens
+  *ahead* of the formation guide on the threat axis (a combat air patrol); an
+  unarmed one orbits *behind* it, on the side away from the threat
+  (`supportOrbitM`). The `commandHub` flag (any hull can set it, not just
+  `AWAC`) is the "acts as a command hub when present" behaviour: while a
+  commandHub unit is alive and on-mission (not RTB/rearming), its side's CEC
+  track-sharing latency in `shareTracks` tightens from the baseline 1.8s to
+  0.6s, representing a centralized high-bandwidth relay/correlation node
+  instead of every ship pair propagating and merging tracks independently.
 - **Mission doctrine (vectored on the fleet picture).** A squadron prosecutes the
   fused **CEC force picture** — the same picture the ships fire on — so it is
   cued onto targets by the fleet's long-range radars/datalink instead of only the

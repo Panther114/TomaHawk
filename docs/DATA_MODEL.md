@@ -290,16 +290,18 @@ Three fixed ground emplacement classes share the same object shape but set `doma
 | CDB | coastal anti-ship battery (OTH radar) | CDB | 250 nm | MaritimeStrike×32, TomahawkBlockV×8 |
 | EWR | early-warning radar (no weapons) | EWR | 400 nm | — |
 
-Six air-unit classes set `domain: "air"`: a squadron is one entity whose
+Seven air-unit classes set `domain: "air"`: a squadron is one entity whose
 `damageResist` (hit-point pool) **is** its aircraft count, so each hit downs one
 plane. They are placeable anywhere, overfly terrain, and rearm at an airfield.
-Each hull has a **rigid** default loadout — `vlsCells` is sized to exactly fit
-it — that fixes its role: an air-superiority hull carries no strike weapon at
-all, an anti-ground hull carries `AGM-154` (JSOW) and no `AGM-84`, an anti-ship
-hull carries `AGM-84` and no `AGM-154`. Two generations (5th-gen low-observable,
-4.5-gen non-stealth) cross the three roles. `AFB` is an airfield (a ground unit
-with `isAirfield: true`) placeable on land or water that serves as the
-rearm/refuel node:
+Six are fixed-identity fighters, each with a **rigid** default loadout —
+`vlsCells` is sized to exactly fit it — that fixes its role: an air-superiority
+hull carries no strike weapon at all, an anti-ground hull carries `AGM-154`
+(JSOW) and no `AGM-84`, an anti-ship hull carries `AGM-84` and no `AGM-154`. Two
+generations (5th-gen low-observable, 4.5-gen non-stealth) cross the three
+roles. The seventh, `AWAC`, is unarmed (empty loadout, `damageResist: 1` — one
+irreplaceable aircraft, not a 4-ship flight) and carries `commandHub: true` (see
+below). `AFB` is an airfield (a ground unit with `isAirfield: true`) placeable
+on land or water that serves as the rearm/refuel node:
 
 | Hull | Role | Prefix | Radar | Default loadout |
 |------|------|--------|------:|-----------------|
@@ -309,17 +311,19 @@ rearm/refuel node:
 | F15E | 4.5-gen anti-ground strike squadron (F-15E approx.) | F15E | 90 nm | AIM-120×4, AIM-9X×2, AGM-154×10 |
 | F15N | 4.5-gen anti-ship strike squadron (fictional) | F15N | 90 nm | AIM-120×4, AIM-9X×2, AGM-84×10 |
 | F15C | 4.5-gen air-superiority-only squadron (F-15C approx.) | F15C | 95 nm | AIM-120×8, AIM-9X×4 |
+| AWAC | AEW&C — unarmed, command hub (E-2D approx.) | AWAC | 350 nm | — |
 | AFB | airfield / rearm-refuel node (land or water) | AFB | 180 nm | — |
 
 Key per-class fields on every ship object:
-- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"EWR"`, `"F22"`, `"F35A"`, `"F35C"`, `"F15E"`, `"F15N"`, `"F15C"`, `"AFB"`)
+- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"EWR"`, `"F22"`, `"F35A"`, `"F35C"`, `"F15E"`, `"F15N"`, `"F15C"`, `"AWAC"`, `"AFB"`)
 - `domain` / `isFixed` — `"ground"` + `true` for stationary land emplacements; `"air"` for aircraft squadrons
 - `vlsCells` — total VLS capacity; every missile draws from this one pool by its `cellCost`
 - `damageResist` — whole-hit damage points before mission-kill
 - `damageDegrade` — speed/manoeuvre penalty per damage point
-- `turnRateFlank` — reduced turn rate at >75% flank speed
+- `turnRateFlank` — reduced turn rate at >75% flank speed, for **naval hulls only**; aircraft steer via a physically-modelled turn rate instead (`maxGLoad` — the airframe's combat G-limit, used only for an evasive break or an air-to-air merge; routine navigation flies a much gentler standard-rate turn regardless of hull — see `aircraftTurnRateRadPerS` in `movement.js`)
+- `commandHub` — aircraft-only; while an alive, on-mission (not RTB/rearming) unit with this flag exists on a side, that side's CEC track-sharing latency tightens (see `shareTracks` in `sensors.js`). Any custom aircraft can set it via the Unit Workshop.
 - `ciwsCount` / `ciwsBurstRounds` / `ciwsBurstS` / `ciwsCycleS` — per-class CIWS parameters
-- `displacementT` / `draftM` — used for radar horizon and hit-chance size bonus
+- `displacementT` / `draftM` — used for radar horizon and hit-chance size bonus (aircraft use `altitudeM` instead of `draftM` for their radar horizon — see `docs/SIMULATION_ASSUMPTIONS.md`)
 
 Ships spawn with a full default magazine for their hull class, with the loadout filling the available VLS cells at setup time.
 

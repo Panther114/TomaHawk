@@ -68,6 +68,29 @@ Footprint (`length`, `width`); Sensors (`radar range`, `radar interval`); Magazi
 For an anti-ship coastal battery, set the radar range above the weapon's range so it
 can engage over the horizon.
 
+### Aircraft
+Identity (`name`, unit tag `prefix`, **command hub** checkbox); Squadron
+(`aircraft in flight` — the hit-point pool: each hit downs one plane);
+Mobility (`cruise`, `max`, `accel`, `decel`, `turn`, `flank turn`); Sensors
+(`radar range`, `radar interval`); Hardpoints (`hardpoints` — sized like naval
+VLS cells, to fit the `loadout`); Endurance (`endurance`, `rearm time`);
+Survivability (`speed loss per plane lost`, `flares`).
+
+- **Unarmed = never fights.** Leave the `loadout` empty and the squadron
+  automatically falls through every combat branch (no strike weapon, no
+  air-to-air missile) to the non-combat fallback: it orbits behind the
+  formation guide instead of screening ahead of it, exactly like the built-in
+  `AWAC`. No other field needs to change to get this behaviour.
+- **Command hub.** Check this box (or leave it unchecked — it defaults off) to
+  make the squadron tighten its whole side's CEC track-sharing latency while
+  it's alive and airborne (not down for fuel). Any aircraft can carry it, not
+  just an AEW&C-styled one — it stacks with, and is independent of, a strike
+  or air-superiority loadout.
+- **`maxGLoad`** (the airframe's combat turn-rate ceiling) is not yet exposed
+  in the editor; custom aircraft inherit a default. It only affects an
+  evasive break or an air-to-air merge — routine navigation always flies a
+  gentle standard-rate turn regardless of hull.
+
 ### Ammo
 Identity (`ID` only — the loadout key; it also serves as the weapon's map/inventory
 label); Classification (`category` anti_air/anti_ship/dual_role, `symbol`, `target`,

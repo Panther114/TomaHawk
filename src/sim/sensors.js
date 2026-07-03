@@ -482,6 +482,17 @@ export function ageTracks(sim, dt) {
   }
 }
 
+// A live, on-mission "command hub" unit (see the commandHub ship flag —
+// any hull can opt in, e.g. the AWAC AEW&C squadron) tightens this side's CEC
+// track-sharing latency, representing a centralized, high-bandwidth relay/
+// correlation node instead of every pair of ships propagating and merging
+// tracks independently. Checked against the literal "mission" state (not the
+// AIR_STATE.MISSION export) to avoid a circular import — aircraft.js already
+// imports from sensors.js, so sensors.js cannot import back from it.
+function hasActiveCommandHub(ships) {
+  return ships.some((ship) => ship.commandHub && (ship.domain !== "air" || ship.airState === "mission"));
+}
+
 export function shareTracks(sim) {
   const bySide = new Map();
   for (const ship of sim.ships) {
@@ -489,9 +500,11 @@ export function shareTracks(sim) {
     if (!bySide.has(ship.side)) bySide.set(ship.side, []);
     bySide.get(ship.side).push(ship);
   }
-  const cecLatencyS = 1.8; // CEC network propagation + processing latency
+  const CEC_LATENCY_S = 1.8; // baseline CEC network propagation + processing latency
+  const CEC_LATENCY_HUB_S = 0.6; // with an active command-hub relay
   let changed = false;
   for (const [side, ships] of bySide) {
+    const cecLatencyS = hasActiveCommandHub(ships) ? CEC_LATENCY_HUB_S : CEC_LATENCY_S;
     const candidates = new Map();
     for (const source of ships) {
       for (const [id, rawTrack] of source.tracks) {

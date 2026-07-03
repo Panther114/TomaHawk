@@ -190,6 +190,20 @@ const SHIP_CLASSES = {
   // traded for a bigger internal AAM load (8 AMRAAM/4 Sidewinder) than any
   // other airframe in the roster.
   F15C: { hull:"F15C",className:"F-15C Eagle Squadron (4.5-gen air-superiority) approx.",prefix:"F15C",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:31,cruiseSpeedKt:440,maxSpeedKt:580,accelMps2:3.2,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,maxGLoad:8.5,radarRangeNm:95,radarIntervalS:3,vlsCells:12,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:1750,rearmTimeS:90,flares:60,airEvasionBonus:0.02,baseLoadout:{ "AIM-120":8,"AIM-9X":4 } },
+  // AEW&C — E-2D Hawkeye squadron approx. (1 aircraft: unlike the fighter
+  // roster this models a single high-value, unescorted-feeling sensor
+  // platform, not a 4-ship flight — damageResist:1 makes any hit a mission
+  // kill, same as the real thing). Unarmed (baseLoadout:{}) and slow — it is
+  // a moving radar, not a combatant, and its own AI never chases a fight (see
+  // decideAircraft's unarmed-orbit branch in aircraft.js). Its radar is the
+  // longest of any mobile platform (only a fixed EWR out-ranges it) and its
+  // rcsM2 is large and non-stealthy (a big, un-hidden rotodome) — it survives
+  // by standing off behind the formation, not by being hard to see.
+  // commandHub:true is the "acts as a command hub when present" behaviour: it
+  // tightens fleet-wide CEC track-sharing latency while alive and on mission
+  // (see shareTracks in sensors.js) — any custom aircraft can opt into the
+  // same behaviour from the Unit Workshop.
+  AWAC: { hull:"AWAC",className:"E-2D Hawkeye Squadron (AEW&C) approx.",prefix:"AWAC",domain:"air",isFixed:false,glyph:"aircraft",lengthM:17.6,beamM:24.6,draftM:5.6,displacementT:24,cruiseSpeedKt:300,maxSpeedKt:330,accelMps2:1.6,decelMps2:1.6,turnRateDps:5,turnRateFlankDps:4,maxGLoad:3.0,commandHub:true,radarRangeNm:350,radarIntervalS:2,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:35,damageResist:1,damageDegrade:0.10,enduranceS:7200,rearmTimeS:60,flares:30,airEvasionBonus:0,baseLoadout:{} },
 
   // --- Airfield (domain:"ground", placeable anywhere) ----------------------
   // Behaves like a fixed ground unit but may be placed on land OR water. Serves
@@ -271,6 +285,11 @@ export function makeShip(side, x, y, hull = "DDG") {
     // class-block comment above and aircraftTurnRateRadPerS in movement.js.
     // Harmless/unused for non-air hulls.
     maxGLoad: cls.maxGLoad ?? 7,
+    // "Acts as a command hub when present" — see shareTracks in sensors.js.
+    // Any hull (vanilla or custom) can opt in via this flag; not aircraft-
+    // specific in the schema, though only a mobile, sensor-heavy platform
+    // like an AWACS makes realistic sense as one.
+    commandHub: cls.commandHub === true,
     lengthM: cls.lengthM, beamM: cls.beamM, draftM: cls.draftM, displacementT: cls.displacementT,
     // Signature + altitude drive RCS/horizon-based detection (see sensors.js).
     rcsM2: defaultRcsM2(cls),

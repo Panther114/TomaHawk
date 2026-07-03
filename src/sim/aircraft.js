@@ -112,6 +112,14 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   // was actually destroyed). A real fire-control system coasts a track
   // through exactly this kind of brief dropout instead of dropping it.
   trackCoastS: 8,
+  // With no contact to engage, an armed flight screens this far AHEAD of the
+  // formation guide (OTC) on the threat axis (a combat air patrol).
+  capStationM: 40 * NM,
+  // ...while an UNARMED flight (no weapons at all — a support/sensor asset
+  // like the AWAC AEW&C squadron) instead orbits this far BEHIND the guide,
+  // on the side away from the threat: it has no business up front and
+  // survives by standing off, not by fighting.
+  supportOrbitM: 30 * NM,
   // --- survivability / countermeasures (all provisional) ------------------
   // Default IR-countermeasure (flare) pool when a class omits `flares`.
   flares: 60,
@@ -360,6 +368,21 @@ function carriedStrike(ship) {
   return false;
 }
 
+// Whether this squadron's design carries any weapon at all (any hardpoint in
+// its base loadout, not just anti-ship strike). Distinguishes "built unarmed
+// on purpose" (a sensor/command asset like the AWAC — should loiter forever
+// on its station, only ever coming home for fuel) from "built armed, magazine
+// now empty" (should come home to rearm). Without this, an intentionally
+// unarmed squadron reads as permanently "winchester" and RTBs on its very
+// first decision tick, parks at the field, refuels/rearms into the same empty
+// loadout, and immediately RTBs again next tick — a park-forever loop that
+// never lets it fly its actual mission.
+function everCarriesWeapons(ship) {
+  const snap = ship.baseLoadoutSnapshot;
+  if (snap) for (const id in snap) { if (snap[id] > 0) return true; }
+  return false;
+}
+
 function refillFromBase(ship) {
   ship.loadout = { ...(ship.baseLoadoutSnapshot || {}) };
   ship.fuelS = ship.enduranceS;
@@ -440,7 +463,7 @@ export function decideAircraft(sim, ship) {
   }
 
   const lowFuel = ship.fuelS <= bingoFuelS(sim, ship);
-  const winchester = totalWeapons(ship) <= 0;
+  const winchester = everCarriesWeapons(ship) && totalWeapons(ship) <= 0;
   // A striker returns once its stand-off (anti-ship) load is spent, even if it
   // still has air-to-air missiles for self-escort.
   const strikeDepleted = carriedStrike(ship) && strikeAmmo(ship) <= 0;
@@ -575,18 +598,30 @@ export function decideAircraft(sim, ship) {
     return;
   }
 
-  // 4) No engageable contact: fly a combat air patrol that screens the fleet — a
-  //    station ahead of the formation guide (OTC) along the force's threat axis,
-  //    taken from the shared command picture. Cruise high for lookout.
-  setPhase(sim, ship, "cap");
+  // 4) No engageable contact. An armed flight (or one that has no strike load
+  //    but still carries AAMs — this branch is only reached with aam === true
+  //    when hasAirToAir already found no live air contact to chase) flies a
+  //    combat air patrol screening the fleet — a station AHEAD of the
+  //    formation guide (OTC) along the threat axis. An UNARMED flight (a
+  //    support/sensor asset like the AWAC AEW&C squadron, or any custom
+  //    aircraft with no weapons at all) has no business up front: it orbits
+  //    BEHIND the guide, on the far side away from the threat, at a
+  //    deliberately generous stand-off — a moving radar survives by staying
+  //    clear, not by fighting. Both read the shared command picture, so
+  //    either station re-centers automatically as the OTC/threat axis shifts.
+  setPhase(sim, ship, aam ? "cap" : "orbit");
   ship.targetAltitudeM = cfg.cruiseAltitudeM;
   ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
   const cmd = sim.fleetCommand?.get(ship.side);
   if (cmd?.otc?.alive && cmd.otc.domain !== "air" && Number.isFinite(cmd.axis)) {
-    const capM = 40 * NM; // screen this far ahead of the guide toward the threat
-    ship.waypoint = { x: cmd.otc.x + Math.cos(cmd.axis) * capM, y: cmd.otc.y + Math.sin(cmd.axis) * capM };
+    const standM = aam ? cfg.capStationM : cfg.supportOrbitM;
+    const bearing = aam ? cmd.axis : cmd.axis + Math.PI; // support orbit: opposite the threat axis
+    ship.waypoint = { x: cmd.otc.x + Math.cos(bearing) * standM, y: cmd.otc.y + Math.sin(bearing) * standM };
   } else if (!ship.waypoint) {
-    const dir = ship.side === SIDE.BLUE ? 1 : -1;
+    // No command picture yet (e.g. no surface OTC exists): CAP still advances
+    // toward the enemy side to screen; an unarmed flight goes the other way.
+    const towardEnemy = ship.side === SIDE.BLUE ? 1 : -1;
+    const dir = aam ? towardEnemy : -towardEnemy;
     ship.waypoint = { x: ship.x + dir * 30 * NM, y: ship.y };
   }
 }

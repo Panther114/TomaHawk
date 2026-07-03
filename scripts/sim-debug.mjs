@@ -31,25 +31,27 @@ const DT = 0.25;
 const FRAME_S = Number(process.env.FRAME_S ?? 8);
 
 // A LARGE, ASYMMETRIC, mixed-domain fight exercising every current unit type on
-// both sides at once — air (all six fixed-identity squadrons), naval, and fixed
-// ground (SAM/CDB/EWR/airfield) — so the debug log can be read as a systematic
-// trace of every kind of unit interaction: air-vs-air, air-vs-ship, air-vs-ground,
-// ship-vs-ship, ground-vs-ship, and layered SAM defence against a strike.
+// both sides at once — air (all six fixed-identity squadrons plus the AWAC
+// command-hub asset), naval, and fixed ground (SAM/CDB/EWR/airfield) — so the
+// debug log can be read as a systematic trace of every kind of unit
+// interaction: air-vs-air, air-vs-ship, air-vs-ground, ship-vs-ship,
+// ground-vs-ship, and layered SAM defence against a strike.
 //
-// BLUE is an air-heavy expeditionary force (six squadrons, one of each type,
-// backed by a thin two-ship surface escort and a rear airfield). RED is a
-// defended coastal group (heavy naval + fixed ground defence, one contesting
-// air-superiority squadron) — asymmetric in *kind*, not just size, so the
-// battle is decided by how well air, naval, and ground doctrine interact
-// rather than by a simple numbers mismatch.
+// BLUE is an air-heavy expeditionary force (six strike/fighter squadrons plus
+// an AWAC, backed by a thin two-ship surface escort and a rear airfield). RED
+// is a defended coastal group (heavy naval + fixed ground defence, one
+// contesting air-superiority squadron) — asymmetric in *kind*, not just size,
+// so the battle is decided by how well air, naval, and ground doctrine
+// interact rather than by a simple numbers mismatch.
 function buildLargeAsymmetricBattle(seed) {
   const sim = createScenario(seed);
   clearSide(sim, SIDE.BLUE);
   clearSide(sim, SIDE.RED);
 
-  // BLUE (west): rear airfield, a two-ship surface escort, and one squadron of
+  // BLUE (west): rear airfield, a two-ship surface escort, one squadron of
   // each of the six fixed-identity airframes — every generation/role pairing
-  // flying in the same battle.
+  // flying in the same battle — plus an AWAC orbiting behind the formation
+  // as a command hub.
   placeShip(sim, SIDE.BLUE, -100 * NM, -20 * NM, "AFB");
   placeShip(sim, SIDE.BLUE, -70 * NM, -10 * NM, "DDG");
   placeShip(sim, SIDE.BLUE, -72 * NM, 10 * NM, "FFG");
@@ -59,6 +61,7 @@ function buildLargeAsymmetricBattle(seed) {
   placeShip(sim, SIDE.BLUE, -50 * NM, -10 * NM, "F15C"); // 4.5-gen air-superiority
   placeShip(sim, SIDE.BLUE, -52 * NM, 30 * NM, "F15E");  // 4.5-gen anti-ground
   placeShip(sim, SIDE.BLUE, -52 * NM, -35 * NM, "F15N"); // 4.5-gen anti-ship
+  placeShip(sim, SIDE.BLUE, -90 * NM, -10 * NM, "AWAC"); // command hub / moving radar
 
   // RED (east): a defended coastal group — cruiser + two frigates, a coastal SAM
   // battery, a coastal anti-ship battery, an early-warning radar, an airfield,

@@ -134,7 +134,12 @@ const AIRCRAFT_SCHEMA = {
   sections: [
     { title: { en: "Identity", zh: "标识" }, fields: [
       text("name", { en: "Squadron name", zh: "中队名称" }, { placeholder: "Strike Fighter Squadron" }),
-      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "F22", maxlength: 6 })
+      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "F22", maxlength: 6 }),
+      // A command hub tightens fleet-wide CEC track-sharing latency while it's
+      // alive and airborne on mission (see shareTracks in sensors.js) -- a
+      // moving-radar/AEW&C role, not a combat one. Any aircraft can opt in;
+      // it's not tied to a specific hull.
+      { key: "commandHub", type: "checkbox", label: { en: "Command hub (tightens fleet CEC latency while airborne)", zh: "指挥节点（在空时缩短全队协同交战延迟）" } }
     ] },
     { title: { en: "Squadron", zh: "中队" }, fields: [
       // The flight's hit-point pool: each hit downs one aircraft (attrition).
@@ -238,7 +243,7 @@ export const DEFAULTS = {
   }),
   aircraft: () => ({
     kind: "aircraft", name: "New Squadron", prefix: "VFX",
-    squadronSize: 4,
+    squadronSize: 4, commandHub: false,
     cruiseSpeedKt: 420, maxSpeedKt: 540, accelMps2: 3.0, decelMps2: 3.0,
     turnRateDps: 6, turnRateFlankDps: 4, radarRangeNm: 90, radarIntervalS: 3,
     vlsCells: 20, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1, flares: 60,

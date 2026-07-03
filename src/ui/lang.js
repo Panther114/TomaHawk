@@ -122,6 +122,7 @@ const strings = {
   "ship.f15e": { en: "F-15E", zh: "攻鹰" },
   "ship.f15n": { en: "F-15N", zh: "舰鹰" },
   "ship.f15c": { en: "F-15C", zh: "空鹰" },
+  "ship.awac": { en: "AWAC", zh: "预警机" },
   "ship.afb":  { en: "AFB", zh: "机场" },
 
   // Placement / setup

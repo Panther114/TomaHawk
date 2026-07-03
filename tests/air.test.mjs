@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   NM, MISSILES, SHIP_CLASSES, makeShip, createScenario, clearSide, placeShip, duplicateShip, stepSim,
   SIDE, SCENARIO_MODE, aliveAircraftCount, squadronSize, isAircraft, isAirfield,
-  serializeScenario, restoreScenario, missileDetectionEnvelope
+  serializeScenario, restoreScenario, missileDetectionEnvelope, shareTracks
 } from "../src/sim.js";
 import { DEFAULTS } from "../src/mods/schema.js";
 import { registerUnit, unregisterUnit, makeUniqueShipId, vanillaUnits, unitId } from "../src/mods/registry.js";
@@ -475,4 +475,94 @@ test("a scenario with air units is deterministic for the same seed", () => {
   const b = build(5);
   for (let i = 0; i < 1500; i++) { stepSim(a, 0.25); stepSim(b, 0.25); }
   assert.equal(digest(a), digest(b));
+});
+
+test("AWAC squadron exists as an unarmed, command-hub-capable, longest-ranged sensor asset", () => {
+  const cls = SHIP_CLASSES.AWAC;
+  assert.equal(cls.domain, "air");
+  assert.equal(cls.isFixed, false);
+  assert.equal(cls.commandHub, true);
+  assert.deepEqual(cls.baseLoadout, {});
+  assert.equal(cls.vlsCells, 0);
+  for (const hull of ALL_AIRCRAFT_HULLS) {
+    assert.ok(cls.radarRangeNm >= SHIP_CLASSES[hull].radarRangeNm, `AWAC radar should reach at least as far as ${hull}'s`);
+  }
+  const awac = makeShip(SIDE.BLUE, 0, 0, "AWAC");
+  assert.equal(isAircraft(awac), true);
+  assert.equal(awac.commandHub, true);
+  assert.deepEqual(awac.loadout, {});
+});
+
+test("an unarmed AWAC never enters combat and orbits behind the formation guide, not ahead of it (regression: 'winchester' RTB loop)", () => {
+  // A squadron with an empty base loadout used to read as permanently
+  // "winchester" (zero weapons == magazine spent), so it RTB'd on its very
+  // first decision tick, parked to rearm into the same empty magazine, and
+  // immediately RTB'd again -- a park-forever loop that never let it fly its
+  // actual station-keeping mission. See the `everCarriesWeapons` gate in
+  // aircraft.js.
+  const sim = running(3);
+  placeShip(sim, SIDE.BLUE, -30 * NM, 0, "AFB");
+  const otc = placeShip(sim, SIDE.BLUE, -15 * NM, 0, "DDG"); otc.desiredSpeed = 0;
+  const awac = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "AWAC");
+  // Weaponless RED radar site: gives the AWAC something to fuse into a threat
+  // axis without ever threatening it, isolating the AI-geometry question from
+  // survivability (already covered elsewhere).
+  placeShip(sim, SIDE.RED, 40 * NM, 0, "EWR");
+  const phases = new Set();
+  const airStates = new Set();
+  for (let i = 0; i < 400; i++) {
+    stepSim(sim, 0.25);
+    airStates.add(awac.airState);
+    if (awac._phase) phases.add(awac._phase);
+  }
+  assert.ok(awac.alive, "the AWAC survived (nothing on the RED side can shoot at it)");
+  assert.deepEqual([...airStates], ["mission"], "stayed on mission the whole run instead of looping through RTB");
+  assert.deepEqual([...phases], ["orbit"], "held the unarmed support-orbit phase, never a combat or CAP phase");
+  assert.equal(sim.missiles.some((m) => m.launcherId === awac.id), false, "never launched a weapon it doesn't carry");
+  // The RED contact sits east of the BLUE OTC, so the threat axis points east;
+  // an unarmed asset orbits on the opposite (west) side of the guide, unlike
+  // an armed CAP fighter which would screen ahead toward the threat.
+  assert.ok(awac.waypoint.x < otc.x, "orbits on the side of the formation guide away from the threat axis");
+});
+
+test("an AWAC still RTBs and refuels on low fuel, even though it never runs out of ammo", () => {
+  const sim = running(3);
+  placeShip(sim, SIDE.BLUE, -30 * NM, 0, "AFB");
+  const awac = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "AWAC");
+  placeShip(sim, SIDE.RED, 80 * NM, 0, "EWR");
+  awac.fuelS = 200; // force a near-immediate bingo-fuel call
+  const states = new Set();
+  let refueled = false;
+  for (let i = 0; i < 3000 && !refueled; i++) {
+    stepSim(sim, 0.25);
+    states.add(awac.airState);
+    refueled = awac.airState === "mission" && awac.fuelS > 1000;
+  }
+  assert.ok(states.has("rtb"), "low fuel sent it home");
+  assert.ok(states.has("rearming"), "it actually parked to refuel");
+  assert.ok(refueled, "topped off and resumed its mission (not stuck parked forever)");
+});
+
+test("an alive, on-mission command-hub unit tightens its side's CEC track-sharing latency", () => {
+  const buildFixture = (hubShip) => {
+    const sim = { time: 10, ships: [] };
+    const sourceTrack = { side: SIDE.BLUE, x: 0, y: 0, vx: 0, vy: 0, quality: 0.8, age: 0, uncertainty: 100, lastSeen: 9, _stateTime: 9 };
+    const source = { alive: true, side: SIDE.RED, tracks: new Map([["B-1", sourceTrack]]) };
+    const relay = { alive: true, side: SIDE.RED, tracks: new Map() };
+    sim.ships.push(source, relay);
+    if (hubShip) sim.ships.push(hubShip);
+    return sim;
+  };
+  const sharedAfter = (sim) => {
+    shareTracks(sim);
+    return sim.sharedTracksBySide?.get(SIDE.RED)?.has("B-1") ?? false;
+  };
+  // Baseline latency (1.8s) is not yet satisfied by a 1.0s-old track.
+  assert.equal(sharedAfter(buildFixture(null)), false, "no command hub: a 1.0s-old track hasn't cleared the 1.8s baseline latency yet");
+  // An alive, on-mission command hub tightens latency to 0.6s, which a 1.0s-old track clears.
+  const hub = { alive: true, side: SIDE.RED, domain: "air", airState: "mission", commandHub: true, tracks: new Map() };
+  assert.equal(sharedAfter(buildFixture(hub)), true, "an active command hub shares the same-age track immediately");
+  // A command-hub aircraft that is down for fuel/rearm does not count as active.
+  const grounded = { alive: true, side: SIDE.RED, domain: "air", airState: "rearming", commandHub: true, tracks: new Map() };
+  assert.equal(sharedAfter(buildFixture(grounded)), false, "a command hub parked to rearm does not tighten latency");
 });

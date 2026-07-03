@@ -104,7 +104,10 @@ function describeAircraftIntent(sim, ship) {
     return `strike ${phase} vs ${surf.id} @ ${r.toFixed(0)}NM (alt ${Math.round(ship.altitudeM ?? 0)}m)`;
   }
   if (air && aaw > 0) return `A2A sweep vs ${air.id} @ ${nm(air.rangeM).toFixed(0)}NM`;
-  return "CAP screen (no track held)";
+  // An unarmed flight (aaw and asuw both 0 — a support/sensor asset like the
+  // AWAC AEW&C squadron) never screens forward; it orbits behind the guide
+  // instead (see the unarmed branch in decideAircraft).
+  return aaw > 0 || asuw > 0 ? "CAP screen (no track held)" : "support orbit (unarmed sensor asset)";
 }
 
 // Mirrors decideShip's decision order exactly (see movement.js) so the log
