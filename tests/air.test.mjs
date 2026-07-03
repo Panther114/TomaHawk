@@ -339,6 +339,31 @@ test("two squadrons fight air-to-air with AAMs and attrit each other", () => {
   assert.ok(aliveAircraftCount(b) < 4 || aliveAircraftCount(r) < 4, "at least one flight took losses");
 });
 
+// Regression: the CAP/orbit fallback (and the fleet-command threat axis it
+// reads) used to hardcode "BLUE's enemy is east, RED's enemy is west" — the
+// canonical default-scenario layout, but not a real invariant. Any pair of
+// squadrons placed the other way around (or any pure-air fight with no
+// surface OTC at all) had both flights screen AWAY from each other forever:
+// they never closed inside RCS-limited detection range, so radar never
+// triggered and no shot was ever fired, no matter how close the user placed
+// them. The fix reads each side's actual whole-fleet position to derive the
+// default threat axis instead of a fixed compass heading.
+test("two squadrons placed in the REVERSED (blue-east, red-west) layout still close and fight, not fly apart", () => {
+  const sim = running(11);
+  const b = placeShip(sim, SIDE.BLUE, 10 * NM, 0, "F15C"); b.fuelS = 1e9;
+  const r = placeShip(sim, SIDE.RED, -10 * NM, 0, "F15C"); r.fuelS = 1e9;
+  let firedAAM = false;
+  let minSepM = Infinity;
+  for (let i = 0; i < 1200; i++) {
+    stepSim(sim, 0.25);
+    if (sim.missiles.some((mm) => mm.missileId === "AIM-120" || mm.missileId === "AIM-9X")) firedAAM = true;
+    minSepM = Math.min(minSepM, Math.hypot(b.x - r.x, b.y - r.y));
+    if (firedAAM) break;
+  }
+  assert.ok(firedAAM, "air-to-air missiles were launched despite the reversed layout");
+  assert.ok(minSepM < 20 * NM, "the flights closed to within detection/engagement range instead of diverging");
+});
+
 test("a squadron breaks evasively when a missile closes in", () => {
   const sim = running(7);
   placeShip(sim, SIDE.BLUE, -10 * NM, 0, "CCG");

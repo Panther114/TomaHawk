@@ -142,6 +142,32 @@ function fleetCapability(ship) {
   return (sm2 * 1 + essm * 0.3) * classMult - ship.damage * 8;
 }
 
+// Coarse bearing toward the opposing side's actual force, used as the threat-
+// axis default before any radar contact is held. A fixed compass heading
+// (e.g. "BLUE's enemy is always east") is only correct for the canonical
+// default battle layout — it silently breaks the moment either side is
+// placed outside that convention (any manual placement via the Unit
+// Workshop), anchoring CAP stations and orbit legs away from where the
+// enemy actually is. RCS-limited air-to-air radar then never has a chance to
+// close the gap, so two opposing flights placed well within visual/AIM-9
+// range of each other fly apart and never detect one another (confirmed via
+// a headless repro: reversing which side is west/east left both flights
+// diverging for the full run, sensors never triggering). This reads whole-
+// fleet ship positions, not tracks or quality — the same order of knowledge
+// as knowing your own doctrine's tasking area, not a sensor-quality cheat.
+function enemyFleetCentroid(sim, side) {
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (const ship of sim.ships) {
+    if (!ship.alive || ship.side === side) continue;
+    sx += ship.x;
+    sy += ship.y;
+    n++;
+  }
+  return n ? { x: sx / n, y: sy / n } : null;
+}
+
 function offensivePriorForHull(hull) {
   if (offensivePriorCache.has(hull)) return offensivePriorCache.get(hull);
   const loadout = defaultLoadout(hull);
@@ -287,9 +313,13 @@ export function computeFleetCommand(sim) {
     const aawc = mobileOrdered.find((ship) => ship !== otc) ?? ordered.find((ship) => ship !== otc) ?? null;
     if (aawc) aawc.fleetRole = FLEET_ROLE.AAWC;
 
-    // Threat axis: mean bearing from the formation guide to fused hostiles.
+    // Threat axis: mean bearing from the formation guide to fused hostiles,
+    // defaulting — before any contact is held — to the bearing toward the
+    // enemy fleet's actual position rather than a fixed compass heading; see
+    // enemyFleetCentroid above.
     const fused = sim.forcePicture?.get(side);
-    let axis = side === SIDE.BLUE ? 0 : Math.PI;
+    const enemyCentroid = enemyFleetCentroid(sim, side);
+    let axis = enemyCentroid ? Math.atan2(enemyCentroid.y - otc.y, enemyCentroid.x - otc.x) : (side === SIDE.BLUE ? 0 : Math.PI);
     if (fused && fused.size) {
       let sx = 0;
       let sy = 0;

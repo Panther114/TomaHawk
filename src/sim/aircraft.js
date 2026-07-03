@@ -617,9 +617,21 @@ export function decideAircraft(sim, ship) {
     const standM = aam ? cfg.capStationM : cfg.supportOrbitM;
     const bearing = aam ? cmd.axis : cmd.axis + Math.PI; // support orbit: opposite the threat axis
     ship.waypoint = { x: cmd.otc.x + Math.cos(bearing) * standM, y: cmd.otc.y + Math.sin(bearing) * standM };
+  } else if (Number.isFinite(cmd?.axis)) {
+    // No surface OTC to anchor a station on (a pure-air fleet, or the last
+    // surface unit just died) — fly the SAME real threat axis fleet command
+    // already computed (bearing toward the enemy's actual force, not a
+    // fixed compass heading; see enemyFleetCentroid in command.js), just
+    // anchored on the aircraft itself instead of a formation guide. Re-reads
+    // every decision tick like the OTC-anchored branch above, so the course
+    // re-centers as the picture develops instead of committing to one
+    // straight leg and holding it forever.
+    const bearing = aam ? cmd.axis : cmd.axis + Math.PI;
+    ship.waypoint = { x: ship.x + Math.cos(bearing) * 30 * NM, y: ship.y + Math.sin(bearing) * 30 * NM };
   } else if (!ship.waypoint) {
-    // No command picture yet (e.g. no surface OTC exists): CAP still advances
-    // toward the enemy side to screen; an unarmed flight goes the other way.
+    // Absolute fallback for the one tick before fleet command has ever run
+    // (computeFleetCommand hasn't executed yet this game). Self-corrects to
+    // the branch above on the very next decision tick.
     const towardEnemy = ship.side === SIDE.BLUE ? 1 : -1;
     const dir = aam ? towardEnemy : -towardEnemy;
     ship.waypoint = { x: ship.x + dir * 30 * NM, y: ship.y };
