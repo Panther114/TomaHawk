@@ -4,11 +4,24 @@ import assert from "node:assert/strict";
 import {
   NM, MISSILES, SHIP_CLASSES, makeShip, createScenario, clearSide, placeShip, duplicateShip, stepSim,
   SIDE, SCENARIO_MODE, aliveAircraftCount, squadronSize, isAircraft, isAirfield,
-  serializeScenario, restoreScenario
+  serializeScenario, restoreScenario, missileDetectionEnvelope, shareTracks
 } from "../src/sim.js";
 import { DEFAULTS } from "../src/mods/schema.js";
 import { registerUnit, unregisterUnit, makeUniqueShipId, vanillaUnits, unitId } from "../src/mods/registry.js";
 import { airRowHtml, isAirUnit, isGroundUnit } from "../src/ui/view.js";
+
+// The six built-in squadron hulls, replacing the old generic VFA/VFS pair.
+// Each has a RIGID default loadout that defines its role: an air-superiority
+// airframe carries no strike weapon at all, an anti-ground airframe carries
+// AGM-154 JSOW and no AGM-84, an anti-ship airframe carries AGM-84 and no
+// JSOW. Two generations (5th-gen low-observable, 4.5-gen non-stealth) cross
+// the three roles.
+const AIR_SUPERIORITY_HULLS = ["F22", "F15C"];
+const ANTI_GROUND_HULLS = ["F35A", "F15E"];
+const ANTI_SHIP_HULLS = ["F35C", "F15N"];
+const FIFTH_GEN_HULLS = ["F22", "F35A", "F35C"];
+const FOURTH_HALF_GEN_HULLS = ["F15E", "F15N", "F15C"];
+const ALL_AIRCRAFT_HULLS = [...AIR_SUPERIORITY_HULLS, ...ANTI_GROUND_HULLS, ...ANTI_SHIP_HULLS];
 
 function running(seed = 7) {
   const sim = createScenario(seed);
@@ -19,41 +32,126 @@ function running(seed = 7) {
   return sim;
 }
 
-test("built-in air squadron (VFA) and airfield (AFB) exist with the right shape", () => {
-  assert.equal(SHIP_CLASSES.VFA.domain, "air");
-  assert.equal(SHIP_CLASSES.VFA.isFixed, false);
+test("VFA and VFS no longer exist as ship classes", () => {
+  assert.equal(SHIP_CLASSES.VFA, undefined);
+  assert.equal(SHIP_CLASSES.VFS, undefined);
+});
+
+test("all six aircraft squadron hulls exist with the right shape and airfield (AFB) is unchanged", () => {
+  for (const hull of ALL_AIRCRAFT_HULLS) {
+    assert.equal(SHIP_CLASSES[hull].domain, "air", `${hull} domain`);
+    assert.equal(SHIP_CLASSES[hull].isFixed, false, `${hull} isFixed`);
+  }
   assert.equal(SHIP_CLASSES.AFB.isAirfield, true);
   assert.equal(SHIP_CLASSES.AFB.domain, "ground");
 });
 
+test("each aircraft hull's vlsCells exactly fits its own default loadout (a genuinely rigid magazine)", () => {
+  for (const hull of ALL_AIRCRAFT_HULLS) {
+    const cls = SHIP_CLASSES[hull];
+    const cells = Object.entries(cls.baseLoadout).reduce(
+      (sum, [id, count]) => sum + count * (MISSILES[id]?.cellCost ?? 1),
+      0
+    );
+    assert.equal(cls.vlsCells, cells, `${hull} vlsCells should equal its fixed loadout's cell cost`);
+  }
+});
+
+test("F-22 and F-15C squadrons are air-to-air only: zero strike weapons of any kind", () => {
+  for (const hull of AIR_SUPERIORITY_HULLS) {
+    const loadout = SHIP_CLASSES[hull].baseLoadout;
+    assert.equal(loadout["AGM-84"] ?? 0, 0, `${hull} should carry no AGM-84`);
+    assert.equal(loadout["AGM-154"] ?? 0, 0, `${hull} should carry no AGM-154`);
+    assert.ok((loadout["AIM-120"] ?? 0) > 0 && (loadout["AIM-9X"] ?? 0) > 0, `${hull} should carry both AAMs`);
+  }
+});
+
+test("F-35A and F-15E squadrons carry the anti-ground JSOW and no anti-ship Harpoon", () => {
+  for (const hull of ANTI_GROUND_HULLS) {
+    const loadout = SHIP_CLASSES[hull].baseLoadout;
+    assert.ok((loadout["AGM-154"] ?? 0) > 0, `${hull} should carry AGM-154`);
+    assert.equal(loadout["AGM-84"] ?? 0, 0, `${hull} should carry no AGM-84`);
+  }
+});
+
+test("F-35C and F-15N squadrons carry the anti-ship Harpoon and no anti-ground JSOW", () => {
+  for (const hull of ANTI_SHIP_HULLS) {
+    const loadout = SHIP_CLASSES[hull].baseLoadout;
+    assert.ok((loadout["AGM-84"] ?? 0) > 0, `${hull} should carry AGM-84`);
+    assert.equal(loadout["AGM-154"] ?? 0, 0, `${hull} should carry no AGM-154`);
+  }
+});
+
+test("5th-gen airframes have a meaningfully smaller radar cross-section than 4.5-gen airframes", () => {
+  const maxFifthGenRcs = Math.max(...FIFTH_GEN_HULLS.map((hull) => SHIP_CLASSES[hull].rcsM2));
+  const minFourthHalfGenRcs = Math.min(...FOURTH_HALF_GEN_HULLS.map((hull) => SHIP_CLASSES[hull].rcsM2));
+  assert.ok(maxFifthGenRcs < minFourthHalfGenRcs / 5, "5th-gen RCS should be far smaller than 4.5-gen RCS");
+});
+
+test("AGM-154 JSOW is a distinct anti-ground stand-off weapon with its own range/speed profile", () => {
+  const jsow = MISSILES["AGM-154"];
+  const harpoon = MISSILES["AGM-84"];
+  assert.ok(jsow, "AGM-154 is registered");
+  assert.equal(jsow.category, "anti_ship", "reuses the proven ship/ground engagement pipeline");
+  assert.equal(jsow.target, "ship");
+  assert.notEqual(jsow.rangeM, harpoon.rangeM, "JSOW should have a distinct range profile from Harpoon");
+  assert.ok(jsow.rangeM > harpoon.rangeM, "JSOW's stand-off range should exceed AGM-84's");
+});
+
+test("AGM-154 has its own tuned radar detection envelope, distinct from AGM-84's", () => {
+  const observer = makeShip(SIDE.BLUE, 0, 0, "DDG");
+  const jsowEnvelope = missileDetectionEnvelope(observer, { missileId: "AGM-154", terminal: false });
+  const harpoonEnvelope = missileDetectionEnvelope(observer, { missileId: "AGM-84", terminal: false });
+  assert.notEqual(jsowEnvelope.targetHeightM, harpoonEnvelope.targetHeightM, "JSOW should not silently copy AGM-84's sea-skim profile");
+});
+
+test("a cruising aircraft's own altitude extends its radar horizon (observer side, not just target side)", () => {
+  // Regression test: the observer side of the radar-horizon calculation used
+  // to call the ship-only mast-height formula directly, ignoring altitude
+  // entirely -- so a 9,000m-cruising fighter's look-down range against a
+  // sea-skimming missile was capped as if it were sitting at sea level (~19NM)
+  // instead of the 200+NM its altitude actually affords. A sea-level ship and
+  // a high-flying aircraft should NOT get the same horizon against the same
+  // low-flying missile.
+  const ship = makeShip(SIDE.BLUE, 0, 0, "DDG");
+  const aircraft = makeShip(SIDE.BLUE, 0, 0, "F15C");
+  assert.ok(aircraft.altitudeM > 1000, "the aircraft fixture actually cruises high");
+  const shipEnvelope = missileDetectionEnvelope(ship, { missileId: "AGM-84", terminal: false });
+  const aircraftEnvelope = missileDetectionEnvelope(aircraft, { missileId: "AGM-84", terminal: false });
+  assert.ok(
+    aircraftEnvelope.horizonM > shipEnvelope.horizonM * 5,
+    `a cruising aircraft's horizon (${(aircraftEnvelope.horizonM / NM).toFixed(0)}NM) should be far beyond a sea-level ship's (${(shipEnvelope.horizonM / NM).toFixed(0)}NM) against the same sea-skimming missile`
+  );
+});
+
 test("a squadron seeds flight state: HP pool == plane count, fuel, mission, snapshot", () => {
-  const vfa = makeShip(SIDE.BLUE, 0, 0, "VFA");
-  assert.equal(isAircraft(vfa), true);
-  assert.equal(squadronSize(vfa), 4);
-  assert.equal(aliveAircraftCount(vfa), 4);
-  assert.equal(vfa.airState, "mission");
-  assert.ok(vfa.fuelS > 0);
-  assert.deepEqual(vfa.baseLoadoutSnapshot, vfa.loadout);
+  const f15n = makeShip(SIDE.BLUE, 0, 0, "F15N");
+  assert.equal(isAircraft(f15n), true);
+  assert.equal(squadronSize(f15n), 4);
+  assert.equal(aliveAircraftCount(f15n), 4);
+  assert.equal(f15n.airState, "mission");
+  assert.ok(f15n.fuelS > 0);
+  assert.deepEqual(f15n.baseLoadoutSnapshot, f15n.loadout);
 });
 
 test("each hit downs exactly one aircraft (attrition)", () => {
-  const vfa = makeShip(SIDE.RED, 0, 0, "VFA");
-  vfa.damage = 1;
-  assert.equal(aliveAircraftCount(vfa), 3);
-  vfa.damage = 4;
-  assert.equal(aliveAircraftCount(vfa), 0);
+  const f15n = makeShip(SIDE.RED, 0, 0, "F15N");
+  f15n.damage = 1;
+  assert.equal(aliveAircraftCount(f15n), 3);
+  f15n.damage = 4;
+  assert.equal(aliveAircraftCount(f15n), 0);
 });
 
 test("air units and airfields can be placed anywhere; air is not seated to water", () => {
   const sim = running();
-  const vfa = placeShip(sim, SIDE.BLUE, -7 * NM, 3 * NM, "VFA");
+  const f15n = placeShip(sim, SIDE.BLUE, -7 * NM, 3 * NM, "F15N");
   const afb = placeShip(sim, SIDE.RED, 9 * NM, 0, "AFB");
-  assert.ok(vfa && afb);
-  assert.equal(isAircraft(vfa), true);
+  assert.ok(f15n && afb);
+  assert.equal(isAircraft(f15n), true);
   assert.equal(isAirfield(afb), true);
   // Placement coordinates are preserved (no water reseat) for the air unit.
-  assert.equal(Math.round(vfa.x / NM), -7);
-  assert.equal(Math.round(vfa.y / NM), 3);
+  assert.equal(Math.round(f15n.x / NM), -7);
+  assert.equal(Math.round(f15n.y / NM), 3);
 });
 
 test("a ship shoots down an enemy aircraft (SAM vs platform, attrition)", () => {
@@ -63,20 +161,20 @@ test("a ship shoots down an enemy aircraft (SAM vs platform, attrition)", () => 
   // its autonomous routing (nextDecision = Infinity) so this isolates the SAM-
   // vs-aircraft attrition mechanic, not the stand-off strike AI (which would
   // correctly egress out of the SAM envelope — covered by its own tests).
-  const vfa = placeShip(sim, SIDE.RED, 28 * NM, 0, "VFA");
-  vfa.desiredSpeed = 0; vfa.fuelS = 1e9; vfa.nextDecision = Infinity;
+  const f15n = placeShip(sim, SIDE.RED, 28 * NM, 0, "F15N");
+  f15n.desiredSpeed = 0; f15n.fuelS = 1e9; f15n.nextDecision = Infinity;
   let downed = false;
   for (let i = 0; i < 2000 && !downed; i++) {
     stepSim(sim, 0.25);
-    downed = aliveAircraftCount(vfa) < 4 || !vfa.alive;
+    downed = aliveAircraftCount(f15n) < 4 || !f15n.alive;
   }
   assert.ok(downed, "the SAM ship attrited the enemy squadron");
 });
 
-test("an aircraft squadron strikes an enemy ship with anti-ship missiles", () => {
+test("an anti-ship squadron strikes an enemy ship with its Harpoon (AGM-84)", () => {
   const sim = running(13);
-  const vfa = placeShip(sim, SIDE.BLUE, -40 * NM, 0, "VFA");
-  vfa.desiredSpeed = 0; vfa.fuelS = 1e9;
+  const f15n = placeShip(sim, SIDE.BLUE, -40 * NM, 0, "F15N");
+  f15n.desiredSpeed = 0; f15n.fuelS = 1e9;
   placeShip(sim, SIDE.RED, 30 * NM, 0, "DDG");
   let fired = false;
   for (let i = 0; i < 1600 && !fired; i++) {
@@ -86,47 +184,63 @@ test("an aircraft squadron strikes an enemy ship with anti-ship missiles", () =>
   assert.ok(fired, "the squadron launched an anti-ship missile at the ship");
 });
 
+test("an anti-ground squadron actually strikes an enemy ground site with its JSOW (AGM-154)", () => {
+  const sim = running(13);
+  const f35a = placeShip(sim, SIDE.BLUE, -40 * NM, 0, "F35A");
+  f35a.desiredSpeed = 0; f35a.fuelS = 1e9;
+  // An unarmed EWR isolates "can the squadron release its dedicated anti-ground
+  // weapon against a ground-domain target" from "does it survive a SAM's own
+  // return fire", which is a separate, already-covered attrition mechanic.
+  placeShip(sim, SIDE.RED, 30 * NM, 0, "EWR");
+  let fired = false;
+  for (let i = 0; i < 1600 && !fired; i++) {
+    stepSim(sim, 0.25);
+    fired = sim.missiles.some((m) => m.side === SIDE.BLUE && m.missileId === "AGM-154");
+  }
+  assert.ok(fired, "the squadron launched its anti-ground missile at the ground site");
+});
+
 test("RTB → rearm → relaunch refills the magazine and refuels", () => {
   const sim = running();
   placeShip(sim, SIDE.BLUE, -30 * NM, 0, "AFB");
-  const vfa = placeShip(sim, SIDE.BLUE, -12 * NM, 0, "VFA");
+  const f15n = placeShip(sim, SIDE.BLUE, -12 * NM, 0, "F15N");
   // A weaponless RED radar site keeps the scenario runnable without attacking
   // the squadron while it is parked rearming (which would make the test flaky).
   placeShip(sim, SIDE.RED, 80 * NM, 0, "EWR");
-  vfa.loadout = {}; vfa.fuelS = 200; // winchester + low fuel -> RTB now
+  f15n.loadout = {}; f15n.fuelS = 200; // winchester + low fuel -> RTB now
   const states = new Set();
   let relaunched = false;
   for (let i = 0; i < 5000 && !relaunched; i++) {
     stepSim(sim, 0.25);
-    if (!vfa.alive) break;
-    states.add(vfa.airState);
-    relaunched = vfa.airState === "mission" && Object.keys(vfa.loadout).length > 0 && i > 40;
+    if (!f15n.alive) break;
+    states.add(f15n.airState);
+    relaunched = f15n.airState === "mission" && Object.keys(f15n.loadout).length > 0 && i > 40;
   }
   assert.ok(states.has("rtb"), "entered RTB");
   assert.ok(states.has("rearming"), "parked to rearm");
   assert.ok(relaunched, "relaunched with a refilled magazine");
-  assert.ok(vfa.fuelS > 1000, "refuelled on rearm");
+  assert.ok(f15n.fuelS > 1000, "refuelled on rearm");
 });
 
 test("a squadron will not rearm on a destroyed airfield (diverts instead)", () => {
   const sim = running();
   const afb = placeShip(sim, SIDE.BLUE, -30 * NM, 0, "AFB");
-  const vfa = placeShip(sim, SIDE.BLUE, -28 * NM, 0, "VFA"); // already within base reach
+  const f15n = placeShip(sim, SIDE.BLUE, -28 * NM, 0, "F15N"); // already within base reach
   placeShip(sim, SIDE.RED, 80 * NM, 0, "EWR");
-  vfa.loadout = {}; vfa.fuelS = 300;
+  f15n.loadout = {}; f15n.fuelS = 300;
   // Run until it parks to rearm, then destroy the airfield mid-rearm.
   let parked = false;
-  for (let i = 0; i < 200 && !parked; i++) { stepSim(sim, 0.25); parked = vfa.airState === "rearming"; }
+  for (let i = 0; i < 200 && !parked; i++) { stepSim(sim, 0.25); parked = f15n.airState === "rearming"; }
   assert.ok(parked, "squadron parked to rearm");
   afb.alive = false; // airfield destroyed while the flight is on the ramp
   // It must NOT complete the rearm; with no other base it diverts and splashes.
   let resolved = false;
   for (let i = 0; i < 2000 && !resolved; i++) {
     stepSim(sim, 0.25);
-    resolved = !vfa.alive || (vfa.airState === "mission" && Object.keys(vfa.loadout).length > 0);
+    resolved = !f15n.alive || (f15n.airState === "mission" && Object.keys(f15n.loadout).length > 0);
   }
-  assert.ok(!vfa.alive, "did not magically rearm on the crater — diverted and splashed");
-  assert.equal(Object.keys(vfa.loadout).length, 0, "magazine was never refilled");
+  assert.ok(!f15n.alive, "did not magically rearm on the crater — diverted and splashed");
+  assert.equal(Object.keys(f15n.loadout).length, 0, "magazine was never refilled");
 });
 
 test("a duplicated airfield stays a valid airfield at its offset", () => {
@@ -140,13 +254,13 @@ test("a duplicated airfield stays a valid airfield at its offset", () => {
 
 test("a winchester squadron with no airfield splashes when fuel runs out", () => {
   const sim = running();
-  const vfa = placeShip(sim, SIDE.BLUE, 0, 0, "VFA");
+  const f15n = placeShip(sim, SIDE.BLUE, 0, 0, "F15N");
   placeShip(sim, SIDE.RED, 80 * NM, 0, "DDG");
-  vfa.loadout = {}; vfa.fuelS = 40;
+  f15n.loadout = {}; f15n.fuelS = 40;
   let splashed = false;
   for (let i = 0; i < 1000 && !splashed; i++) {
     stepSim(sim, 0.25);
-    splashed = !vfa.alive;
+    splashed = !f15n.alive;
   }
   assert.ok(splashed, "ran out of fuel and was removed");
   assert.ok(sim.events.some((e) => /splashed/.test(e.text)), "logged a splash event");
@@ -175,34 +289,37 @@ test("a custom airfield (ground + isAirfield) can be placed on water", () => {
   unregisterUnit(unit);
 });
 
-test("vanillaUnits includes the built-in air squadron and airfield", () => {
+test("vanillaUnits includes all six built-in air squadrons and the airfield", () => {
   const v = vanillaUnits();
-  assert.ok(v.some((u) => u.kind === "aircraft" && unitId(u) === "VFA"));
+  for (const hull of ALL_AIRCRAFT_HULLS) {
+    assert.ok(v.some((u) => u.kind === "aircraft" && unitId(u) === hull), `${hull} listed as a vanilla aircraft unit`);
+  }
   assert.ok(v.some((u) => u.kind === "ground" && unitId(u) === "AFB" && u.isAirfield === true));
 });
 
 test("air inventory row reports flight strength, state and effector counts", () => {
-  const vfa = makeShip(SIDE.BLUE, 0, 0, "VFA");
-  assert.equal(isAirUnit(vfa), true);
-  assert.equal(isGroundUnit(vfa), false);
-  const row = airRowHtml(vfa, false);
+  const f15n = makeShip(SIDE.BLUE, 0, 0, "F15N");
+  assert.equal(isAirUnit(f15n), true);
+  assert.equal(isGroundUnit(f15n), false);
+  const row = airRowHtml(f15n, false);
   assert.match(row, /4\/4/, "shows 4/4 aircraft");
   assert.match(row, /MSN/, "shows mission state");
 });
 
-test("aircraft weapons exist with correct categories (AMRAAM/Sidewinder/Harpoon)", () => {
+test("aircraft weapons exist with correct categories (AMRAAM/Sidewinder/Harpoon/JSOW)", () => {
   assert.equal(MISSILES["AIM-120"].category, "anti_air");
   assert.equal(MISSILES["AIM-9X"].category, "anti_air");
   assert.equal(MISSILES["AIM-9X"].guidance, "infrared", "Sidewinder is IR (flare-decoyable)");
   assert.equal(MISSILES["AGM-84"].category, "anti_ship");
-  for (const id of ["AIM-120", "AIM-9X", "AGM-84"]) assert.ok(MISSILES[id].shortLabel.length >= 3, id);
+  assert.equal(MISSILES["AGM-154"].category, "anti_ship");
+  for (const id of ["AIM-120", "AIM-9X", "AGM-84", "AGM-154"]) assert.ok(MISSILES[id].shortLabel.length >= 3, id);
 });
 
-test("the F/A-18 squadron carries more than 4 AAW and more than 6 ASUW", () => {
-  const vfa = makeShip(SIDE.BLUE, 0, 0, "VFA");
+test("the F-15N squadron carries more than 4 AAW and more than 6 ASUW", () => {
+  const f15n = makeShip(SIDE.BLUE, 0, 0, "F15N");
   let aaw = 0;
   let asuw = 0;
-  for (const [id, n] of Object.entries(vfa.loadout)) {
+  for (const [id, n] of Object.entries(f15n.loadout)) {
     if (MISSILES[id].category === "anti_ship") asuw += n; else aaw += n;
   }
   assert.ok(aaw > 4, `AAW ${aaw} > 4`);
@@ -211,8 +328,8 @@ test("the F/A-18 squadron carries more than 4 AAW and more than 6 ASUW", () => {
 
 test("two squadrons fight air-to-air with AAMs and attrit each other", () => {
   const sim = running(7);
-  const b = placeShip(sim, SIDE.BLUE, -25 * NM, 0, "VFA"); b.fuelS = 1e9;
-  const r = placeShip(sim, SIDE.RED, 25 * NM, 0, "VFA"); r.fuelS = 1e9;
+  const b = placeShip(sim, SIDE.BLUE, -25 * NM, 0, "F15C"); b.fuelS = 1e9;
+  const r = placeShip(sim, SIDE.RED, 25 * NM, 0, "F15C"); r.fuelS = 1e9;
   let firedAAM = false;
   for (let i = 0; i < 1800; i++) {
     stepSim(sim, 0.25);
@@ -222,12 +339,39 @@ test("two squadrons fight air-to-air with AAMs and attrit each other", () => {
   assert.ok(aliveAircraftCount(b) < 4 || aliveAircraftCount(r) < 4, "at least one flight took losses");
 });
 
+// Regression: the CAP/orbit fallback (and the fleet-command threat axis it
+// reads) used to hardcode "BLUE's enemy is east, RED's enemy is west" — the
+// canonical default-scenario layout, but not a real invariant. Any pair of
+// squadrons placed the other way around (or any pure-air fight with no
+// surface OTC at all) had both flights screen AWAY from each other forever:
+// they never closed inside RCS-limited detection range, so radar never
+// triggered and no shot was ever fired, no matter how close the user placed
+// them. The fix reads each side's actual whole-fleet position to derive the
+// default threat axis instead of a fixed compass heading.
+test("two squadrons placed in the REVERSED (blue-east, red-west) layout still close and fight, not fly apart", () => {
+  const sim = running(11);
+  const b = placeShip(sim, SIDE.BLUE, 10 * NM, 0, "F15C"); b.fuelS = 1e9;
+  const r = placeShip(sim, SIDE.RED, -10 * NM, 0, "F15C"); r.fuelS = 1e9;
+  let firedAAM = false;
+  let minSepM = Infinity;
+  for (let i = 0; i < 1200; i++) {
+    stepSim(sim, 0.25);
+    if (sim.missiles.some((mm) => mm.missileId === "AIM-120" || mm.missileId === "AIM-9X")) firedAAM = true;
+    minSepM = Math.min(minSepM, Math.hypot(b.x - r.x, b.y - r.y));
+    if (firedAAM) break;
+  }
+  assert.ok(firedAAM, "air-to-air missiles were launched despite the reversed layout");
+  assert.ok(minSepM < 20 * NM, "the flights closed to within detection/engagement range instead of diverging");
+});
+
 test("a squadron breaks evasively when a missile closes in", () => {
   const sim = running(7);
   placeShip(sim, SIDE.BLUE, -10 * NM, 0, "CCG");
   // Hold the flight inside the cruiser's detection range and freeze its routing
-  // so the test exercises the evasive-break reaction, not the stand-off AI.
-  const r = placeShip(sim, SIDE.RED, 28 * NM, 0, "VFA");
+  // so the test exercises the evasive-break reaction, not the stand-off AI. A
+  // non-stealth (high-RCS) hull is deliberately used so detection at this
+  // range is not itself the bottleneck being tested.
+  const r = placeShip(sim, SIDE.RED, 28 * NM, 0, "F15E");
   r.fuelS = 1e9; r.desiredSpeed = 0; r.nextDecision = Infinity;
   let broke = false;
   for (let i = 0; i < 1600 && !broke; i++) {
@@ -241,8 +385,8 @@ test("flares are expended defending against infrared missiles", () => {
   const sim = running(7);
   // Start inside WVR range so the infrared (Sidewinder) phase actually occurs —
   // at long range it is a radar BVR (AMRAAM) fight where flares do not apply.
-  const b = placeShip(sim, SIDE.BLUE, -4 * NM, 0, "VFA"); b.fuelS = 1e9;
-  const r = placeShip(sim, SIDE.RED, 4 * NM, 0, "VFA"); r.fuelS = 1e9;
+  const b = placeShip(sim, SIDE.BLUE, -4 * NM, 0, "F35A"); b.fuelS = 1e9;
+  const r = placeShip(sim, SIDE.RED, 4 * NM, 0, "F35A"); r.fuelS = 1e9;
   for (let i = 0; i < 1800; i++) stepSim(sim, 0.25);
   // Sidewinders (IR) reaching a breaking flight consume flares from its pool.
   assert.ok((b.flares < b.flaresMax) || (r.flares < r.flaresMax), "a flight popped flares");
@@ -251,7 +395,10 @@ test("flares are expended defending against infrared missiles", () => {
 test("aircraft are hard targets: downing a flight costs many SAM shots", () => {
   const sim = running(7);
   placeShip(sim, SIDE.BLUE, -10 * NM, 0, "CCG");
-  const r = placeShip(sim, SIDE.RED, 35 * NM, 0, "VFA"); r.fuelS = 1e9; r.desiredSpeed = 0;
+  // Non-stealth hull deliberately: it must actually get detected and engaged
+  // for "SAMs fired should exceed kills" to be a meaningful assertion rather
+  // than a vacuous pass from never being detected in the first place.
+  const r = placeShip(sim, SIDE.RED, 35 * NM, 0, "F15E"); r.fuelS = 1e9; r.desiredSpeed = 0;
   for (let i = 0; i < 2600; i++) stepSim(sim, 0.25);
   const sams = sim.events.filter((e) => /launched SM/.test(e.text)).length;
   const lost = 4 - aliveAircraftCount(r);
@@ -262,7 +409,7 @@ test("aircraft are hard targets: downing a flight costs many SAM shots", () => {
 test("a striker returns to base once its anti-ship load is spent", () => {
   const sim = running();
   placeShip(sim, SIDE.BLUE, -40 * NM, 0, "AFB");
-  const v = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "VFA");
+  const v = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "F35C");
   placeShip(sim, SIDE.RED, 80 * NM, 0, "EWR");
   v.loadout = { "AIM-120": 4 }; // air-to-air left, strike (AGM-84) depleted
   let rtb = false;
@@ -273,7 +420,7 @@ test("a striker returns to base once its anti-ship load is spent", () => {
 test("a CAP fighter hard-kills an inbound ASCM but keeps an air-to-air reserve", () => {
   const sim = running(7);
   placeShip(sim, SIDE.BLUE, -10 * NM, 0, "DDG");
-  const cap = placeShip(sim, SIDE.BLUE, 5 * NM, 0, "VFA"); cap.fuelS = 1e9;
+  const cap = placeShip(sim, SIDE.BLUE, 5 * NM, 0, "F15C"); cap.fuelS = 1e9;
   placeShip(sim, SIDE.RED, 30 * NM, 0, "CDB"); // fires anti-ship missiles
   let firedAtMissile = false;
   for (let i = 0; i < 2000 && !firedAtMissile; i++) {
@@ -289,7 +436,7 @@ test("a CAP fighter hard-kills an inbound ASCM but keeps an air-to-air reserve",
 test("a full flight relaunches faster than a lone survivor (rate scales with aircraft)", () => {
   const launchTimes = (planes) => {
     const sim = running(7);
-    const v = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "VFA"); v.fuelS = 1e9; v.desiredSpeed = 0;
+    const v = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "F15N"); v.fuelS = 1e9; v.desiredSpeed = 0;
     v.damage = 4 - planes;
     placeShip(sim, SIDE.RED, 20 * NM, 0, "BBG");
     placeShip(sim, SIDE.RED, 22 * NM, 4 * NM, "BBG");
@@ -325,25 +472,25 @@ test("low-RCS aircraft are detected far closer than ships (RCS-based radar)", ()
     return false;
   };
   assert.ok(detects("DDG", 120), "a ship is detected at long range");
-  assert.ok(!detects("VFA", 120), "an aircraft flight is NOT seen at that range (small RCS)");
-  assert.ok(detects("VFA", 25), "the aircraft flight is detected once it closes in");
+  assert.ok(!detects("F15C", 120), "an aircraft flight is NOT seen at that range (small RCS)");
+  assert.ok(detects("F15C", 25), "the aircraft flight is detected once it closes in");
 });
 
 test("aircraft fly high and have a small RCS; ships sit at sea level with a large RCS", () => {
   const ddg = makeShip(SIDE.BLUE, 0, 0, "DDG");
-  const vfa = makeShip(SIDE.BLUE, 0, 0, "VFA");
+  const f15c = makeShip(SIDE.BLUE, 0, 0, "F15C");
   assert.equal(ddg.altitudeM, 0);
-  assert.ok(vfa.altitudeM > 1000, "aircraft cruise high");
-  assert.ok(vfa.rcsM2 < ddg.rcsM2 / 100, "aircraft RCS far smaller than a ship");
+  assert.ok(f15c.altitudeM > 1000, "aircraft cruise high");
+  assert.ok(f15c.rcsM2 < ddg.rcsM2 / 100, "aircraft RCS far smaller than a ship");
 });
 
 test("a scenario with air units is deterministic for the same seed", () => {
   const build = (seed) => {
     const sim = createScenario(seed);
     clearSide(sim, SIDE.BLUE); clearSide(sim, SIDE.RED);
-    placeShip(sim, SIDE.BLUE, -40 * NM, 0, "VFA");
+    placeShip(sim, SIDE.BLUE, -40 * NM, 0, "F15N");
     placeShip(sim, SIDE.BLUE, -30 * NM, 5 * NM, "DDG");
-    placeShip(sim, SIDE.RED, 35 * NM, 0, "VFA");
+    placeShip(sim, SIDE.RED, 35 * NM, 0, "F15N");
     placeShip(sim, SIDE.RED, 30 * NM, -5 * NM, "DDG");
     sim.mode = SCENARIO_MODE.RUNNING; sim.paused = false;
     return sim;
@@ -353,4 +500,94 @@ test("a scenario with air units is deterministic for the same seed", () => {
   const b = build(5);
   for (let i = 0; i < 1500; i++) { stepSim(a, 0.25); stepSim(b, 0.25); }
   assert.equal(digest(a), digest(b));
+});
+
+test("AWAC squadron exists as an unarmed, command-hub-capable, longest-ranged sensor asset", () => {
+  const cls = SHIP_CLASSES.AWAC;
+  assert.equal(cls.domain, "air");
+  assert.equal(cls.isFixed, false);
+  assert.equal(cls.commandHub, true);
+  assert.deepEqual(cls.baseLoadout, {});
+  assert.equal(cls.vlsCells, 0);
+  for (const hull of ALL_AIRCRAFT_HULLS) {
+    assert.ok(cls.radarRangeNm >= SHIP_CLASSES[hull].radarRangeNm, `AWAC radar should reach at least as far as ${hull}'s`);
+  }
+  const awac = makeShip(SIDE.BLUE, 0, 0, "AWAC");
+  assert.equal(isAircraft(awac), true);
+  assert.equal(awac.commandHub, true);
+  assert.deepEqual(awac.loadout, {});
+});
+
+test("an unarmed AWAC never enters combat and orbits behind the formation guide, not ahead of it (regression: 'winchester' RTB loop)", () => {
+  // A squadron with an empty base loadout used to read as permanently
+  // "winchester" (zero weapons == magazine spent), so it RTB'd on its very
+  // first decision tick, parked to rearm into the same empty magazine, and
+  // immediately RTB'd again -- a park-forever loop that never let it fly its
+  // actual station-keeping mission. See the `everCarriesWeapons` gate in
+  // aircraft.js.
+  const sim = running(3);
+  placeShip(sim, SIDE.BLUE, -30 * NM, 0, "AFB");
+  const otc = placeShip(sim, SIDE.BLUE, -15 * NM, 0, "DDG"); otc.desiredSpeed = 0;
+  const awac = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "AWAC");
+  // Weaponless RED radar site: gives the AWAC something to fuse into a threat
+  // axis without ever threatening it, isolating the AI-geometry question from
+  // survivability (already covered elsewhere).
+  placeShip(sim, SIDE.RED, 40 * NM, 0, "EWR");
+  const phases = new Set();
+  const airStates = new Set();
+  for (let i = 0; i < 400; i++) {
+    stepSim(sim, 0.25);
+    airStates.add(awac.airState);
+    if (awac._phase) phases.add(awac._phase);
+  }
+  assert.ok(awac.alive, "the AWAC survived (nothing on the RED side can shoot at it)");
+  assert.deepEqual([...airStates], ["mission"], "stayed on mission the whole run instead of looping through RTB");
+  assert.deepEqual([...phases], ["orbit"], "held the unarmed support-orbit phase, never a combat or CAP phase");
+  assert.equal(sim.missiles.some((m) => m.launcherId === awac.id), false, "never launched a weapon it doesn't carry");
+  // The RED contact sits east of the BLUE OTC, so the threat axis points east;
+  // an unarmed asset orbits on the opposite (west) side of the guide, unlike
+  // an armed CAP fighter which would screen ahead toward the threat.
+  assert.ok(awac.waypoint.x < otc.x, "orbits on the side of the formation guide away from the threat axis");
+});
+
+test("an AWAC still RTBs and refuels on low fuel, even though it never runs out of ammo", () => {
+  const sim = running(3);
+  placeShip(sim, SIDE.BLUE, -30 * NM, 0, "AFB");
+  const awac = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "AWAC");
+  placeShip(sim, SIDE.RED, 80 * NM, 0, "EWR");
+  awac.fuelS = 200; // force a near-immediate bingo-fuel call
+  const states = new Set();
+  let refueled = false;
+  for (let i = 0; i < 3000 && !refueled; i++) {
+    stepSim(sim, 0.25);
+    states.add(awac.airState);
+    refueled = awac.airState === "mission" && awac.fuelS > 1000;
+  }
+  assert.ok(states.has("rtb"), "low fuel sent it home");
+  assert.ok(states.has("rearming"), "it actually parked to refuel");
+  assert.ok(refueled, "topped off and resumed its mission (not stuck parked forever)");
+});
+
+test("an alive, on-mission command-hub unit tightens its side's CEC track-sharing latency", () => {
+  const buildFixture = (hubShip) => {
+    const sim = { time: 10, ships: [] };
+    const sourceTrack = { side: SIDE.BLUE, x: 0, y: 0, vx: 0, vy: 0, quality: 0.8, age: 0, uncertainty: 100, lastSeen: 9, _stateTime: 9 };
+    const source = { alive: true, side: SIDE.RED, tracks: new Map([["B-1", sourceTrack]]) };
+    const relay = { alive: true, side: SIDE.RED, tracks: new Map() };
+    sim.ships.push(source, relay);
+    if (hubShip) sim.ships.push(hubShip);
+    return sim;
+  };
+  const sharedAfter = (sim) => {
+    shareTracks(sim);
+    return sim.sharedTracksBySide?.get(SIDE.RED)?.has("B-1") ?? false;
+  };
+  // Baseline latency (1.8s) is not yet satisfied by a 1.0s-old track.
+  assert.equal(sharedAfter(buildFixture(null)), false, "no command hub: a 1.0s-old track hasn't cleared the 1.8s baseline latency yet");
+  // An alive, on-mission command hub tightens latency to 0.6s, which a 1.0s-old track clears.
+  const hub = { alive: true, side: SIDE.RED, domain: "air", airState: "mission", commandHub: true, tracks: new Map() };
+  assert.equal(sharedAfter(buildFixture(hub)), true, "an active command hub shares the same-age track immediately");
+  // A command-hub aircraft that is down for fuel/rearm does not count as active.
+  const grounded = { alive: true, side: SIDE.RED, domain: "air", airState: "rearming", commandHub: true, tracks: new Map() };
+  assert.equal(sharedAfter(buildFixture(grounded)), false, "a command hub parked to rearm does not tighten latency");
 });

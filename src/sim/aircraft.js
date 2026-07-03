@@ -46,9 +46,24 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   // never bore into the ship's air-defence envelope. Fractions of the best
   // carried anti-ship weapon's range.
   standoffFrac: 0.9,
-  // Closer than this fraction of the stand-off ring → turn cold and re-open
-  // range (the egress the user asked for: "move away after they are done").
-  egressFrac: 0.72,
+  // Ingress/on-station/egress sub-phase boundaries, given as HYSTERESIS PAIRS
+  // (enter/exit) rather than a single line. A single threshold flip-flops: the
+  // 5NM on-station weave plus normal target drift walks the range back and
+  // forth across one boundary every few seconds, so the flight visibly jinks
+  // (nose toward the target, then beam-on, then toward it again) instead of
+  // flying a clean run. Each pair opens a dead zone the range must cross
+  // fully before the sub-phase changes again — see the sub-phase state
+  // machine in decideAircraft.
+  //   ingressEnterFrac: from on-station, turn back inbound once this far out.
+  //   ingressExitFrac:  once ingressing, keep closing until this far in
+  //                     (< ingressEnterFrac) before leveling out on-station.
+  ingressEnterFrac: 1.06,
+  ingressExitFrac: 0.98,
+  //   egressEnterFrac: from on-station, turn cold once this close in.
+  //   egressExitFrac:  once egressing, keep opening range until this far out
+  //                    (> egressEnterFrac) before resuming the on-station orbit.
+  egressEnterFrac: 0.72,
+  egressExitFrac: 0.80,
   // Begin the low-level descent once within this multiple of the stand-off ring.
   ingressStartFrac: 1.7,
   // On-station weave period (s): how long the flight holds one beam leg before
@@ -62,8 +77,49 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   // this (self-defence / merge range); a fighter farther out is ignored so the
   // strike is prosecuted rather than every flight collapsing into a furball.
   a2aSelfDefenseRangeM: 22 * NM,
-  // Minimum fused-track quality a squadron will vector a strike/intercept on.
+  // Once a striker has broken for a close threat, don't release it back to the
+  // strike run until the range has opened out past this multiple of
+  // a2aSelfDefenseRangeM — hysteresis so a fighter loitering near the merge
+  // line doesn't flip the striker between "break" and "resume run" every tick.
+  a2aSelfDefenseExitFrac: 1.3,
+  // An air-to-air missile needs its own radar/IR seeker (or the launching
+  // aircraft's radar for mid-course guidance) looking roughly at the target
+  // to get a valid shot — unlike a ship's vertical-launch SAM, which fires in
+  // any direction and turns onto the intercept course after launch, a fighter
+  // cannot employ a forward-firing weapon at something well behind its own
+  // nose. Permissive on purpose (this allows a beam or even a high-aspect
+  // shot, reflecting real off-boresight seeker/HMD capability) — it only
+  // blocks the clearly-unrealistic rear-hemisphere case. Enforced in
+  // combat.js (launchMissile) and applies to aircraft launchers only; ship
+  // and ground VLS launches are unaffected. See docs/SIMULATION_ASSUMPTIONS.md.
+  a2aLaunchConeDeg: 100,
+  // Minimum fused-track quality a squadron will vector a strike/intercept on
+  // when picking a FRESH target. Once locked, a flight keeps the SAME target
+  // as long as it appears anywhere in the fused picture at all (see
+  // resolveLockedTrack) — it does not re-apply this floor to a target it is
+  // already committed to.
   acquireTrackQuality: 0.14,
+  // How long (s) to keep steering at a locked target's last known position
+  // after it drops out of the fused picture entirely, before conceding the
+  // lock and picking a fresh target. At long range a single radar sweep can
+  // legitimately miss a contact for a cycle or two even though nothing about
+  // the target changed; without a coast window that momentary gap reads as
+  // "target lost" and the flight instantly retargets onto whatever else is
+  // nearest — repeatedly, every time the original contact blips back out —
+  // producing a visibly wobbling, indecisive flight path (confirmed in the
+  // debug log: "CAP screen (no track held)" wedged between ingress legs
+  // toward three different contacts within seconds, well before any of them
+  // was actually destroyed). A real fire-control system coasts a track
+  // through exactly this kind of brief dropout instead of dropping it.
+  trackCoastS: 8,
+  // With no contact to engage, an armed flight screens this far AHEAD of the
+  // formation guide (OTC) on the threat axis (a combat air patrol).
+  capStationM: 40 * NM,
+  // ...while an UNARMED flight (no weapons at all — a support/sensor asset
+  // like the AWAC AEW&C squadron) instead orbits this far BEHIND the guide,
+  // on the side away from the threat: it has no business up front and
+  // survives by standing off, not by fighting.
+  supportOrbitM: 30 * NM,
   // --- survivability / countermeasures (all provisional) ------------------
   // Default IR-countermeasure (flare) pool when a class omits `flares`.
   flares: 60,
@@ -166,44 +222,100 @@ function nearestFriendlyAirfield(sim, ship) {
   return best;
 }
 
-function nearestEnemyTrack(sim, ship) {
-  let best = null;
-  let bestD = Infinity;
-  for (const track of iterateTracksForShip(sim, ship)) {
-    if (track.side === ship.side || track.quality <= 0.18) continue;
-    if (String(track.id).startsWith("M-")) continue; // ignore in-flight missiles for nav
-    const d = distance(ship, track);
-    if (d < bestD) { bestD = d; best = track; }
-  }
-  return best;
-}
-
 // Acquire the nearest enemy surface and air contacts a squadron can be vectored
 // onto. A flight is networked into the fleet's Cooperative Engagement (CEC)
 // picture — the same fused force picture the ships fire on — so it can prosecute
 // targets held by the fleet's long-range radars, not just the handful its own
 // short-range set can see. Falls back to the unit's own/shared tracks when no
 // force picture has been built yet (e.g. a direct unit-test call).
-function acquireAirTargets(sim, ship) {
-  const q = AIRCRAFT_TEMP_CONFIG.acquireTrackQuality;
-  let surf = null; let surfD = Infinity;
-  let air = null; let airD = Infinity;
-  const consider = (track) => {
-    if (!track || track.side === ship.side) return;
-    if (String(track.id).startsWith("M-")) return;
-    if ((track.quality ?? 0) <= q) return;
-    const d = distance(ship, track);
-    if ((track.domain ?? "sea") === "air") {
-      if (d < airD) { airD = d; air = track; }
-    } else if (d < surfD) { surfD = d; surf = track; }
-  };
-  const picture = sim.forcePicture?.get(ship.side);
-  if (picture) {
-    for (const track of picture.values()) consider(track);
-  } else {
-    for (const track of iterateTracksForShip(sim, ship)) consider(track);
+// Target-lock hysteresis + coast: once a flight commits to a surface or air
+// target it keeps vectoring on that SAME track — appearing anywhere at all in
+// the fused picture, not re-applying the acquisition quality floor — instead
+// of re-sorting to "nearest track" every decision tick (1s). Without this,
+// two similarly-ranged contacts (e.g. a SAM battery and a coastal battery
+// 15NM apart) cause the flight to ping-pong its heading between them.
+// If the locked track disappears from the picture ENTIRELY for a tick (a
+// single missed radar sweep at long range, not a real loss), the flight
+// coasts on the last known position for up to `trackCoastS` before conceding
+// the lock — see the config comment. Only once neither a live update nor the
+// coast window is available does it fall through to a fresh "nearest" pick,
+// which is the "target genuinely lost" case a mission should retask on.
+function resolveLockedTrack(sim, ship, all, wantAir, keyPrefix) {
+  const cfg = AIRCRAFT_TEMP_CONFIG;
+  const idKey = `_${keyPrefix}TargetId`;
+  const seenKey = `_${keyPrefix}LastSeenAt`;
+  const xKey = `_${keyPrefix}AimX`;
+  const yKey = `_${keyPrefix}AimY`;
+  const currentId = ship[idKey];
+  if (currentId) {
+    const current = all.find((t) => t && t.id === currentId);
+    if (current) {
+      ship[seenKey] = sim.time;
+      return current;
+    }
+    if (Number.isFinite(ship[seenKey]) && Number.isFinite(ship[xKey]) && sim.time - ship[seenKey] < cfg.trackCoastS) {
+      return { id: currentId, x: ship[xKey], y: ship[yKey] };
+    }
   }
-  return { surf, surfRangeM: surfD, air, airRangeM: airD };
+  let best = null; let bestD = Infinity;
+  for (const track of all) {
+    if (!track || track.side === ship.side) continue;
+    if (String(track.id).startsWith("M-")) continue;
+    if ((track.quality ?? 0) <= cfg.acquireTrackQuality) continue;
+    if (((track.domain ?? "sea") === "air") !== wantAir) continue;
+    const d = distance(ship, track);
+    if (d < bestD) { bestD = d; best = track; }
+  }
+  ship[idKey] = best?.id ?? null;
+  if (best) ship[seenKey] = sim.time;
+  return best;
+}
+
+// Fire-control filtered aim point: a raw radar track's reported position
+// carries per-detection noise (scanSensors in sensors.js scatters it by up to
+// several NM depending on track quality) that can differ meaningfully sample
+// to sample even for a target that hasn't materially moved. Steering straight
+// at that raw sample every decision tick (1s) makes a flight visibly "chase
+// the noise" — a wobbling, indecisive-looking flight path even while it is
+// steadily pursuing one locked, unchanging target (confirmed in the debug
+// log: heading swinging 20-40 degrees tick to tick during a plain straight-
+// line ingress, with no phase change and no retarget in between). A real
+// fire-control/nav solution filters successive returns instead of reacting to
+// each one; this is a simple exponential filter on the track's reported x/y,
+// keyed to the locked target id so retargeting snaps cleanly to the new
+// contact instead of blending two different targets' positions together.
+const AIM_SMOOTHING_ALPHA = 0.25;
+function smoothedAimPoint(ship, keyPrefix, track) {
+  if (!track) return null;
+  const idKey = `_${keyPrefix}AimId`;
+  const xKey = `_${keyPrefix}AimX`;
+  const yKey = `_${keyPrefix}AimY`;
+  if (ship[idKey] !== track.id) {
+    ship[idKey] = track.id;
+    ship[xKey] = track.x;
+    ship[yKey] = track.y;
+  } else {
+    ship[xKey] += (track.x - ship[xKey]) * AIM_SMOOTHING_ALPHA;
+    ship[yKey] += (track.y - ship[yKey]) * AIM_SMOOTHING_ALPHA;
+  }
+  // Keep every other field (id, quality, domain, classification, ...) from
+  // the live track; only the steering-relevant x/y is filtered.
+  return { ...track, x: ship[xKey], y: ship[yKey] };
+}
+
+function acquireAirTargets(sim, ship) {
+  const picture = sim.forcePicture?.get(ship.side);
+  const all = picture ? [...picture.values()] : [...iterateTracksForShip(sim, ship)];
+  const surfTrack = resolveLockedTrack(sim, ship, all, false, "surf");
+  const airTrack = resolveLockedTrack(sim, ship, all, true, "air");
+  const surf = smoothedAimPoint(ship, "surf", surfTrack);
+  const air = smoothedAimPoint(ship, "air", airTrack);
+  return {
+    surf,
+    surfRangeM: surf ? distance(ship, surf) : Infinity,
+    air,
+    airRangeM: air ? distance(ship, air) : Infinity
+  };
 }
 
 // Longest reach (m) among the anti-ship weapons currently aboard — the basis for
@@ -256,6 +368,21 @@ function carriedStrike(ship) {
   return false;
 }
 
+// Whether this squadron's design carries any weapon at all (any hardpoint in
+// its base loadout, not just anti-ship strike). Distinguishes "built unarmed
+// on purpose" (a sensor/command asset like the AWAC — should loiter forever
+// on its station, only ever coming home for fuel) from "built armed, magazine
+// now empty" (should come home to rearm). Without this, an intentionally
+// unarmed squadron reads as permanently "winchester" and RTBs on its very
+// first decision tick, parks at the field, refuels/rearms into the same empty
+// loadout, and immediately RTBs again next tick — a park-forever loop that
+// never lets it fly its actual mission.
+function everCarriesWeapons(ship) {
+  const snap = ship.baseLoadoutSnapshot;
+  if (snap) for (const id in snap) { if (snap[id] > 0) return true; }
+  return false;
+}
+
 function refillFromBase(ship) {
   ship.loadout = { ...(ship.baseLoadoutSnapshot || {}) };
   ship.fuelS = ship.enduranceS;
@@ -264,6 +391,46 @@ function refillFromBase(ship) {
   ship.evading = false;
   ship.evadeUntil = 0;
   ship.lastLaunchAtByMissile = {};
+}
+
+// Bingo fuel: the fuel level (s) at which a flight must turn for home RIGHT
+// NOW to have any chance of making it. A flat fraction of total endurance
+// (the old rtbFuelThresholdFrac alone) is blind to how far the flight
+// actually is from its base — a CAP screen or a strike that ranged out 70+NM
+// can trigger RTB with a fixed-percentage fuel margin that is nowhere near
+// enough to physically cover the return distance, guaranteeing a splash en
+// route (confirmed in the debug log: an F22 triggered RTB with 340s of fuel
+// while 72.4NM/450s-at-max-speed from its field — a 110s shortfall before it
+// even turned around). Bingo is instead computed from the CURRENT distance to
+// the nearest friendly field (time to fly it at max speed — the same speed
+// RTB actually flies — plus a reserve) so the margin scales with reality, not
+// a fixed percentage. The reserve absorbs what the straight-line max-speed
+// estimate doesn't capture — accelerating up from cruise takes real time and
+// distance (not instantaneous), and the transit-turn speed bleed briefly
+// costs a little more (see movement.js) — plus ordinary decision latency;
+// tuned against the debug log to a comfortable margin. Falls back to the flat
+// fraction only when no friendly field exists to compute a distance to (the
+// flight then limps toward friendly territory anyway; there is nothing to
+// reach in time regardless of the threshold).
+const AIR_FUEL_RESERVE_FRAC = 0.18;
+function bingoFuelS(sim, ship) {
+  const base = nearestFriendlyAirfield(sim, ship);
+  const reserve = ship.enduranceS * AIR_FUEL_RESERVE_FRAC;
+  if (!base) return ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac;
+  const timeToBaseS = distance(ship, base) / (ship.maxSpeed || AIR_MAX_MPS);
+  return Math.max(ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac, timeToBaseS + reserve);
+}
+
+// Debug-only: log a one-line event whenever a flight's behavioural phase
+// changes (e.g. ingress -> on-station -> egress, or strike -> defensive A2A).
+// This is the cheapest way to see the AI's actual decision history in the
+// battle log without a line per tick; it draws no RNG and only fires on a
+// state change, so it is deterministic and near-zero-cost when nothing
+// changes. `extra` is a short free-form context string (range/altitude).
+function setPhase(sim, ship, phase, extra) {
+  if (ship._phase === phase) return;
+  ship._phase = phase;
+  if (sim.debugPhaseLog) addEvent(sim, `${ship.name} phase -> ${phase}${extra ? ` (${extra})` : ""}.`, ship.side);
 }
 
 // Per-decision-tick state machine for one squadron. Sets waypoint/desiredSpeed.
@@ -279,6 +446,7 @@ export function decideAircraft(sim, ship) {
   if (ship.airState === AIR_STATE.REARMING) {
     const base = sim.ships.find((s) => s.id === ship.homeBaseId && s.alive && isAirfield(s));
     if (base) {
+      setPhase(sim, ship, "rearming", base.id);
       ship.desiredSpeed = 0;
       ship.waypoint = null;
       if (sim.time >= (ship.rearmUntil ?? 0)) refillFromBase(ship);
@@ -289,10 +457,13 @@ export function decideAircraft(sim, ship) {
 
   // While actively breaking to defeat a missile, hold the evasion course set by
   // updateAircraft — do not override it with mission/RTB navigation.
-  if (ship.evading && sim.time < (ship.evadeUntil ?? 0)) return;
+  if (ship.evading && sim.time < (ship.evadeUntil ?? 0)) {
+    setPhase(sim, ship, "evading");
+    return;
+  }
 
-  const lowFuel = ship.fuelS <= ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac;
-  const winchester = totalWeapons(ship) <= 0;
+  const lowFuel = ship.fuelS <= bingoFuelS(sim, ship);
+  const winchester = everCarriesWeapons(ship) && totalWeapons(ship) <= 0;
   // A striker returns once its stand-off (anti-ship) load is spent, even if it
   // still has air-to-air missiles for self-escort.
   const strikeDepleted = carriedStrike(ship) && strikeAmmo(ship) <= 0;
@@ -311,11 +482,13 @@ export function decideAircraft(sim, ship) {
         ship.waypoint = null;
         return;
       }
+      setPhase(sim, ship, "rtb", `${lowFuel ? "fuel" : winchester ? "winchester" : "strike-spent"} -> ${base.id}`);
       ship.waypoint = { x: base.x, y: base.y };
       ship.desiredSpeed = ship.maxSpeed;
       return;
     }
     // No airfield: limp toward friendly territory; fuel exhaustion → splash.
+    setPhase(sim, ship, "rtb-no-base");
     ship.waypoint = friendlyHomeAnchor(sim, ship);
     ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
     return;
@@ -337,11 +510,27 @@ export function decideAircraft(sim, ship) {
   //    ignores fighters farther out so it presses its run instead of collapsing
   //    into a furball. Stay high for energy and close to a no-escape-zone shot;
   //    the planner releases the missile.
-  if (air && aam && (airRangeM <= cfg.a2aSelfDefenseRangeM || !canStrike) && airRangeM <= cfg.a2aEngageRangeM) {
-    ship.altitudeM = cfg.cruiseAltitudeM;
-    ship.waypoint = { x: air.x, y: air.y };
-    ship.desiredSpeed = ship.maxSpeed;
-    return;
+  //
+  //    The self-defence range check is hysteresis-gated (enter at
+  //    a2aSelfDefenseRangeM, only release once the range has opened back out
+  //    past a2aSelfDefenseExitFrac): a fighter loitering right around the
+  //    merge line would otherwise make the striker flip-flop every decision
+  //    tick between "break for the fighter" and "resume the strike run" —
+  //    visibly indecisive flying. `!canStrike` (a pure air-superiority load)
+  //    is a stable, non-range condition and needs no hysteresis.
+  if (!air || !aam) ship._a2aBreak = false;
+  if (air && aam && airRangeM <= cfg.a2aEngageRangeM) {
+    const closeRange = ship._a2aBreak
+      ? airRangeM <= cfg.a2aSelfDefenseRangeM * cfg.a2aSelfDefenseExitFrac
+      : airRangeM <= cfg.a2aSelfDefenseRangeM;
+    ship._a2aBreak = closeRange;
+    if (closeRange || !canStrike) {
+      setPhase(sim, ship, "a2a-defensive", `${air.id} @ ${(airRangeM / NM).toFixed(0)}NM`);
+      ship.targetAltitudeM = cfg.cruiseAltitudeM;
+      ship.waypoint = { x: air.x, y: air.y };
+      ship.desiredSpeed = ship.maxSpeed;
+      return;
+    }
   }
 
   // 2) Stand-off strike. Vector onto the surface target, descend for a low-level
@@ -351,11 +540,34 @@ export function decideAircraft(sim, ship) {
   if (surf && strikeRangeM > 0) {
     const standoffM = strikeRangeM * cfg.standoffFrac;
     const r = surfRangeM;
-    ship.altitudeM = r <= standoffM * cfg.ingressStartFrac ? cfg.ingressAltitudeM : cfg.cruiseAltitudeM;
-    if (r > standoffM * 1.06) {
+    ship.targetAltitudeM = r <= standoffM * cfg.ingressStartFrac ? cfg.ingressAltitudeM : cfg.cruiseAltitudeM;
+    // Sub-phase hysteresis: which boundary applies depends on which sub-phase
+    // the flight is ALREADY in, opening a dead zone the range must fully cross
+    // before it flips again (see the config comment on the *Enter/*Exit pairs).
+    // Retargeting onto a different track resets it — the new run starts fresh.
+    if (ship._strikeSubTargetId !== surf.id) {
+      ship._strikeSubPhase = null;
+      ship._strikeSubTargetId = surf.id;
+    }
+    let sub = ship._strikeSubPhase;
+    if (sub === "ingress") {
+      sub = r > standoffM * cfg.ingressExitFrac ? "ingress" : "onstation";
+    } else if (sub === "egress") {
+      sub = r < standoffM * cfg.egressExitFrac ? "egress" : "onstation";
+    } else if (r > standoffM * cfg.ingressEnterFrac) {
+      sub = "ingress";
+    } else if (r < standoffM * cfg.egressEnterFrac) {
+      sub = "egress";
+    } else {
+      sub = "onstation";
+    }
+    ship._strikeSubPhase = sub;
+    if (sub === "ingress") {
+      setPhase(sim, ship, "strike-ingress", `${surf.id} @ ${(r / NM).toFixed(0)}NM alt ${Math.round(ship.altitudeM)}m`);
       ship.waypoint = { x: surf.x, y: surf.y };           // ingress
       ship.desiredSpeed = ship.maxSpeed;
-    } else if (r < standoffM * cfg.egressFrac) {
+    } else if (sub === "egress") {
+      setPhase(sim, ship, "strike-egress", `${surf.id} @ ${(r / NM).toFixed(0)}NM`);
       const away = angleTo(surf, ship);                    // egress: open the range
       ship.waypoint = { x: ship.x + Math.cos(away) * 12 * NM, y: ship.y + Math.sin(away) * 12 * NM };
       ship.desiredSpeed = ship.maxSpeed;
@@ -364,6 +576,7 @@ export function decideAircraft(sim, ship) {
       // hold range while the strike is released, rather than boring straight in.
       // The beam leg reverses every `stationWeaveS` so the net drift cancels and
       // the flight stays on the stand-off ring instead of sliding off the axis.
+      setPhase(sim, ship, "strike-onstation", `${surf.id} @ ${(r / NM).toFixed(0)}NM`);
       if (sim.time >= (ship._weaveFlipAt ?? 0)) {
         ship._weaveSign = ship._weaveSign === 1 ? -1 : 1;
         ship._weaveFlipAt = sim.time + cfg.stationWeaveS;
@@ -378,23 +591,49 @@ export function decideAircraft(sim, ship) {
   // 3) Air-to-air against a distant flight when that is all we can do (pure
   //    air-superiority load, or strike spent but AAMs remain): run it down.
   if (air && aam) {
-    ship.altitudeM = cfg.cruiseAltitudeM;
+    setPhase(sim, ship, "a2a-sweep", `${air.id} @ ${(airRangeM / NM).toFixed(0)}NM`);
+    ship.targetAltitudeM = cfg.cruiseAltitudeM;
     ship.waypoint = { x: air.x, y: air.y };
     ship.desiredSpeed = ship.maxSpeed;
     return;
   }
 
-  // 4) No engageable contact: fly a combat air patrol that screens the fleet — a
-  //    station ahead of the formation guide (OTC) along the force's threat axis,
-  //    taken from the shared command picture. Cruise high for lookout.
-  ship.altitudeM = cfg.cruiseAltitudeM;
+  // 4) No engageable contact. An armed flight (or one that has no strike load
+  //    but still carries AAMs — this branch is only reached with aam === true
+  //    when hasAirToAir already found no live air contact to chase) flies a
+  //    combat air patrol screening the fleet — a station AHEAD of the
+  //    formation guide (OTC) along the threat axis. An UNARMED flight (a
+  //    support/sensor asset like the AWAC AEW&C squadron, or any custom
+  //    aircraft with no weapons at all) has no business up front: it orbits
+  //    BEHIND the guide, on the far side away from the threat, at a
+  //    deliberately generous stand-off — a moving radar survives by staying
+  //    clear, not by fighting. Both read the shared command picture, so
+  //    either station re-centers automatically as the OTC/threat axis shifts.
+  setPhase(sim, ship, aam ? "cap" : "orbit");
+  ship.targetAltitudeM = cfg.cruiseAltitudeM;
   ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
   const cmd = sim.fleetCommand?.get(ship.side);
   if (cmd?.otc?.alive && cmd.otc.domain !== "air" && Number.isFinite(cmd.axis)) {
-    const capM = 40 * NM; // screen this far ahead of the guide toward the threat
-    ship.waypoint = { x: cmd.otc.x + Math.cos(cmd.axis) * capM, y: cmd.otc.y + Math.sin(cmd.axis) * capM };
+    const standM = aam ? cfg.capStationM : cfg.supportOrbitM;
+    const bearing = aam ? cmd.axis : cmd.axis + Math.PI; // support orbit: opposite the threat axis
+    ship.waypoint = { x: cmd.otc.x + Math.cos(bearing) * standM, y: cmd.otc.y + Math.sin(bearing) * standM };
+  } else if (Number.isFinite(cmd?.axis)) {
+    // No surface OTC to anchor a station on (a pure-air fleet, or the last
+    // surface unit just died) — fly the SAME real threat axis fleet command
+    // already computed (bearing toward the enemy's actual force, not a
+    // fixed compass heading; see enemyFleetCentroid in command.js), just
+    // anchored on the aircraft itself instead of a formation guide. Re-reads
+    // every decision tick like the OTC-anchored branch above, so the course
+    // re-centers as the picture develops instead of committing to one
+    // straight leg and holding it forever.
+    const bearing = aam ? cmd.axis : cmd.axis + Math.PI;
+    ship.waypoint = { x: ship.x + Math.cos(bearing) * 30 * NM, y: ship.y + Math.sin(bearing) * 30 * NM };
   } else if (!ship.waypoint) {
-    const dir = ship.side === SIDE.BLUE ? 1 : -1;
+    // Absolute fallback for the one tick before fleet command has ever run
+    // (computeFleetCommand hasn't executed yet this game). Self-corrects to
+    // the branch above on the very next decision tick.
+    const towardEnemy = ship.side === SIDE.BLUE ? 1 : -1;
+    const dir = aam ? towardEnemy : -towardEnemy;
     ship.waypoint = { x: ship.x + dir * 30 * NM, y: ship.y };
   }
 }

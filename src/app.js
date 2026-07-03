@@ -33,9 +33,8 @@ import { PerfRecorder, BattleLogger } from "./sim/debug.js";
 import {
   sideColor,
   sideSoftColor,
-  shipHpState,
   shipDisplayName,
-  vlsLoadState,
+  shipDetailCardHtml,
   renderBattleStatus,
   inventoryHtml,
   clusterProximityLabels,
@@ -98,7 +97,6 @@ let rulers = [];
 let selectionBox = null;
 let selectedIds = new Set([sim.selectedId]);
 let last = performance.now();
-let labelBoxes = [];
 
 // The DOM side-panels are text and don't need 60 fps; rebuilding and diffing
 // their markup every frame is wasted reflow. They refresh at ~20 Hz while the
@@ -126,6 +124,10 @@ function beginDebugRun() {
   battleLog = new BattleLogger({ intervalS: 15, label: `app run ${new Date().toISOString()}` });
   debugRunActive = true;
   lastDebugSaveAt = performance.now();
+  // Emit AI phase-transition events into the log while a debug capture is
+  // live (see setPhase in aircraft.js) — off by default so normal play's
+  // event feed isn't spammed with every squadron's internal state changes.
+  sim.debugPhaseLog = true;
 }
 
 function saveDebugLogs() {
@@ -286,24 +288,6 @@ function labelAlpha(force = false) {
   return Math.max(0, Math.min(1, (camera.scale - 0.0007) / 0.0016));
 }
 
-function reserveLabel(text, x, y, font, critical = false) {
-  ctx.save();
-  ctx.font = font;
-  const metrics = ctx.measureText(text);
-  ctx.restore();
-  const h = Math.max(7, Number(font.match(/([\d.]+)px/)?.[1] ?? 7) + 2);
-  const box = {
-    left: x - 2,
-    right: x + metrics.width + 2,
-    top: y - h + 2,
-    bottom: y + 3
-  };
-  const collides = labelBoxes.some((b) => box.left < b.right && box.right > b.left && box.top < b.bottom && box.bottom > b.top);
-  if (collides && !critical) return false;
-  labelBoxes.push(box);
-  return true;
-}
-
 function drawGrid() {
   if (!filters.grid.classList.contains("active")) return;
   const leftTop = screenToWorld(0, 0);
@@ -432,6 +416,46 @@ function drawWeaponRangeRings() {
     }
     group.push(ring);
   }
+  // A merged cluster of overlapping same-type/same-faction rings should show
+  // exactly one label, not one per ring. Union-find the group by the same
+  // overlap test used for clipping, then keep a single label owner per
+  // connected cluster (preferring a selected ring so its label still wins).
+  const labelOwners = new Set();
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      labelOwners.add(group[0]);
+      continue;
+    }
+    const parent = group.map((_, index) => index);
+    const find = (index) => {
+      while (parent[index] !== index) {
+        parent[index] = parent[parent[index]];
+        index = parent[index];
+      }
+      return index;
+    };
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const a = group[i];
+        const b = group[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const reach = a.radius + b.radius;
+        if (dx * dx + dy * dy < reach * reach) {
+          const rootA = find(i);
+          const rootB = find(j);
+          if (rootA !== rootB) parent[Math.max(rootA, rootB)] = Math.min(rootA, rootB);
+        }
+      }
+    }
+    const ownerByRoot = new Map();
+    for (let i = 0; i < group.length; i++) {
+      const root = find(i);
+      const current = ownerByRoot.get(root);
+      if (!current || (group[i].selected && !current.selected)) ownerByRoot.set(root, group[i]);
+    }
+    for (const owner of ownerByRoot.values()) labelOwners.add(owner);
+  }
   ctx.save();
   for (const ring of rings) {
     const group = groups.get(`${ring.side}|${ring.id}`);
@@ -465,12 +489,16 @@ function drawWeaponRangeRings() {
     }
     const showRingLabel = shouldShowWeaponLabels(camera.scale)
       && ring.radius > 10
-      && (ring.selected || ring.category === "anti_air");
+      && (ring.selected || ring.category === "anti_air")
+      && labelOwners.has(ring);
     if (showRingLabel) {
       ctx.setLineDash([]);
-      ctx.globalAlpha = ring.selected ? labelAlpha(true) * 0.86 : 0.74;
+      // 30% more transparent and 30% smaller than the ring stroke's own label
+      // used to be, so a merged cluster's single label reads as a light,
+      // secondary annotation rather than competing with the ring itself.
+      ctx.globalAlpha = (ring.selected ? labelAlpha(true) * 0.86 : 0.74) * 0.7;
       ctx.fillStyle = ring.category === "anti_ship" ? "#f7e7a1" : sideColor(ring.side);
-      ctx.font = canvasFont(VISUAL_CONFIG.rangeLabelPx);
+      ctx.font = canvasFont(VISUAL_CONFIG.rangeLabelPx * 0.7);
       const labelX = Math.max(54, Math.min(innerWidth - 48, ring.x + ring.radius + 3));
       const antiAirOffset = ring.id === "ESSM" ? 8 : ring.id === "SM-2MR" ? -2 : 0;
       const labelY = Math.max(78, Math.min(innerHeight - 48, ring.y - 3 + antiAirOffset));
@@ -704,7 +732,7 @@ function drawSectorResponsibility(ship) {
 
 function drawTracks() {
   for (const ship of sim.ships) {
-    if (ship.id !== sim.selectedId) continue;
+    if (!selectedIds.has(ship.id)) continue;
     for (const track of tracksForShip(sim, ship)) {
       const p = worldToScreen(track);
       const r = Math.max(3, track.uncertainty * camera.scale);
@@ -900,77 +928,10 @@ function renderShipDetails() {
   const availableHeight = innerHeight - y - 16;
   shipDetailOverlay.style.cssText = `position:fixed;right:${rightInset}px;top:${y}px;z-index:100;width:${cardWidth}px;max-height:${availableHeight}px;display:flex;flex-direction:column;align-items:stretch;gap:${cardGap}px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color: rgba(142,193,205,0.25) transparent;`;
 
-  const subBar = (val, mode = "health") => {
-    const w = Math.round(Math.max(0, Math.min(1, val)) * 100);
-    const c = mode === "load"
-      ? (val >= 0.8 ? '#5a9' : val >= 0.4 ? '#f7b955' : '#f66')
-      : (val > 0.6 ? '#5a9' : val > 0.3 ? '#f7b955' : '#f66');
-    return `<span class="subsystem-meter"><i style="width:${w}%;background:${c}"></i></span>`;
-  };
-
-  // Aircraft squadrons have no ship subsystems — show flight-relevant readouts
-  // (surviving aircraft, fuel, flares, lifecycle state, and effector counts).
-  const aircraftCardHtml = (s) => {
-    const color = sideColor(s.side);
-    const ac = aliveAircraftCount(s);
-    const size = squadronSize(s);
-    const fuelFrac = s.enduranceS ? (s.fuelS ?? 0) / s.enduranceS : 0;
-    const flareFrac = s.flaresMax ? (s.flares ?? 0) / s.flaresMax : 0;
-    let aaw = 0, asuw = 0;
-    for (const [id, n] of Object.entries(s.loadout || {})) {
-      if (!MISSILES[id]) continue;
-      if (MISSILES[id].category === 'anti_ship') asuw += n; else aaw += n;
-    }
-    const state = ({ mission: 'MSN', rtb: 'RTB', rearming: 'RRM' })[s.airState] ?? 'MSN';
-    const row = (label, val, mode = "health") => `<span>${label}</span>${subBar(val, mode)}<b>${Math.round(Math.max(0, Math.min(1, val)) * 100)}%</b>`;
-    const textRow = (label, value) => `<span>${label}</span><b style="grid-column:2/4;text-align:right">${value}</b>`;
-    return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
-      <div class="ship-detail-heading">
-        <b>${shipDisplayName(s, "")}</b>
-        <span style="color:${ac < size ? '#f7b955' : ''}">${t('detail.ac')} ${ac}/${size}</span>
-      </div>
-      <div class="ship-detail-grid">
-        ${row(t('detail.fuel'), fuelFrac, "load")}
-        ${row(t('detail.flares'), flareFrac, "load")}
-        ${textRow(t('detail.state'), state + (s.evading ? ' !' : ''))}
-        ${textRow(t('detail.alt'), `${((s.altitudeM ?? 0) / 1000).toFixed(1)} km`)}
-        ${textRow(t('detail.aaw'), aaw)}
-        ${textRow(t('detail.asuw'), asuw)}
-      </div>
-    </div>`;
-  };
-
-  const cardHtml = (s) => {
-    if (s.domain === "air") return aircraftCardHtml(s);
-    const rdr = s.subsystems?.radar ?? 1.0;
-    const prop = s.subsystems?.propulsion ?? 1.0;
-    const fc = s.subsystems?.fireControl ?? 1.0;
-    const ciws = s.subsystems?.ciws ?? 1.0;
-    const cic = s.subsystems?.cic ?? 1.0;
-    const hp = shipHpState(s);
-    const vls = vlsLoadState(s);
-    const color = sideColor(s.side);
-    const row = (label, val, mode = "health") => `
-      <span>${label}</span>
-      ${subBar(val, mode)}
-      <b>${Math.round(val * 100)}%</b>
-    `;
-    return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
-      <div class="ship-detail-heading">
-        <b>${shipDisplayName(s, "")}</b>
-        <span style="color:${hp.currentHp < hp.maxHp ? '#f7b955' : ''}">HP ${hp.currentHp}/${hp.maxHp}</span>
-      </div>
-      <div class="ship-detail-grid">
-        ${row(t('detail.radar'), rdr)}
-        ${row(t('detail.prop'), prop)}
-        ${row(t('detail.vls'), vls.fill, "load")}
-        ${row(t('detail.fcs'), fc)}
-        ${row(t('detail.ciws'), ciws)}
-        ${row(t('detail.cic'), cic)}
-      </div>
-    </div>`;
-  };
-  replaceHtmlIfChanged(shipDetailOverlay, detailShips.map(s => cardHtml(s)).join(''));
+  // Card layout/coloring lives in ui/view.js (shipDetailCardHtml), dispatched
+  // by unit TYPE (domain/isFixed) rather than hull name, and unit-tested
+  // there — this is just wiring selection state to it.
+  replaceHtmlIfChanged(shipDetailOverlay, detailShips.map((s) => shipDetailCardHtml(s, cardWidth)).join(''));
 }
 
 
@@ -1164,7 +1125,6 @@ function setFeedCollapsed(nextCollapsed) {
 }
 
 function render() {
-  labelBoxes = [];
   clampCamera();
   drawSceneBase();
   drawGrid();

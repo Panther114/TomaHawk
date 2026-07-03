@@ -214,11 +214,19 @@ referenced to a typical destroyer:
   directly (e.g. a future low-observable / stealth hull). The factor is capped at
   the radar's nominal range, so RCS only *shortens* detection for small or
   stealthy targets; it never extends a radar beyond its rated reach.
-- **Altitude + horizon shadow.** A flying target uses its altitude for the
-  geometric-horizon term, so high-flying aircraft are visible far while ships and
-  sea-skimming weapons are masked beyond the horizon — a radar shadow with no need
-  for terrain elevation (the world surface is uniform sea/ground). Ships and ground
-  units sit at sea level and use their structural mast height as before.
+- **Altitude + horizon shadow.** A flying entity uses its altitude for the
+  geometric-horizon term — on BOTH sides of a detection pair, observer as well as
+  target, so a high-flying aircraft not only is seen far but itself looks (and
+  looks *down*) far too, while a ship or a sea-skimming weapon is masked beyond
+  the horizon — a radar shadow with no need for terrain elevation (the world
+  surface is uniform sea/ground). Ships and ground units sit at sea level and use
+  their structural mast height, on either side of the pair, as before. (An
+  earlier version only applied altitude to the target side; an aircraft acting as
+  the *observer* was silently treated as sitting at ~18m regardless of its actual
+  altitude, capping e.g. a 9,000m-cruising fighter's look-down range against a
+  sea-skimming missile at ~19NM instead of the 200+NM its altitude actually
+  affords — fixed, since it made every aircraft's own radar performance far
+  worse than its altitude should allow.)
 
 Both are cheap scalars (one `pow` and one height lookup per detection candidate);
 they do not change the O(observers × candidates) sensor cost. Altitude is shown in
@@ -260,13 +268,38 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   rather than ~1. When a missile closes inside the reaction envelope the flight
   performs an **evasive break** (notches perpendicular to the threat at max speed)
   and pops **flares**; infrared seekers (e.g. Sidewinder) can be decoyed outright.
-- **Two generations.** `VFA` is a **4.5-gen** multirole flight (Super Hornet
-  approx.): a larger radar cross-section, external stores, a bigger magazine — it
-  survives by stand-off and terrain masking, not signature. `VFS` is a **5-gen**
-  low-observable flight (F-35 approx.): a tiny `rcsM2` so hostile radars only see
-  it deep inside their nominal reach (it shoots first and absorbs far fewer SAM
-  shots), an intrinsic `airEvasionBonus` survivability edge, a better sensor, and
-  a smaller internal-carriage magazine. Both are tunable `SHIP_CLASSES` entries.
+- **Six fixed-identity airframes, two generations × three roles.** Each hull has
+  a **rigid** default loadout that defines its role — `vlsCells` is sized to
+  exactly fit it, so a squadron spawns as (and stays) purpose-built rather than
+  a generic hardpoint budget a player reconfigures. `AGM-154` (JSOW) is the
+  dedicated anti-ground stand-off weapon and `AGM-84` (Harpoon) the dedicated
+  anti-ship weapon — a strike airframe never carries both, and an
+  air-superiority airframe carries neither: `F22` and `F15C` are air-to-air
+  only, `F35A`/`F15E` carry JSOW, `F35C`/`F15N` carry Harpoon. The 5th-gen trio
+  (`F22`, `F35A`, `F35C`) has a tiny `rcsM2` so hostile radars only see them
+  deep inside their nominal reach (they shoot first and absorb far fewer SAM
+  shots) plus an intrinsic `airEvasionBonus`; the 4.5-gen trio (`F15E`, `F15N`,
+  `F15C`) is non-stealth — a larger radar cross-section and no evasion bonus,
+  but the biggest magazines of the roster (they survive by stand-off and
+  terrain masking, not signature). All six are tunable `SHIP_CLASSES` entries.
+- **A seventh, unarmed hull: AWAC (AEW&C) as a command hub.** `AWAC` carries no
+  weapons at all (`baseLoadout: {}`) and models a single, high-value, moving
+  radar (`damageResist: 1` — one aircraft, not a 4-ship flight; any hit is a
+  mission kill, matching the real vulnerability of an unescorted AEW&C
+  aircraft), with the longest radar (`radarRangeNm: 350`) and slowest, least
+  manoeuvrable airframe (`maxGLoad: 3`) of the roster. Because every combat
+  branch in `decideAircraft` is gated on carrying a strike or air-to-air
+  weapon, an unarmed flight falls through to the fallback branch automatically
+  — no aircraft-specific code path was needed to make it never fight. That
+  fallback itself distinguishes armed from unarmed: an armed flight screens
+  *ahead* of the formation guide on the threat axis (a combat air patrol); an
+  unarmed one orbits *behind* it, on the side away from the threat
+  (`supportOrbitM`). The `commandHub` flag (any hull can set it, not just
+  `AWAC`) is the "acts as a command hub when present" behaviour: while a
+  commandHub unit is alive and on-mission (not RTB/rearming), its side's CEC
+  track-sharing latency in `shareTracks` tightens from the baseline 1.8s to
+  0.6s, representing a centralized high-bandwidth relay/correlation node
+  instead of every ship pair propagating and merging tracks independently.
 - **Mission doctrine (vectored on the fleet picture).** A squadron prosecutes the
   fused **CEC force picture** — the same picture the ships fire on — so it is
   cued onto targets by the fleet's long-range radars/datalink instead of only the
@@ -281,14 +314,34 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   - *Defensive air-to-air.* A striker breaks off for an enemy flight only when it
     closes inside self-defence/merge range (`a2aSelfDefenseRangeM`) — it does not
     abandon its run to chase a distant fighter, so strike packages press their
-    attack instead of every flight collapsing into a furball.
+    attack instead of every flight collapsing into a furball. The break/resume
+    boundary is hysteresis-gated (`a2aSelfDefenseExitFrac`) so a fighter loitering
+    right at the merge line doesn't flip the striker every tick.
   - *Sweep.* A flight with no strike to fly (pure air-superiority load, or strike
     spent) runs down enemy flights for air-to-air (`a2aEngageRangeM`), staying high
     for energy and closing to a no-escape-zone shot.
-- **Altitude is an attribute, not a movement axis.** A flight's `altitudeM`
-  switches between a high cruise (CAP/sweep/transit — lookout and energy) and a low
-  ingress (strike masking). It drives the sensor radar-horizon only; the map stays
-  top-down. No RNG is involved, so determinism is unaffected.
+  - *Target lock persistence.* A flight keeps vectoring on the same locked target
+    as long as it appears anywhere in the fused picture, and **coasts** on the
+    target's last known (smoothed) position for up to `trackCoastS` if it briefly
+    drops out of the picture entirely (one missed radar sweep at long range),
+    before conceding the lock and picking a fresh target. The steering aim point
+    itself is exponentially filtered (not the raw noisy per-detection track
+    position) so the flight flies a clean course instead of visibly chasing sensor
+    noise. Both are pure deterministic filters on already-sampled data — no new
+    RNG draws.
+- **Air-to-air missiles need a facing shot.** A fighter cannot employ a forward-
+  firing AAM at a target well behind its own nose — unlike a ship's/battery's
+  vertical-launch SAM, which fires in any direction and turns onto the intercept
+  course after launch. `a2aLaunchConeDeg` (permissive: allows a beam or high-aspect
+  shot, reflecting real off-boresight seeker/HMD capability) gates every aircraft
+  AAM launch, offensive or the anti-ship-missile hard-kill below; ship and ground
+  VLS launches are unaffected.
+- **Altitude is an attribute, not a movement axis.** A flight's `altitudeM` climbs
+  or descends toward an AI-commanded `targetAltitudeM` (high cruise for CAP/sweep/
+  transit — lookout and energy; low for a strike ingress — masking) at a bounded
+  vertical rate, rather than teleporting between them. It drives the sensor
+  radar-horizon only; the map stays top-down. No RNG is involved, so determinism
+  is unaffected.
 - **Air defence of the fleet.** A squadron will hard-kill an inbound anti-ship
   missile with its long-range radar AAM, but only conservatively — IR rounds are
   reserved for the dogfight and a heavy (≈70%) reserve of the radar AAM is kept,
@@ -302,7 +355,8 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   per plane), so a four-ship flight throws a fast alpha-strike while a lone
   survivor fires slowly.
 - **Return to base / fuel.** A squadron flies its mission until it is Winchester,
-  has spent its anti-ship (strike) load, or is low on fuel, then returns to the
+  has spent its strike load (anti-ship `AGM-84` or anti-ground `AGM-154`,
+  whichever it carries), or is low on fuel, then returns to the
   nearest friendly **airfield** to rearm/refuel (a flat timer) and relaunch. With
   no airfield reachable it limps toward friendly territory and splashes when fuel
   runs out. A flight will not rearm on a destroyed airfield. Carriers, sortie

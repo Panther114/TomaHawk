@@ -168,10 +168,24 @@ function queueSalvo(sim, launcher, track, missileId, count, options = {}) {
   return queued;
 }
 
+// An air-to-air shot needs the launching AIRCRAFT to be facing roughly toward
+// the target (see the a2aLaunchConeDeg config comment in aircraft.js); ship
+// and ground VLS launches fire in any direction, so this is a no-op for them.
+function withinAirLaunchCone(launcher, targetX, targetY) {
+  if (launcher.domain !== "air") return true;
+  const coneRad = (AIRCRAFT_TEMP_CONFIG.a2aLaunchConeDeg * Math.PI) / 180;
+  const bearing = angleTo(launcher, { x: targetX, y: targetY });
+  return Math.abs(wrapAngle(bearing - launcher.heading)) <= coneRad;
+}
+
 function launchMissile(sim, launcher, order) {
   const spec = MISSILES[order.missileId];
   launcher.lastLaunchAtByMissile ||= {};
   if (!spec || availableCount(launcher, order.missileId) <= 0) return false;
+  if (
+    (spec.category === "anti_air" || spec.category === "dual_role")
+    && !withinAirLaunchCone(launcher, order.targetX, order.targetY)
+  ) return false;
   const queueReadyAt = order.defensive ? (launcher.nextDefensiveLaunchAt || 0) : (launcher.nextLaunchAt || 0);
   if (sim.time < Math.max(order.readyAt, queueReadyAt)) return false;
   const lastTypeLaunch = launcher.lastLaunchAtByMissile[order.missileId] ?? -Infinity;
@@ -215,8 +229,11 @@ function launchMissile(sim, launcher, order) {
     phase: spec.category === "anti_ship" ? "cruise" : "boost",
     // Cruise altitude (m): anti-ship weapons sea-skim, air-defence/strike rounds
     // loft. Drives the energy-bleed (drag) model and the detail display; the map
-    // stays top-down (altitude is not a third movement axis).
-    altitudeM: spec.category === "anti_ship" ? 30 : 7000,
+    // stays top-down (altitude is not a third movement axis). AGM-154 (JSOW) is
+    // an air-to-GROUND glide weapon that reuses the anti_ship pipeline for
+    // targeting only (see missiles.js) — it flies a mid-altitude glide, not a
+    // sea-skim, so it is special-cased out of the anti_ship sea-skim default.
+    altitudeM: order.missileId === "AGM-154" ? 4500 : spec.category === "anti_ship" ? 30 : 7000,
     launchSpeedMps: spec.speedMps,
     terminalReason: null,
     seaSkimming: false,
@@ -665,7 +682,7 @@ function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5
 function chooseAirInterceptWeapon(ship, threat) {
   if (MISSILES[threat.missileId]?.category !== "anti_ship") return null;
   const rangeM = distance(ship, threat);
-  const baseLoad = defaultLoadout(ship.hull || "VFA");
+  const baseLoad = defaultLoadout(ship.hull || "F15C");
   let best = null;
   for (const id in ship.loadout) {
     const spec = MISSILES[id];
@@ -1138,8 +1155,12 @@ export function updateMissiles(sim, dt) {
       missile.terminal = true;
       missile.phase = "terminal";
       missile.terminalReason = "terminal attack phase";
-      missile.seaSkimming = true;
-      missile.altitudeM = 12; // drop to sea-skim for the terminal run-in
+      if (missile.missileId === "AGM-154") {
+        missile.altitudeM = 300; // JSOW: terminal dive on its glide profile, not a sea-skim
+      } else {
+        missile.seaSkimming = true;
+        missile.altitudeM = 12; // drop to sea-skim for the terminal run-in
+      }
     } else if (!targetIsInFlightMissile && !isAntiShipTarget && distToTarget < spec.seekerRangeM) {
       // SAM/AAM closing on an aircraft squadron.
       missile.terminal = true;

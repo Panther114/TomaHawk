@@ -40,12 +40,21 @@ function rcsRangeFactor(rcsM2) {
   return clamp(Math.pow((rcsM2 ?? REF_RCS_M2) / REF_RCS_M2, 0.25), 0.12, 1.0);
 }
 
-// Radar-reflective height for the geometric horizon: a flying target uses its
-// altitude (so high aircraft are seen far and sea-skimmers are masked beyond the
-// horizon — the "radar shadow"), surface/ground use their structural mast height.
-function targetScatterHeightM(target) {
-  const alt = target.altitudeM ?? 0;
-  return alt > 30 ? alt : radarHeightM(target);
+// Radar-reflective height for the geometric horizon: a flying entity uses its
+// altitude (so a high-flying aircraft looks — and is seen — much farther than
+// the horizon would suggest at sea level, and a sea-skimmer is masked beyond
+// it — the "radar shadow"), surface/ground use their structural mast height.
+// Used for BOTH sides of a radar-horizon pair: an aircraft's own lookdown
+// range benefits from its altitude exactly the same way a target's does — a
+// 9,000m-cruising fighter's radar horizon is enormous, not the ~18m a naval
+// mast-height formula would give it (that bug — the observer side calling
+// the ship-only radarHeightM directly — silently blinded every aircraft's
+// look-down/look-out range to near sea-level, capping air-to-air detection
+// far short of the intended RCS-scaled range and making mid-air merges look
+// like ambushes; see the git history for the debug-log evidence).
+function scatterHeightM(entity) {
+  const alt = entity.altitudeM ?? 0;
+  return alt > 30 ? alt : radarHeightM(entity);
 }
 
 function radarDetectionChance(rangeM, radarRangeM, target) {
@@ -92,6 +101,11 @@ export function missileDetectionEnvelope(observer, missile) {
       visibilityFactor = missile.terminal ? 0.22 : 0.19;
       baseChance = 0.74;
       break;
+    case "AGM-154": // air-launched stand-off glide weapon (anti-ground), not sea-skimming
+      targetHeightM = missile.terminal ? 10 : 40;
+      visibilityFactor = missile.terminal ? 0.22 : 0.24;
+      baseChance = 0.74;
+      break;
     case "AIM-120": // BVR air-to-air, fast high-flyer
       targetHeightM = missile.terminal ? 3000 : 8000;
       visibilityFactor = missile.terminal ? 0.55 : 0.5;
@@ -108,7 +122,7 @@ export function missileDetectionEnvelope(observer, missile) {
       baseChance = 0.78;
       break;
   }
-  const horizonM = radarHorizonM(radarHeightM(observer), targetHeightM);
+  const horizonM = radarHorizonM(scatterHeightM(observer), targetHeightM);
   const detectRangeM = Math.min(observer.radarRangeM * visibilityFactor, horizonM * 1.1);
   return { detectRangeM, horizonM, targetHeightM, visibilityFactor, baseChance };
 }
@@ -328,7 +342,7 @@ export function scanSensors(sim, dt) {
       const rangeM = distance(observer, target);
       // Radar horizon: a high-altitude target is visible far; a low one (ship,
       // sea-skimmer) is masked beyond the geometric horizon (the radar shadow).
-      const horizon = radarHorizonM(radarHeightM(observer), targetScatterHeightM(target));
+      const horizon = radarHorizonM(scatterHeightM(observer), scatterHeightM(target));
       const horizonFactor = rangeM > horizon ? clamp(1.0 - (rangeM - horizon) / (120 * NM), 0.20, 1.0) : 1.0;
       const chance = radarDetectionChance(rangeM, effectiveRangeM, target) * horizonFactor;
       if (sim.rng.next() <= chance) {
@@ -468,6 +482,17 @@ export function ageTracks(sim, dt) {
   }
 }
 
+// A live, on-mission "command hub" unit (see the commandHub ship flag —
+// any hull can opt in, e.g. the AWAC AEW&C squadron) tightens this side's CEC
+// track-sharing latency, representing a centralized, high-bandwidth relay/
+// correlation node instead of every pair of ships propagating and merging
+// tracks independently. Checked against the literal "mission" state (not the
+// AIR_STATE.MISSION export) to avoid a circular import — aircraft.js already
+// imports from sensors.js, so sensors.js cannot import back from it.
+function hasActiveCommandHub(ships) {
+  return ships.some((ship) => ship.commandHub && (ship.domain !== "air" || ship.airState === "mission"));
+}
+
 export function shareTracks(sim) {
   const bySide = new Map();
   for (const ship of sim.ships) {
@@ -475,9 +500,11 @@ export function shareTracks(sim) {
     if (!bySide.has(ship.side)) bySide.set(ship.side, []);
     bySide.get(ship.side).push(ship);
   }
-  const cecLatencyS = 1.8; // CEC network propagation + processing latency
+  const CEC_LATENCY_S = 1.8; // baseline CEC network propagation + processing latency
+  const CEC_LATENCY_HUB_S = 0.6; // with an active command-hub relay
   let changed = false;
   for (const [side, ships] of bySide) {
+    const cecLatencyS = hasActiveCommandHub(ships) ? CEC_LATENCY_HUB_S : CEC_LATENCY_S;
     const candidates = new Map();
     for (const source of ships) {
       for (const [id, rawTrack] of source.tracks) {

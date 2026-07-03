@@ -17,5 +17,11 @@ desktop.ini
 .vscode/
 *.swp
 agents.empty
+
+# Unrelated local tooling (not part of this project)
+.reasonix/
 reasonix.toml
-AGENTS.md
+.claude/worktrees/
+
+# Test-runner scratch state
+test-results/

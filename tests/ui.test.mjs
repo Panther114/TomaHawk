@@ -12,6 +12,7 @@ import {
   inventoryHpColor,
   inventoryVlsColor,
   inventoryMissileColor,
+  remainingStockColor,
   commandPosture,
   postureBar,
   renderBattleStatus,
@@ -20,6 +21,7 @@ import {
   inventoryHtml,
   groundRowHtml,
   isGroundUnit,
+  shipDetailCardHtml,
   clusterProximityLabels
 } from "../src/ui/view.js";
 import { placeShip, clearSide, NM } from "../src/sim.js";
@@ -105,8 +107,25 @@ test("inventory color helpers map hp, vls, and missile states to the requested t
   assert.equal(inventoryVlsColor({ loadout: { MaritimeStrike: 80 }, vlsCells: 96 }), "#5fd58c");
   assert.equal(inventoryVlsColor({ loadout: { MaritimeStrike: 20 }, vlsCells: 96 }), "#f28d4e");
   assert.equal(inventoryMissileColor(ship, "ESSM"), "#ffffff");
-  assert.equal(inventoryMissileColor({ hull: ship.hull, loadout: { ESSM: 1 } }, "ESSM"), "#f7b955");
-  assert.equal(inventoryMissileColor({ hull: ship.hull, loadout: { ESSM: 0 } }, "ESSM"), "#4e6972");
+  const withBaseline = (essm) => ({ loadout: { ESSM: essm }, baseLoadoutSnapshot: { ESSM: 30 } });
+  assert.equal(inventoryMissileColor(withBaseline(0), "ESSM"), "#4e6972");
+  assert.equal(inventoryMissileColor(withBaseline(21), "ESSM"), "#ffffff"); // 70% > 67%
+  assert.equal(inventoryMissileColor(withBaseline(20), "ESSM"), "#f7b955"); // 67% falls into the 33-67% band
+  assert.equal(inventoryMissileColor(withBaseline(10), "ESSM"), "#f7b955"); // 33% falls into the 33-67% band
+  assert.equal(inventoryMissileColor(withBaseline(9), "ESSM"), "#ff6b63"); // 30% < 33%
+});
+
+test("remainingStockColor applies the universal >67%/33-67%/<33%/0 thresholds", () => {
+  assert.equal(remainingStockColor(0, 100), "#4e6972");
+  assert.equal(remainingStockColor(68, 100), "#ffffff");
+  assert.equal(remainingStockColor(67, 100), "#f7b955");
+  assert.equal(remainingStockColor(34, 100), "#f7b955");
+  assert.equal(remainingStockColor(33, 100), "#f7b955"); // 33% is the inclusive edge of the yellow band
+  assert.equal(remainingStockColor(32, 100), "#ff6b63");
+  assert.equal(remainingStockColor(1, 100), "#ff6b63");
+  // A count with no known baseline (e.g. a fake fixture) reads as "full" white
+  // rather than false-alarming red/grey.
+  assert.equal(remainingStockColor(5, 0), "#ffffff");
 });
 
 test("displayCount returns non-negative integers and tolerates junk", () => {
@@ -194,6 +213,50 @@ test("groundRowHtml is a selectable row with the unit tag, radar reach, and effe
   assert.match(row, /class="inventory-row ground blue[^"]*selected"/);
   assert.match(row, /SAM-/); // unit tag
   assert.match(row, /160</); // radar reach in nm
+});
+
+test("shipDetailCardHtml dispatches naval/ground/air layouts by unit TYPE, not hull name", () => {
+  const sim = createScenario(7, "openSea");
+  clearSide(sim, SIDE.BLUE);
+  const ddg = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "DDG");
+  const sam = placeShip(sim, SIDE.BLUE, -18 * NM, 0, "SAM");   // armed ground
+  const ewr = placeShip(sim, SIDE.BLUE, -16 * NM, 0, "EWR");   // unarmed ground
+  const f22 = placeShip(sim, SIDE.BLUE, -14 * NM, 0, "F22");
+
+  // Naval: full subsystem readout, including a propulsion bar (it moves).
+  const navalHtml = shipDetailCardHtml(ddg, 120);
+  assert.match(navalHtml, new RegExp(t("detail.prop")));
+  assert.match(navalHtml, new RegExp(t("detail.vls")));
+
+  // Armed ground (SAM): no propulsion (never moves), but fire control, a LOAD
+  // bar (it carries weapons), and an AAW count (it's an air-defence battery)
+  // all appear; ASUW does not (it carries no anti-ship weapons).
+  const samHtml = shipDetailCardHtml(sam, 120);
+  assert.doesNotMatch(samHtml, new RegExp(t("detail.prop")));
+  assert.match(samHtml, new RegExp(t("detail.fcs")));
+  assert.match(samHtml, new RegExp(t("detail.load")));
+  assert.match(samHtml, new RegExp(t("detail.aaw")));
+  assert.doesNotMatch(samHtml, new RegExp(t("detail.asuw")));
+
+  // Unarmed ground (EWR): no propulsion, no fire control, no LOAD bar, no
+  // AAW/ASUW rows -- just radar and CIC (it's a sensor node, nothing else).
+  const ewrHtml = shipDetailCardHtml(ewr, 120);
+  assert.doesNotMatch(ewrHtml, new RegExp(t("detail.prop")));
+  assert.doesNotMatch(ewrHtml, new RegExp(t("detail.fcs")));
+  assert.doesNotMatch(ewrHtml, new RegExp(t("detail.load")));
+  assert.doesNotMatch(ewrHtml, new RegExp(t("detail.aaw")));
+  assert.doesNotMatch(ewrHtml, new RegExp(t("detail.asuw")));
+  assert.match(ewrHtml, new RegExp(t("detail.radar")));
+
+  // Air (F22): no VLS label (it's relabeled LOAD for aircraft too), a fuel
+  // bar, and an AAW count (it carries AIM-120/AIM-9X) but no ASUW (it's a
+  // pure air-superiority loadout, carries no anti-ship weapon).
+  const airHtml = shipDetailCardHtml(f22, 120);
+  assert.doesNotMatch(airHtml, new RegExp(t("detail.vls")));
+  assert.match(airHtml, new RegExp(t("detail.load")));
+  assert.match(airHtml, new RegExp(t("detail.fuel")));
+  assert.match(airHtml, new RegExp(t("detail.aaw")));
+  assert.doesNotMatch(airHtml, new RegExp(t("detail.asuw")));
 });
 
 test("inventoryHtml renders a per-faction naval table then a ground table", () => {

@@ -200,6 +200,38 @@ export const MISSILES = {
     retargetable: false,
     selfDestructOnLoss: true
   },
+  "AGM-154": {
+    name: "AGM-154",
+    displayName: "AGM-154 JSOW",
+    shortLabel: "JSOW",
+    // Air-launched stand-off precision-guided glide weapon for prosecuting
+    // defended fixed ground sites (SAM/CDB/EWR) from outside their own
+    // engagement envelope rather than boring in on AGM-84's shorter reach.
+    // Reuses the anti_ship pipeline: ground emplacements are already valid
+    // "ship" targets for that category, so no new targeting path is needed.
+    role: "air-launched stand-off anti-ground strike",
+    category: "anti_ship",
+    symbol: "square",
+    rangeM: 70 * NM,
+    speedMps: 220,
+    cellCost: 1,
+    pk: 0.5,
+    salvo: 2,
+    target: "ship",
+    defenseLayer: "strike",
+    preferredMinRangeM: 10 * NM,
+    preferredMaxRangeM: 70 * NM,
+    interceptorsPerThreat: 0,
+    magazineReserveRatio: 0.15,
+    launchIntervalS: 2.5,
+    salvoSpacingS: 3.2,
+    ringStyle: "long_dash",
+    maxTurnRateDps: 6,
+    seekerRangeM: 10 * NM,
+    guidance: "inertial_active",
+    retargetable: false,
+    selfDestructOnLoss: true
+  },
   "SM-6": {
     name: "SM-6",
     displayName: "Standard Missile 6 ERAM",

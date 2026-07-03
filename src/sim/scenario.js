@@ -289,6 +289,9 @@ export function restoreScenario(data) {
         turnRateFlank: Number.isFinite(ship.turnRateFlank) ? ship.turnRateFlank : cls.turnRateFlankDps * Math.PI / 180,
         rcsM2: Number.isFinite(ship.rcsM2) ? ship.rcsM2 : defaultRcsM2(cls),
         altitudeM: Number.isFinite(ship.altitudeM) ? ship.altitudeM : defaultAltitudeM(cls),
+        targetAltitudeM: Number.isFinite(ship.targetAltitudeM)
+          ? ship.targetAltitudeM
+          : Number.isFinite(ship.altitudeM) ? ship.altitudeM : defaultAltitudeM(cls),
         radarRangeM: Number.isFinite(ship.radarRangeM) ? ship.radarRangeM : cls.radarRangeNm * NM,
         radarInterval: Number.isFinite(ship.radarInterval) ? ship.radarInterval : cls.radarIntervalS,
         ciwsCount: ship.ciwsCount ?? cls.ciwsCount,

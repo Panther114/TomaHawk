@@ -149,19 +149,61 @@ const SHIP_CLASSES = {
   // joins the sensor/CEC net automatically via its radar + track-file. Carrier
   // basing is out of scope; squadrons are spawned directly and rearm at an
   // airfield. enduranceS / rearmTimeS are TEMP tunables (see aircraft.js).
-  // 4.5-GEN multirole — F/A-18E/F Super Hornet squadron (4 aircraft). Mixed
-  // strike load: AMRAAM + Sidewinder for air-to-air, Harpoon for anti-surface,
-  // carried externally on hardpoints (large radar cross-section). Hardpoints
-  // (vlsCells) hold the flight's aggregate stores; flares are the IR pool. It
-  // relies on stand-off range and terrain masking, not signature, to survive.
-  VFA: { hull:"VFA",className:"Strike Fighter Squadron (4.5-gen) approx.",prefix:"VFA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:20,beamM:14,draftM:5,displacementT:30,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,radarRangeNm:90,radarIntervalS:3,vlsCells:20,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:25,damageResist:4,damageDegrade:0.10,enduranceS:1800,rearmTimeS:90,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120":8,"AIM-9X":4,"AGM-84":8 } },
-  // 5-GEN multirole — low-observable stealth fighter squadron (F-35 approx.).
-  // Carries its weapons internally, so its magazine is smaller, but its tiny
-  // radar cross-section (rcsM2) means hostile radars only see it deep inside
-  // their nominal reach — it shoots first and absorbs far fewer SAM shots per
-  // pass (airEvasionBonus). Better sensor (longer radarRange) reflects fused
-  // sensor fusion. Tunables remain provisional.
-  VFS: { hull:"VFS",className:"Stealth Fighter Squadron (5-gen) approx.",prefix:"VFS",domain:"air",isFixed:false,glyph:"aircraft",lengthM:16,beamM:11,draftM:4,displacementT:28,cruiseSpeedKt:440,maxSpeedKt:560,accelMps2:3.2,decelMps2:3.2,turnRateDps:9,turnRateFlankDps:7,radarRangeNm:110,radarIntervalS:2.5,vlsCells:12,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2,damageResist:4,damageDegrade:0.10,enduranceS:1900,rearmTimeS:100,flares:48,airEvasionBonus:0.08,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-84":4 } },
+  // maxGLoad is the airframe's combat turn-rate ceiling (structural G limit),
+  // used only for aggressive maneuvers (evasion, a merge/intercept) — routine
+  // navigation flies a much gentler standard-rate turn regardless of hull; see
+  // aircraftTurnRateRadPerS in movement.js. turnRateDps/turnRateFlankDps are
+  // legacy/display-only for aircraft (kept for schema compatibility) and no
+  // longer drive their steering.
+  //
+  // Six fixed-identity airframes, each with a RIGID default loadout that
+  // defines its role — vlsCells is sized to exactly fit that loadout, so a
+  // squadron spawns as (and stays) purpose-built rather than a generic
+  // "multirole" hardpoint budget. Two generations (5th-gen low-observable,
+  // 4.5-gen non-stealth) cross three roles (air-to-air only, anti-ground
+  // strike, anti-ship strike): AGM-154 JSOW is the dedicated stand-off
+  // anti-ground weapon, AGM-84 Harpoon the dedicated anti-ship weapon — a
+  // strike airframe never carries both, and an air-superiority airframe
+  // carries neither.
+  //
+  // 5th-GEN air-superiority — F-22 Raptor squadron (4 aircraft). No strike
+  // weapons at all: the lowest radar cross-section and the highest agility of
+  // the six, built to win the air-to-air fight before anyone else can shoot.
+  F22: { hull:"F22",className:"F-22 Raptor Squadron (5th-gen air-superiority) approx.",prefix:"F22",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19,beamM:13.5,draftM:5,displacementT:28,cruiseSpeedKt:460,maxSpeedKt:580,accelMps2:3.4,decelMps2:3.2,turnRateDps:10,turnRateFlankDps:8,maxGLoad:9.0,radarRangeNm:120,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:1.5,damageResist:4,damageDegrade:0.09,enduranceS:1700,rearmTimeS:85,flares:60,airEvasionBonus:0.12,baseLoadout:{ "AIM-120":6,"AIM-9X":2 } },
+  // 5th-GEN anti-ground — F-35A squadron (4 aircraft). Self-defence AAMs plus
+  // a JSOW stand-off strike load; carries no anti-ship weapon.
+  F35A: { hull:"F35A",className:"F-35A Lightning II Squadron (5th-gen strike) approx.",prefix:"F35A",domain:"air",isFixed:false,glyph:"aircraft",lengthM:15.7,beamM:10.7,draftM:4.4,displacementT:29,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5,maxGLoad:7.0,radarRangeNm:110,radarIntervalS:2.5,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2.3,damageResist:4,damageDegrade:0.10,enduranceS:1850,rearmTimeS:95,flares:56,airEvasionBonus:0.06,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-154":8 } },
+  // 5th-GEN anti-ship — F-35C squadron (4 aircraft), the carrier variant.
+  // Same stealth family as the F-35A but loaded with AGM-84 instead of JSOW;
+  // bigger wing and fuel fraction give it the longest endurance of the six.
+  F35C: { hull:"F35C",className:"F-35C Lightning II Squadron (5th-gen carrier multirole) approx.",prefix:"F35C",domain:"air",isFixed:false,glyph:"aircraft",lengthM:15.7,beamM:13.1,draftM:4.4,displacementT:32,cruiseSpeedKt:400,maxSpeedKt:520,accelMps2:2.8,decelMps2:2.8,turnRateDps:6.5,turnRateFlankDps:5,maxGLoad:6.5,radarRangeNm:110,radarIntervalS:2.5,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2.3,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:100,flares:56,airEvasionBonus:0.06,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-84":8 } },
+  // 4.5-GEN anti-ground — F-15E Strike Eagle squadron (4 aircraft). Non-stealth
+  // (large radar cross-section, no evasion bonus) but the biggest bomb truck
+  // of the six: a heavier JSOW load than the F-35A and the toughest airframe.
+  F15E: { hull:"F15E",className:"F-15E Strike Eagle Squadron (4.5-gen strike) approx.",prefix:"F15E",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:36,cruiseSpeedKt:430,maxSpeedKt:560,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5.5,maxGLoad:7.5,radarRangeNm:90,radarIntervalS:3,vlsCells:16,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:22,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-154":10 } },
+  // 4.5-GEN anti-ship — F-15N squadron (4 aircraft). Not a real airframe: a
+  // fictional naval-strike sibling of the F-15E carrying AGM-84 instead of
+  // JSOW, same non-stealth chassis and toughness.
+  F15N: { hull:"F15N",className:"F-15N Squadron (4.5-gen naval multirole, fictional) approx.",prefix:"F15N",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:36,cruiseSpeedKt:430,maxSpeedKt:560,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5.5,maxGLoad:7.5,radarRangeNm:90,radarIntervalS:3,vlsCells:16,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:22,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-84":10 } },
+  // 4.5-GEN air-superiority — F-15C Eagle squadron (4 aircraft). No strike
+  // weapons at all, like the F-22, but non-stealth: a bigger radar signature
+  // traded for a bigger internal AAM load (8 AMRAAM/4 Sidewinder) than any
+  // other airframe in the roster.
+  F15C: { hull:"F15C",className:"F-15C Eagle Squadron (4.5-gen air-superiority) approx.",prefix:"F15C",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:31,cruiseSpeedKt:440,maxSpeedKt:580,accelMps2:3.2,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,maxGLoad:8.5,radarRangeNm:95,radarIntervalS:3,vlsCells:12,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:1750,rearmTimeS:90,flares:60,airEvasionBonus:0.02,baseLoadout:{ "AIM-120":8,"AIM-9X":4 } },
+  // AEW&C — E-2D Hawkeye squadron approx. (1 aircraft: unlike the fighter
+  // roster this models a single high-value, unescorted-feeling sensor
+  // platform, not a 4-ship flight — damageResist:1 makes any hit a mission
+  // kill, same as the real thing). Unarmed (baseLoadout:{}) and slow — it is
+  // a moving radar, not a combatant, and its own AI never chases a fight (see
+  // decideAircraft's unarmed-orbit branch in aircraft.js). Its radar is the
+  // longest of any mobile platform (only a fixed EWR out-ranges it) and its
+  // rcsM2 is large and non-stealthy (a big, un-hidden rotodome) — it survives
+  // by standing off behind the formation, not by being hard to see.
+  // commandHub:true is the "acts as a command hub when present" behaviour: it
+  // tightens fleet-wide CEC track-sharing latency while alive and on mission
+  // (see shareTracks in sensors.js) — any custom aircraft can opt into the
+  // same behaviour from the Unit Workshop.
+  AWAC: { hull:"AWAC",className:"E-2D Hawkeye Squadron (AEW&C) approx.",prefix:"AWAC",domain:"air",isFixed:false,glyph:"aircraft",lengthM:17.6,beamM:24.6,draftM:5.6,displacementT:24,cruiseSpeedKt:300,maxSpeedKt:330,accelMps2:1.6,decelMps2:1.6,turnRateDps:5,turnRateFlankDps:4,maxGLoad:3.0,commandHub:true,radarRangeNm:350,radarIntervalS:2,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:35,damageResist:1,damageDegrade:0.10,enduranceS:7200,rearmTimeS:60,flares:30,airEvasionBonus:0,baseLoadout:{} },
 
   // --- Airfield (domain:"ground", placeable anywhere) ----------------------
   // Behaves like a fixed ground unit but may be placed on land OR water. Serves
@@ -239,9 +281,23 @@ export function makeShip(side, x, y, hull = "DDG") {
     maxSpeed: cls.maxSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER,
     accel: cls.accelMps2 * SHIP_SPEED_MULTIPLIER, decel: cls.decelMps2 * SHIP_SPEED_MULTIPLIER,
     turnRate: cls.turnRateDps * Math.PI / 180, turnRateFlank: cls.turnRateFlankDps * Math.PI / 180,
+    // Combat turn-rate ceiling for aircraft (structural G limit); see the
+    // class-block comment above and aircraftTurnRateRadPerS in movement.js.
+    // Harmless/unused for non-air hulls.
+    maxGLoad: cls.maxGLoad ?? 7,
+    // "Acts as a command hub when present" — see shareTracks in sensors.js.
+    // Any hull (vanilla or custom) can opt in via this flag; not aircraft-
+    // specific in the schema, though only a mobile, sensor-heavy platform
+    // like an AWACS makes realistic sense as one.
+    commandHub: cls.commandHub === true,
     lengthM: cls.lengthM, beamM: cls.beamM, draftM: cls.draftM, displacementT: cls.displacementT,
     // Signature + altitude drive RCS/horizon-based detection (see sensors.js).
-    rcsM2: defaultRcsM2(cls), altitudeM: defaultAltitudeM(cls),
+    rcsM2: defaultRcsM2(cls),
+    // altitudeM is the PHYSICAL altitude, climbed/descended toward
+    // targetAltitudeM at a bounded rate (see moveAirUnit in movement.js) —
+    // the AI layer commands a target, it does not teleport the aircraft
+    // there. Irrelevant for surface/ground hulls (both stay at 0).
+    altitudeM: defaultAltitudeM(cls), targetAltitudeM: defaultAltitudeM(cls),
     radarRangeM: cls.radarRangeNm * NM, radarInterval: cls.radarIntervalS, radarCooldown: 0, radarActive: true,
     editable: true, alive: true,
     damage: 0, damageResist: cls.damageResist, damageDegrade: cls.damageDegrade,

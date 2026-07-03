@@ -141,6 +141,7 @@ function toAircraftClass(u) {
     damageResist: size, damageDegrade: Number(u.damageDegrade),
     enduranceS: Number(u.enduranceS) || 1800, rearmTimeS: Number(u.rearmTimeS) || 90,
     flares: Number.isFinite(Number(u.flares)) ? Math.round(Number(u.flares)) : 60,
+    commandHub: !!u.commandHub,
     baseLoadout: numClean(u.baseLoadout)
   };
 }
@@ -181,6 +182,7 @@ function fromShipClass(hull, c) {
     return {
       kind: "aircraft", id: hull, name: c.className, prefix: c.prefix,
       squadronSize: Math.max(1, Math.round(c.damageResist ?? 4)),
+      commandHub: c.commandHub === true,
       cruiseSpeedKt: c.cruiseSpeedKt, maxSpeedKt: c.maxSpeedKt,
       accelMps2: c.accelMps2, decelMps2: c.decelMps2,
       turnRateDps: c.turnRateDps, turnRateFlankDps: c.turnRateFlankDps,
