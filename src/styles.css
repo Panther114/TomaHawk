@@ -1047,6 +1047,107 @@ small,
 
 
 
+/* --- Save / Load popups ---------------------------------------------------- */
+
+.save-card {
+  width: min(360px, 88vw);
+}
+
+.save-field {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 14px;
+  color: #a8cbd4;
+}
+
+.save-field input[type="text"] {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  padding: 3px 6px;
+  background: rgba(7, 20, 27, 0.82);
+  border: 1px solid rgba(142, 193, 205, 0.26);
+  color: var(--text);
+  font: 450 14px var(--font-mono);
+}
+
+.save-location {
+  display: flex;
+  gap: 14px;
+  margin: 8px 0 4px;
+  font-size: 14px;
+  color: #a8cbd4;
+}
+
+.save-location label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.load-list {
+  max-height: 50vh;
+  overflow: auto;
+  margin-top: 8px;
+  border: 1px solid rgba(142, 193, 205, 0.16);
+}
+
+.load-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(142, 193, 205, 0.1);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.load-row:hover {
+  background: rgba(18, 48, 68, 0.5);
+}
+
+.load-row .load-name {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.load-row .load-date {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.load-row .load-delete {
+  flex-shrink: 0;
+  color: var(--muted);
+  border: 1px solid rgba(142, 193, 205, 0.24);
+  background: rgba(8, 25, 34, 0.84);
+  padding: 1px 6px;
+  font: 500 14px var(--font-mono);
+  cursor: pointer;
+}
+
+.load-row .load-delete:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.load-empty {
+  padding: 10px 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 /* --- Brand cursor pointer ------------------------------------------------- */
 
 #brand-panel { cursor: pointer; }

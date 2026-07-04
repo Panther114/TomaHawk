@@ -1,10 +1,29 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, unlink, stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 
 const root = resolve(process.cwd());
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4172);
+const scenarioDir = resolve(root, "saves", "scenarios");
+
+// Fixed on-disk save location: strips anything but word chars/space/dash so the
+// name can't escape saves/scenarios/ via "../" or an absolute path.
+function safeScenarioName(name) {
+  const cleaned = String(name || "").replace(/[^\w \-]/g, "").trim();
+  return (cleaned || "Untitled").slice(0, 80);
+}
+
+async function readJsonBody(req, maxBytes = 32 * 1024 * 1024) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw new Error("payload too large");
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -45,6 +64,81 @@ createServer(async (req, res) => {
       } catch {
         res.writeHead(400);
         res.end("bad debug payload");
+      }
+      return;
+    }
+    if (url.pathname === "/scenario/save" && req.method === "POST") {
+      try {
+        const { name, data, force } = await readJsonBody(req);
+        const filename = `${safeScenarioName(name)}.json`;
+        const file = resolve(scenarioDir, filename);
+        await mkdir(scenarioDir, { recursive: true });
+        let exists = false;
+        try { await stat(file); exists = true; } catch {}
+        if (exists && !force) {
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, reason: "exists", name: filename.replace(/\.json$/, "") }));
+          return;
+        }
+        await writeFile(file, JSON.stringify(data, null, 2), "utf8");
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, name: filename.replace(/\.json$/, "") }));
+      } catch {
+        res.writeHead(400);
+        res.end("bad scenario payload");
+      }
+      return;
+    }
+    if (url.pathname === "/scenario/list" && req.method === "GET") {
+      try {
+        await mkdir(scenarioDir, { recursive: true });
+        const files = (await readdir(scenarioDir)).filter((f) => f.endsWith(".json"));
+        const entries = await Promise.all(files.map(async (f) => {
+          const info = await stat(resolve(scenarioDir, f));
+          return { name: f.replace(/\.json$/, ""), savedAt: info.mtimeMs };
+        }));
+        entries.sort((a, b) => b.savedAt - a.savedAt);
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(entries));
+      } catch {
+        res.writeHead(500);
+        res.end("could not list scenarios");
+      }
+      return;
+    }
+    if (url.pathname === "/scenario/load" && req.method === "GET") {
+      const filename = `${safeScenarioName(url.searchParams.get("name"))}.json`;
+      const file = resolve(scenarioDir, filename);
+      if (!file.startsWith(`${scenarioDir}${sep}`)) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
+      try {
+        const body = await readFile(file, "utf8");
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(body);
+      } catch {
+        res.writeHead(404);
+        res.end("scenario not found");
+      }
+      return;
+    }
+    if (url.pathname === "/scenario/delete" && req.method === "DELETE") {
+      const filename = `${safeScenarioName(url.searchParams.get("name"))}.json`;
+      const file = resolve(scenarioDir, filename);
+      if (!file.startsWith(`${scenarioDir}${sep}`)) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
+      try {
+        await unlink(file);
+        res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+        res.end("deleted");
+      } catch {
+        res.writeHead(404);
+        res.end("scenario not found");
       }
       return;
     }

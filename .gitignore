@@ -4,6 +4,7 @@ node_modules/
 # Local scenario / after-action exports produced at runtime
 *.save.json
 *.aar.json
+saves/
 
 # Logs and debug output
 *.log

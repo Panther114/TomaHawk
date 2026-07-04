@@ -33,7 +33,7 @@ const strings = {
   "opt.sel":     { en: "SEL",     zh: "选定" },
   "opt.off":     { en: "OFF",     zh: "关闭" },
   "map.select":       { en: "Tactical map", zh: "战术地图" },
-  "map.eastChinaSea": { en: "EAST CHINA SEA", zh: "东海" },
+  "map.coastline":    { en: "COASTLINE", zh: "沿岸" },
   "map.openSea":      { en: "OPEN SEA", zh: "开放海域" },
   "scale.aria":       { en: "Map scale", zh: "地图比例尺" },
   "scale.grid":       { en: "GRID {n} km", zh: "网格 {n} 公里" },
@@ -180,6 +180,29 @@ const strings = {
 
   // Language toggle
   "lang.toggle": { en: "中", zh: "EN" },
+
+  // Generic confirm dialog
+  "confirm.yes": { en: "OK", zh: "确定" },
+
+  // Save scenario popup
+  "save.title":          { en: "SAVE SCENARIO", zh: "保存想定" },
+  "save.name":           { en: "Name", zh: "名称" },
+  "save.namePlaceholder":{ en: "Untitled", zh: "未命名" },
+  "save.locDefault":     { en: "Default location", zh: "默认位置" },
+  "save.locCustom":      { en: "Custom location", zh: "自定义位置" },
+  "save.cancel":         { en: "CANCEL", zh: "取消" },
+  "save.confirm":        { en: "SAVE", zh: "保存" },
+  "save.overwrite":      { en: "A saved scenario named \"{n}\" already exists. Overwrite it?", zh: "已存在名为“{n}”的存档，是否覆盖？" },
+  "save.done":           { en: "Scenario saved.", zh: "想定已保存。" },
+  "save.failed":         { en: "Save failed.", zh: "保存失败。" },
+
+  // Load scenario popup
+  "load.title":   { en: "LOAD SCENARIO", zh: "载入想定" },
+  "load.import":  { en: "IMPORT FROM FILE…", zh: "从文件导入…" },
+  "load.empty":   { en: "No saved scenarios yet.", zh: "暂无已保存的想定。" },
+  "load.delete":  { en: "Delete", zh: "删除" },
+  "load.deleteConfirm": { en: "Delete saved scenario \"{n}\"?", zh: "删除存档“{n}”？" },
+  "load.failed":  { en: "Could not load the scenario list.", zh: "无法加载存档列表。" },
 
   // Unit Workshop (modding)
   "mods.open":  { en: "Unit Workshop",  zh: "单位工坊" },

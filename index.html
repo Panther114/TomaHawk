@@ -58,7 +58,7 @@
         </select>
         <button id="filter-missiles" class="toggle-btn active" data-i18n="opt.weapons">WEAPONS</button>
         <select id="map-select" title="Tactical map" data-i18n-title="map.select">
-          <option value="eastChinaSea" data-i18n="map.eastChinaSea">EAST CHINA SEA</option>
+          <option value="eastChinaSea" data-i18n="map.coastline">COASTLINE</option>
           <option value="openSea" data-i18n="map.openSea">OPEN SEA</option>
         </select>
       </section>
@@ -137,6 +137,33 @@
         <div class="mods-body">
           <aside class="mods-list" id="mods-list"></aside>
           <section class="mods-detail" id="mods-detail"></section>
+        </div>
+      </div>
+    </div>
+    <div id="save-overlay" class="about-overlay" hidden>
+      <div class="about-card save-card">
+        <h1 data-i18n="save.title">SAVE SCENARIO</h1>
+        <label class="save-field">
+          <span data-i18n="save.name">Name</span>
+          <input id="save-name" type="text" data-i18n-placeholder="save.namePlaceholder" placeholder="Untitled" />
+        </label>
+        <div class="save-location">
+          <label><input type="radio" name="save-location" value="default" checked /> <span data-i18n="save.locDefault">Default location</span></label>
+          <label><input type="radio" name="save-location" value="custom" /> <span data-i18n="save.locCustom">Custom location</span></label>
+        </div>
+        <div class="save-actions">
+          <button class="about-close" id="save-cancel" data-i18n="save.cancel">CANCEL</button>
+          <button class="about-close" id="save-confirm" data-i18n="save.confirm">SAVE</button>
+        </div>
+      </div>
+    </div>
+    <div id="load-overlay" class="about-overlay" hidden>
+      <div class="about-card save-card">
+        <h1 data-i18n="load.title">LOAD SCENARIO</h1>
+        <div id="load-list" class="load-list"></div>
+        <div class="save-actions">
+          <button class="about-close" id="load-import" data-i18n="load.import">IMPORT FROM FILE…</button>
+          <button class="about-close" id="load-cancel" data-i18n="save.cancel">CANCEL</button>
         </div>
       </div>
     </div>
