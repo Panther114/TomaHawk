@@ -135,6 +135,30 @@ test("default loadouts fill each hull's VLS capacity with integer counts", () =>
   }
 });
 
+// Regression: a ship with no contact previously picked a patrol waypoint via
+// pure sim.rng jitter (`y + rng.range(-6,6)*NM`) with zero relationship to the
+// enemy's actual position — it could patrol in any direction, even away from
+// the enemy entirely. It now heads toward the fleet's rough strategic bearing
+// estimate (see strategicBearingEstimate in command.js), which is imprecise
+// (bounded random error) but never more than roughly right.
+test("a ship with no contact patrols roughly toward the enemy, not a random heading", () => {
+  const sim = runningScenario(13);
+  clearSide(sim, SIDE.BLUE);
+  clearSide(sim, SIDE.RED);
+  // Placed far enough apart that neither side's radar ever picks up the other
+  // (well beyond any RCS-limited detection range), so this exercises the
+  // pre-contact patrol fallback specifically.
+  const blue = placeShip(sim, SIDE.BLUE, -300 * NM, 0, "DDG");
+  placeShip(sim, SIDE.RED, 300 * NM, 40 * NM, "DDG");
+  for (let i = 0; i < 8; i++) stepSim(sim, 0.25);
+  assert.ok(blue.waypoint, "a patrol waypoint was set");
+  const trueBearing = Math.atan2(40 * NM - blue.y, 600 * NM - blue.x);
+  const patrolBearing = Math.atan2(blue.waypoint.y - blue.y, blue.waypoint.x - blue.x);
+  let diff = Math.abs(trueBearing - patrolBearing);
+  if (diff > Math.PI) diff = 2 * Math.PI - diff;
+  assert.ok(diff < (50 * Math.PI) / 180, `patrol bearing should be roughly toward the enemy, off by ${(diff * 180 / Math.PI).toFixed(1)} deg`);
+});
+
 test("radar creates imperfect perceived track, not direct truth access", () => {
   const sim = runningScenario(4);
   placeShip(sim, SIDE.BLUE, -20 * NM, 0);
@@ -405,7 +429,7 @@ test("map changes in setup reseat ships onto open water for the new terrain", ()
 
 test("missile definitions include tactical display metadata", () => {
   for (const [id, spec] of Object.entries(MISSILES)) {
-    assert.ok(["anti_ship", "anti_air", "dual_role"].includes(spec.category), `${id} category`);
+    assert.ok(["anti_ship", "ship_sam", "air_to_air", "dual_role"].includes(spec.category), `${id} category`);
     assert.ok(spec.shortLabel.length >= 3, `${id} short label`);
     assert.ok(spec.defenseLayer, `${id} defense layer`);
     assert.ok(Number.isFinite(spec.magazineReserveRatio), `${id} reserve ratio`);
@@ -594,7 +618,7 @@ test("right panel renderer is fleet inventory focused", () => {
   assert.match(app, /setFeedCollapsed/);
   assert.match(app, /toggle-feed/);
   assert.match(app, /document\.documentElement\.lang = getLang\(\) === 'zh' \? 'zh-CN' : 'en'/);
-  assert.match(app, /ring\.category === "anti_air"/);
+  assert.match(app, /isAntiAirCategory\(ring\.category\)/);
   assert.doesNotMatch(ui, /<span>Class<\/span>|<span>Scenario<\/span>|<span>Heading<\/span>/);
   assert.doesNotMatch(ui, /LAST LAUNCH|LAST EFFECT/);
 });

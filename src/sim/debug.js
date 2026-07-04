@@ -19,7 +19,7 @@
 
 import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE } from "./constants.js";
 import { distance } from "./math.js";
-import { MISSILES } from "./missiles.js";
+import { MISSILES, isAirDefenseCategory } from "./missiles.js";
 import { isAircraft, isAirfield, aliveAircraftCount, squadronSize, AIR_STATE } from "./aircraft.js";
 import { offensiveMissileCount } from "./ships.js";
 
@@ -38,7 +38,7 @@ function storeSummary(ship) {
     const spec = MISSILES[id];
     if (!spec || lo[id] <= 0) continue;
     if (spec.category === "anti_ship") asuw += lo[id];
-    if (spec.category === "anti_air" || spec.category === "dual_role") aaw += lo[id];
+    if (isAirDefenseCategory(spec.category)) aaw += lo[id];
   }
   return { aaw, asuw };
 }

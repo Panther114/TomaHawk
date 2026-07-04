@@ -65,6 +65,31 @@ test("vanilla ship round-trip reproduces core internal fields", () => {
   assert.equal(spec.defenseChannels.area, SHIP_CLASSES.DDG.defenseChannels.area);
 });
 
+// Regression: RCS used to be invisible in the Unit Workshop entirely (no
+// schema field, no registry round-trip) even though the sim core has used it
+// for detection since much earlier. Every unit type -- naval, ground,
+// aircraft, and ammo -- must expose and round-trip rcsM2.
+test("RCS is exposed and round-trips for every unit kind, including built-ins without an explicit value", () => {
+  for (const kind of UNIT_TYPES) {
+    const schema = SCHEMAS[kind];
+    const hasRcsField = schema.sections.some((s) => s.fields.some((f) => f.key === "rcsM2"));
+    assert.ok(hasRcsField, `${kind} schema exposes an rcsM2 field`);
+    assert.ok(Number.isFinite(DEFAULTS[kind]().rcsM2), `${kind} default has a finite rcsM2`);
+  }
+  // F-22 has an explicit low-observable rcsM2 in ships.js; the Workshop's
+  // vanilla listing must reflect that exact value, not an auto-computed one.
+  const f22 = vanillaUnits().find((u) => u.kind === "aircraft" && unitId(u) === "F22");
+  assert.equal(f22.rcsM2, SHIP_CLASSES.F22.rcsM2);
+  // DDG has no explicit rcsM2 in ships.js; the Workshop must show the same
+  // domain/displacement-derived default the sim itself would actually use.
+  const ddg = vanillaUnits().find((u) => u.kind === "naval" && unitId(u) === "DDG");
+  assert.ok(Number.isFinite(ddg.rcsM2) && ddg.rcsM2 > 0);
+  // A custom hull with an explicit rcsM2 must carry it through to the
+  // internal spec unchanged.
+  const custom = { ...DEFAULTS.naval(), name: "Ghost", prefix: "GHX", rcsM2: 42 };
+  assert.equal(toInternalSpec(custom).rcsM2, 42);
+});
+
 test("built-in units cannot be unregistered", () => {
   const ddg = vanillaUnits().find((u) => unitId(u) === "DDG");
   assert.equal(isBuiltinUnit(ddg), true);

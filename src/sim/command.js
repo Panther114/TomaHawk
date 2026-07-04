@@ -168,6 +168,36 @@ function enemyFleetCentroid(sim, side) {
   return n ? { x: sx / n, y: sy / n } : null;
 }
 
+// A "very rough" strategic estimate of where the enemy force is operating —
+// the kind of general battlespace awareness a real task group has (patrol
+// patterns, prior contact reports, expected transit lanes) well before any
+// unit gets a weapon-grade radar lock. Without this, a side with zero
+// detections has literally nothing to go on: aircraft fell back to a fixed
+// compass heading (already fixed elsewhere) and ships patrolled on a pure RNG
+// jitter with no relationship to the enemy's actual position at all — every
+// unit's pre-contact movement reads as aimless rather than "searching in
+// roughly the right direction." This is intentionally NOT the precise
+// enemyFleetCentroid bearing: it is refreshed only periodically (a real
+// estimate doesn't update every instant) and carries a bounded random error
+// (never a precise fix), then held steady between refreshes so units commit
+// to a heading instead of twitching toward a recomputed "truth" every tick.
+// Once real contacts exist, the caller uses the actual fused-track bearing
+// instead — this estimate is only the pre-contact default.
+const STRATEGIC_ESTIMATE_REFRESH_S = 90;
+const STRATEGIC_ESTIMATE_ERROR_RAD = (35 * Math.PI) / 180;
+export function strategicBearingEstimate(sim, side, from) {
+  sim._strategicEstimate ||= new Map();
+  const centroid = enemyFleetCentroid(sim, side);
+  if (!centroid) return side === SIDE.BLUE ? 0 : Math.PI;
+  const trueBearing = Math.atan2(centroid.y - from.y, centroid.x - from.x);
+  const cur = sim._strategicEstimate.get(side);
+  if (cur && sim.time < cur.refreshAt) return cur.bearing;
+  const error = sim.rng.range(-STRATEGIC_ESTIMATE_ERROR_RAD, STRATEGIC_ESTIMATE_ERROR_RAD);
+  const bearing = wrapAngle(trueBearing + error);
+  sim._strategicEstimate.set(side, { bearing, refreshAt: sim.time + STRATEGIC_ESTIMATE_REFRESH_S });
+  return bearing;
+}
+
 function offensivePriorForHull(hull) {
   if (offensivePriorCache.has(hull)) return offensivePriorCache.get(hull);
   const loadout = defaultLoadout(hull);
@@ -314,12 +344,10 @@ export function computeFleetCommand(sim) {
     if (aawc) aawc.fleetRole = FLEET_ROLE.AAWC;
 
     // Threat axis: mean bearing from the formation guide to fused hostiles,
-    // defaulting — before any contact is held — to the bearing toward the
-    // enemy fleet's actual position rather than a fixed compass heading; see
-    // enemyFleetCentroid above.
+    // defaulting — before any contact is held — to the rough strategic bearing
+    // estimate rather than a fixed compass heading; see strategicBearingEstimate.
     const fused = sim.forcePicture?.get(side);
-    const enemyCentroid = enemyFleetCentroid(sim, side);
-    let axis = enemyCentroid ? Math.atan2(enemyCentroid.y - otc.y, enemyCentroid.x - otc.x) : (side === SIDE.BLUE ? 0 : Math.PI);
+    let axis = strategicBearingEstimate(sim, side, otc);
     if (fused && fused.size) {
       let sx = 0;
       let sy = 0;
