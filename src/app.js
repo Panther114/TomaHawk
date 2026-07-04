@@ -17,6 +17,7 @@ import {
   eventSeverity,
   exportAfterAction,
   formatTime,
+  isAntiAirCategory,
   isShipPositionOnWater,
   isShipPositionOnLand,
   missileDisplayRole,
@@ -489,7 +490,7 @@ function drawWeaponRangeRings() {
     }
     const showRingLabel = shouldShowWeaponLabels(camera.scale)
       && ring.radius > 10
-      && (ring.selected || ring.category === "anti_air")
+      && (ring.selected || isAntiAirCategory(ring.category))
       && labelOwners.has(ring);
     if (showRingLabel) {
       ctx.setLineDash([]);

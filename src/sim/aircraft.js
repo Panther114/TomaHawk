@@ -134,7 +134,30 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   // small, fast, hard target (before maneuver/flares).
   evasionBase: 0.22,
   // Additional hit-probability shaved while actively breaking (notching).
-  evasionManeuver: 0.18
+  evasionManeuver: 0.18,
+  // Real BVR/WVR missile-defense doctrine (RWR spike / visual launch cue) is a
+  // COMBINATION maneuver, not just a lateral break: beam/notch perpendicular
+  // to the threat's line of sight to null the Doppler closure rate a
+  // semi-active/active seeker keys on (the lateral turn already modeled), PLUS
+  // a hard descent — "go low" — which trades altitude for the airspeed/energy
+  // needed to keep out-turning a missile that has the least energy margin
+  // late in its flight, denies a look-down seeker a clean picture, and (via
+  // the denser low-altitude air) costs the missile more to keep following.
+  // This was previously entirely missing: the evasion branch changed heading
+  // but never touched targetAltitudeM, so a "defensive break" never actually
+  // dived. See docs/SIMULATION_ASSUMPTIONS.md.
+  evadeDiveAltitudeM: 250,
+  // --- afterburner (all generations carry reheat) -------------------------
+  // A real fighter's MIL-power top speed (maxSpeedKt) is not its absolute
+  // ceiling — pushing into afterburner unlocks meaningfully more speed and
+  // much stronger acceleration at a steep fuel-flow cost, which is why it is
+  // reserved for genuinely demanding moments (a defensive break, closing an
+  // intercept) rather than run continuously. Applies uniformly to every
+  // airframe in the roster, 5th- or 4.5-gen alike — reheat is a property of
+  // the engine, not the airframe generation.
+  afterburnerSpeedMult: 1.18,
+  afterburnerAccelMult: 1.7,
+  afterburnerFuelBurnMult: 4.0
 });
 
 // Air-unit lifecycle states. Squadrons fly their mission until Winchester (out
@@ -178,7 +201,11 @@ export function initialAircraftState(cls) {
     // airframe evasion (e.g. a low-observable 5-gen flight is harder to engage).
     airEvasionBonus: Number.isFinite(cls.airEvasionBonus) ? cls.airEvasionBonus : 0,
     evading: false,
-    evadeUntil: 0
+    evadeUntil: 0,
+    // Reheat state, decided fresh each decision tick in decideAircraft and
+    // consumed by moveAirUnit (speed/accel boost) and updateAircraft (fuel
+    // burn multiplier). See AIRCRAFT_TEMP_CONFIG's afterburner* constants.
+    afterburner: false
   };
 }
 
@@ -333,7 +360,11 @@ function hasAirToAir(ship) {
   const lo = ship.loadout;
   if (lo) for (const id in lo) {
     const cat = MISSILES[id]?.category;
-    if (lo[id] > 0 && (cat === "anti_air" || cat === "dual_role")) return true;
+    // Deliberately narrower than the generic "air defense" category set: a
+    // "ship_sam" round (SM-2MR/ESSM) does not count as this flight having a
+    // dogfight weapon even if it somehow ended up in the loadout -- only a
+    // true air_to_air AAM or a dual-role round does.
+    if (lo[id] > 0 && (cat === "air_to_air" || cat === "dual_role")) return true;
   }
   return false;
 }
@@ -449,6 +480,7 @@ export function decideAircraft(sim, ship) {
       setPhase(sim, ship, "rearming", base.id);
       ship.desiredSpeed = 0;
       ship.waypoint = null;
+      ship.afterburner = false;
       if (sim.time >= (ship.rearmUntil ?? 0)) refillFromBase(ship);
       return;
     }
@@ -472,6 +504,7 @@ export function decideAircraft(sim, ship) {
   }
 
   if (ship.airState === AIR_STATE.RTB) {
+    ship.afterburner = false; // conserve fuel getting home, not sprinting there
     const base = nearestFriendlyAirfield(sim, ship);
     if (base) {
       ship.homeBaseId = base.id;
@@ -504,6 +537,11 @@ export function decideAircraft(sim, ship) {
   ship._standoffNm = strikeRangeM > 0 ? (strikeRangeM * cfg.standoffFrac) / NM : null;
 
   const canStrike = surf && strikeRangeM > 0;
+  // Reheat is reserved for genuinely demanding moments (closing an intercept,
+  // a defensive break) — reset to off each decision tick and only the a2a
+  // branches below re-engage it, so cruise/ingress/patrol/RTB legs fly MIL
+  // power and conserve fuel.
+  ship.afterburner = false;
 
   // 1) Defensive air-to-air. Break for an enemy flight only when it closes inside
   //    self-defence/merge range (or this flight has no strike to fly). A striker
@@ -529,6 +567,7 @@ export function decideAircraft(sim, ship) {
       ship.targetAltitudeM = cfg.cruiseAltitudeM;
       ship.waypoint = { x: air.x, y: air.y };
       ship.desiredSpeed = ship.maxSpeed;
+      ship.afterburner = true; // closing an intercept: reheat for max closure rate/energy
       return;
     }
   }
@@ -595,6 +634,7 @@ export function decideAircraft(sim, ship) {
     ship.targetAltitudeM = cfg.cruiseAltitudeM;
     ship.waypoint = { x: air.x, y: air.y };
     ship.desiredSpeed = ship.maxSpeed;
+    ship.afterburner = true; // running down a bandit: reheat for the intercept
     return;
   }
 
@@ -648,22 +688,36 @@ export function updateAircraft(sim, dt) {
     if (ship.airState === AIR_STATE.REARMING) { ship.evading = false; continue; } // parked
 
     // Evasive break: when a missile is closing inside the reaction envelope (or
-    // already terminal) the flight notches — steering perpendicular to the
-    // threat line of sight at max speed. This both reads as a hard maneuver and
-    // feeds the survivability model (a breaking target is far harder to hit).
+    // already terminal) the flight flies a COMBINATION defensive maneuver, not
+    // just a lateral turn — real BVR/WVR doctrine pairs the beam/notch (steering
+    // perpendicular to the threat's line of sight, nulling the closure rate a
+    // semi-active/active seeker keys on) with a hard dive and afterburner: the
+    // descent trades altitude for the airspeed/energy needed to keep out-turning
+    // a missile that has little energy margin left late in flight, and denies a
+    // look-down seeker a clean picture, while reheat maximizes the aircraft's
+    // own turn/speed capability through the break. Previously this only turned
+    // the flight sideways and never touched altitude at all. Both feed the
+    // survivability model (a breaking target is far harder to hit).
     const threat = nearestIncomingMissile(sim, ship);
     if (threat && (threat.terminal || distance(ship, threat) <= AIRCRAFT_TEMP_CONFIG.evadeRangeM)) {
-      if (!ship.evading) addEvent(sim, `${ship.name} breaks hard against an inbound missile.`, ship.side);
+      if (!ship.evading) addEvent(sim, `${ship.name} breaks hard against an inbound missile, diving and going to afterburner.`, ship.side);
       ship.evading = true;
       ship.evadeUntil = sim.time + AIRCRAFT_TEMP_CONFIG.evadeDurationS;
+      ship.afterburner = true;
       const beam = angleTo(threat, ship) + Math.PI / 2;
       ship.waypoint = { x: ship.x + Math.cos(beam) * 15 * NM, y: ship.y + Math.sin(beam) * 15 * NM };
       ship.desiredSpeed = ship.maxSpeed;
+      ship.targetAltitudeM = Math.min(ship.altitudeM, AIRCRAFT_TEMP_CONFIG.evadeDiveAltitudeM);
     } else if (ship.evading && sim.time >= (ship.evadeUntil ?? 0)) {
       ship.evading = false;
+      ship.afterburner = false;
     }
 
-    ship.fuelS = (ship.fuelS ?? 0) - dt;
+    // Afterburner burns fuel at several times the MIL-power rate — this is why
+    // it is only engaged for genuinely demanding moments (see decideAircraft's
+    // afterburner assignments) rather than run continuously.
+    const fuelBurnMult = ship.afterburner ? AIRCRAFT_TEMP_CONFIG.afterburnerFuelBurnMult : 1;
+    ship.fuelS = (ship.fuelS ?? 0) - dt * fuelBurnMult;
     if (ship.fuelS <= 0) {
       ship.fuelS = 0;
       ship.alive = false;

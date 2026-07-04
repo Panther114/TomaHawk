@@ -88,6 +88,25 @@ test("5th-gen airframes have a meaningfully smaller radar cross-section than 4.5
   assert.ok(maxFifthGenRcs < minFourthHalfGenRcs / 5, "5th-gen RCS should be far smaller than 4.5-gen RCS");
 });
 
+// Polish pass: unit tags follow a Generation x Role scheme (G5/G4 x
+// AA/AG/AS), concise class names replace the old "F-22 Raptor Squadron
+// (5th-gen air-superiority) approx." style, and every hull within a
+// generation shares the same hardpoint count (5th-gen: 8, 4.5-gen: 14) so the
+// roster reads as two clean weight classes instead of six ad hoc numbers.
+test("aircraft tags/names follow the GxRR scheme and hardpoints are uniform per generation", () => {
+  const expectedPrefix = {
+    F22: "G5AA", F35A: "G5AG", F35C: "G5AS",
+    F15C: "G4AA", F15E: "G4AG", F15N: "G4AS"
+  };
+  for (const [hull, prefix] of Object.entries(expectedPrefix)) {
+    assert.equal(SHIP_CLASSES[hull].prefix, prefix, `${hull} unit tag`);
+    assert.ok(!/approx\.$/.test(SHIP_CLASSES[hull].className), `${hull} className should be concise, not a real-airframe name`);
+  }
+  for (const hull of FIFTH_GEN_HULLS) assert.equal(SHIP_CLASSES[hull].vlsCells, 8, `${hull} 5th-gen hardpoints`);
+  const fourthGenHardpoints = new Set(FOURTH_HALF_GEN_HULLS.map((hull) => SHIP_CLASSES[hull].vlsCells));
+  assert.equal(fourthGenHardpoints.size, 1, "every 4.5-gen hull should share the same hardpoint count");
+});
+
 test("AGM-154 JSOW is a distinct anti-ground stand-off weapon with its own range/speed profile", () => {
   const jsow = MISSILES["AGM-154"];
   const harpoon = MISSILES["AGM-84"];
@@ -103,6 +122,22 @@ test("AGM-154 has its own tuned radar detection envelope, distinct from AGM-84's
   const jsowEnvelope = missileDetectionEnvelope(observer, { missileId: "AGM-154", terminal: false });
   const harpoonEnvelope = missileDetectionEnvelope(observer, { missileId: "AGM-84", terminal: false });
   assert.notEqual(jsowEnvelope.targetHeightM, harpoonEnvelope.targetHeightM, "JSOW should not silently copy AGM-84's sea-skim profile");
+});
+
+// Regression: every missile now carries a real, distinct rcsM2 (previously
+// detection range used a hand-tuned "visibilityFactor" magic number per
+// weapon with no relationship to any actual RCS value at all). A tiny WVR
+// dogfight missile must have a meaningfully smaller radar-derived visibility
+// factor than a much larger long-range cruise missile.
+test("every missile has an RCS, and a small AAM is far less radar-visible than a large cruise missile", () => {
+  for (const id of Object.keys(MISSILES)) {
+    assert.ok(Number.isFinite(MISSILES[id].rcsM2) && MISSILES[id].rcsM2 > 0, `${id} has a positive rcsM2`);
+  }
+  assert.ok(MISSILES["AIM-9X"].rcsM2 < MISSILES["TomahawkBlockV"].rcsM2 / 10, "AIM-9X RCS should be far smaller than Tomahawk's");
+  const observer = makeShip(SIDE.BLUE, 0, 0, "DDG");
+  const aim9xEnvelope = missileDetectionEnvelope(observer, { missileId: "AIM-9X", terminal: false });
+  const tomahawkEnvelope = missileDetectionEnvelope(observer, { missileId: "TomahawkBlockV", terminal: false });
+  assert.ok(aim9xEnvelope.visibilityFactor < tomahawkEnvelope.visibilityFactor, "the smaller munition should have a lower RCS-derived visibility factor");
 });
 
 test("a cruising aircraft's own altitude extends its radar horizon (observer side, not just target side)", () => {
@@ -307,12 +342,29 @@ test("air inventory row reports flight strength, state and effector counts", () 
 });
 
 test("aircraft weapons exist with correct categories (AMRAAM/Sidewinder/Harpoon/JSOW)", () => {
-  assert.equal(MISSILES["AIM-120"].category, "anti_air");
-  assert.equal(MISSILES["AIM-9X"].category, "anti_air");
+  assert.equal(MISSILES["AIM-120"].category, "air_to_air");
+  assert.equal(MISSILES["AIM-9X"].category, "air_to_air");
   assert.equal(MISSILES["AIM-9X"].guidance, "infrared", "Sidewinder is IR (flare-decoyable)");
   assert.equal(MISSILES["AGM-84"].category, "anti_ship");
   assert.equal(MISSILES["AGM-154"].category, "anti_ship");
   for (const id of ["AIM-120", "AIM-9X", "AGM-84", "AGM-154"]) assert.ok(MISSILES[id].shortLabel.length >= 3, id);
+});
+
+// Regression: "anti_air" used to be a single bucket shared by ship-launched
+// SAMs (SM-2MR/ESSM) and aircraft-carried AAMs (AIM-120/AIM-9X), so nothing
+// stopped a squadron's loadout from containing a ship point-defense round as
+// if it were a dogfight weapon. Every air-to-air missile must now declare
+// "air" as an eligible launch platform, and no aircraft-only weapon may be
+// carried by a ship/ground unit.
+test("every air-to-air missile is air-launched only; ship SAMs are not air-launchable", () => {
+  for (const id of ["AIM-120", "AIM-9X"]) {
+    assert.equal(MISSILES[id].category, "air_to_air");
+    assert.deepEqual(MISSILES[id].platforms, ["air"]);
+  }
+  for (const id of ["SM-2MR", "ESSM"]) {
+    assert.equal(MISSILES[id].category, "ship_sam");
+    assert.ok(!MISSILES[id].platforms.includes("air"), `${id} must not be air-launchable`);
+  }
 });
 
 test("the F-15N squadron carries more than 4 AAW and more than 6 ASUW", () => {
@@ -379,6 +431,28 @@ test("a squadron breaks evasively when a missile closes in", () => {
     broke = r.evading === true || sim.events.some((e) => /breaks hard/.test(e.text));
   }
   assert.ok(broke, "the flight performed an evasive break");
+});
+
+// Regression: the evasive break previously only turned the flight sideways —
+// it never touched targetAltitudeM at all, so a "defensive break" never
+// actually dived, contrary to real BVR/WVR doctrine which pairs the beam/notch
+// with a hard descent and afterburner (see updateAircraft in aircraft.js).
+test("an evasive break dives and goes to afterburner, not just a lateral turn", () => {
+  const sim = running(7);
+  placeShip(sim, SIDE.BLUE, -10 * NM, 0, "CCG");
+  const r = placeShip(sim, SIDE.RED, 28 * NM, 0, "F15E");
+  r.fuelS = 1e9; r.desiredSpeed = 0; r.nextDecision = Infinity;
+  let minAltitudeWhileEvading = Infinity;
+  let sawAfterburner = false;
+  for (let i = 0; i < 1600; i++) {
+    stepSim(sim, 0.25);
+    if (r.evading) {
+      minAltitudeWhileEvading = Math.min(minAltitudeWhileEvading, r.altitudeM);
+      sawAfterburner = sawAfterburner || r.afterburner === true;
+    }
+  }
+  assert.ok(minAltitudeWhileEvading < 9000, "the flight actually descended during the break, not just turned");
+  assert.ok(sawAfterburner, "the flight engaged afterburner during the break");
 });
 
 test("flares are expended defending against infrared missiles", () => {

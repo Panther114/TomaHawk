@@ -4,7 +4,7 @@
 
 import { NM, SIDE, FLEET_ROLE, WEAPON_STATE } from "./constants.js";
 import { clamp, distance, angleTo, wrapAngle, interceptPoint, entityVelocity } from "./math.js";
-import { MISSILES, missileDisplayRole } from "./missiles.js";
+import { MISSILES, missileDisplayRole, isAirDefenseCategory } from "./missiles.js";
 import { availableCount, setAvailableCount, defaultLoadout, defaultRoe } from "./ships.js";
 import { addEvent } from "./events.js";
 import { currentTrack, markContactDead } from "./sensors.js";
@@ -183,7 +183,7 @@ function launchMissile(sim, launcher, order) {
   launcher.lastLaunchAtByMissile ||= {};
   if (!spec || availableCount(launcher, order.missileId) <= 0) return false;
   if (
-    (spec.category === "anti_air" || spec.category === "dual_role")
+    isAirDefenseCategory(spec.category)
     && !withinAirLaunchCone(launcher, order.targetX, order.targetY)
   ) return false;
   const queueReadyAt = order.defensive ? (launcher.nextDefensiveLaunchAt || 0) : (launcher.nextLaunchAt || 0);
@@ -639,8 +639,11 @@ function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.
 
 // Pick a weapon to engage an enemy aircraft *platform* (not an in-flight
 // missile). Candidates are anti-air-capable rounds actually in the magazine
-// (anti_air or dual_role), keeping a defensive reserve unless authorised to
-// commit it. Mirrors chooseAntiShipWeapon's longest-reach-fit selection.
+// (ship_sam, air_to_air, or dual_role), keeping a defensive reserve unless
+// authorised to commit it. Mirrors chooseAntiShipWeapon's longest-reach-fit
+// selection. Serves both ships and aircraft shooters; which of these
+// category weapons a given launcher can actually carry is enforced upstream
+// by the Unit Workshop's platform gate (see missileAllowedForDomain), not here.
 function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5) {
   const rangeM = distance(ship, track);
   const hull = ship.hull || "DDG";
@@ -648,7 +651,7 @@ function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5
   const candidates = Object.keys(ship.loadout).filter((id) => {
     const spec = MISSILES[id];
     if (!spec) return false;
-    const antiAirCapable = spec.category === "anti_air" || spec.category === "dual_role"
+    const antiAirCapable = isAirDefenseCategory(spec.category)
       || spec.target === "missile" || spec.target === "dual";
     if (!antiAirCapable) return false;
     if (rangeM > spec.rangeM) return false;
@@ -687,7 +690,7 @@ function chooseAirInterceptWeapon(ship, threat) {
   for (const id in ship.loadout) {
     const spec = MISSILES[id];
     if (!spec) continue;
-    if (spec.category !== "anti_air" && spec.category !== "dual_role") continue;
+    if (!isAirDefenseCategory(spec.category)) continue;
     if (spec.guidance === "infrared") continue; // WVR IR poor vs sea-skimmer; save for A2A
     if (rangeM > spec.rangeM) continue;
     const reserve = Math.ceil((baseLoad[id] ?? ship.loadout[id]) * 0.7); // keep 70% for air-to-air
@@ -973,7 +976,7 @@ function planOffensiveFires(sim) {
           const alreadyAssigned = countSideWeaponsOnTarget(sim, side, item.track.id);
           if (alreadyAssigned >= state.desired) continue;
           const offensiveCat = targetIsAir
-            ? ((c) => c === "anti_air" || c === "dual_role")
+            ? isAirDefenseCategory
             : ((c) => c === "anti_ship");
           const ownPending = (shooter.launchQueue || []).some((order) => order.targetId === item.track.id && offensiveCat(MISSILES[order.missileId]?.category))
             || missilesTargeting(sim, item.track.id).some((m) => m.launcherId === shooter.id && offensiveCat(MISSILES[m.missileId]?.category));
@@ -1115,6 +1118,35 @@ function dragSpeedFactor(missile) {
   return clamp(1 - 0.32 * flownFrac * densityFactor, 0.62, 1);
 }
 
+// Maneuver-induced energy bleed: a missile forced to pull a hard turn to keep
+// tracking a maneuvering/notching target bleeds real speed doing it — induced
+// drag rises sharply with load factor, the same real effect that costs an
+// aircraft airspeed through a hard break (see the turn-error `bleed` term in
+// movement.js's moveAirUnit). This was previously entirely absent: the drag
+// model above only depends on flownFrac/altitude, so a missile chasing a
+// hard-breaking target lost no more speed than one running down a
+// straight-line contact. That gap matters because the induced drag of a
+// forced hard turn late in flight (when the missile has the least energy
+// margin left) is the actual physical mechanism behind why the notch/beam+dive
+// defense works — not just the aspect/NEZ PK penalty already modeled in
+// airDefenseHitChance, which captures the same effect at the hit-probability
+// level but never touched the missile's own kinematics until now. Missiles in
+// this sim (unlike aircraft) have a flat turn-rate ceiling with no separate
+// airspeed-dependent formula, so the load proxy here is the fraction of that
+// design ceiling actually being pulled this tick, not a full lift/speed
+// derivation — proportionate to how coarse the rest of the missile model is.
+const MISSILE_TURN_DRAG_K = 0.5;
+// Terminal-dive GPE->KE conversion factor and cap (see the terminal-phase
+// transition below): fraction of speed gained per 1000m of altitude dropped.
+const TERMINAL_DIVE_BOOST_K = 0.008;
+const TERMINAL_DIVE_BOOST_CAP = 0.05;
+function missileManeuverDragFactor(headingDeltaRad, dt, baseTurnRadPerS) {
+  if (baseTurnRadPerS <= 0) return 1;
+  const turnRateRadPerS = Math.abs(headingDeltaRad) / Math.max(dt, 1e-3);
+  const turnFrac = clamp(turnRateRadPerS / baseTurnRadPerS, 0, 1.5);
+  return clamp(1 - MISSILE_TURN_DRAG_K * turnFrac * turnFrac, 0.55, 1);
+}
+
 export function updateMissiles(sim, dt) {
   // Rebuild the missile saturation grid once per tick (reused by the interceptor
   // and CIWS saturation models below, and by point defense this same tick).
@@ -1152,6 +1184,8 @@ export function updateMissiles(sim, dt) {
       missile.phase = "terminal";
       missile.terminalReason = "intercept endgame";
     } else if (isAntiShipTarget && distToTarget < spec.seekerRangeM) {
+      const enteringTerminal = !missile.terminal;
+      const priorAltitudeM = missile.altitudeM;
       missile.terminal = true;
       missile.phase = "terminal";
       missile.terminalReason = "terminal attack phase";
@@ -1160,6 +1194,21 @@ export function updateMissiles(sim, dt) {
       } else {
         missile.seaSkimming = true;
         missile.altitudeM = 12; // drop to sea-skim for the terminal run-in
+      }
+      // GPE -> KE, once, at the moment of the dive: a controlled guided
+      // descent converts only a small, heavily-damped fraction of the
+      // altitude drop into forward speed (a real free-fall energy-conversion
+      // formula would be wildly excessive here -- a guided glide/cruise
+      // weapon bleeds most of that potential energy as drag maintaining
+      // stable flight, not literal free-fall) but it is a genuine, physically-
+      // motivated effect rather than the dive being energy-free. Folded into
+      // launchSpeedMps (the reference dragSpeedFactor scales from) so it
+      // persists through every later tick's recompute instead of being
+      // overwritten immediately.
+      if (enteringTerminal) {
+        const droppedM = Math.max(0, priorAltitudeM - missile.altitudeM);
+        const diveBoost = clamp(TERMINAL_DIVE_BOOST_K * (droppedM / 1000), 0, TERMINAL_DIVE_BOOST_CAP);
+        missile.launchSpeedMps = (missile.launchSpeedMps ?? spec.speedMps) * (1 + diveBoost);
       }
     } else if (!targetIsInFlightMissile && !isAntiShipTarget && distToTarget < spec.seekerRangeM) {
       // SAM/AAM closing on an aircraft squadron.
@@ -1211,10 +1260,15 @@ export function updateMissiles(sim, dt) {
     missile.losAngle = losAngle;
     const baseTurn = (spec.maxTurnRateDps ?? 12) * Math.PI / 180;
     const maxTurn = baseTurn * (missile.terminal ? 1.5 : 1) * dt;
-    missile.heading = wrapAngle(missile.heading + clamp(wrapAngle(losAngle - missile.heading), -maxTurn, maxTurn));
+    const headingDeltaRad = clamp(wrapAngle(losAngle - missile.heading), -maxTurn, maxTurn);
+    missile.heading = wrapAngle(missile.heading + headingDeltaRad);
     // Energy bleed: recompute speed from the launch value and the drag model so
-    // long-range / low-altitude shots arrive slower (deterministic; no RNG).
-    missile.speed = (missile.launchSpeedMps ?? spec.speedMps) * dragSpeedFactor(missile);
+    // long-range / low-altitude shots arrive slower (deterministic; no RNG),
+    // then apply the additional maneuver-induced bleed from how hard this tick's
+    // turn actually was (see missileManeuverDragFactor above).
+    missile.speed = (missile.launchSpeedMps ?? spec.speedMps)
+      * dragSpeedFactor(missile)
+      * missileManeuverDragFactor(headingDeltaRad, dt, baseTurn * (missile.terminal ? 1.5 : 1));
     const travel = missile.speed * dt;
     missile.x += Math.cos(missile.heading) * travel;
     missile.y += Math.sin(missile.heading) * travel;

@@ -7,6 +7,7 @@ import { offensiveMissileCount } from "./ships.js";
 import { firstLandCollisionFraction, isWaterPoint, segmentCrossesLand, terrainCollision } from "../world/terrain.js";
 import { shipWaterClearanceM } from "./scenario.js";
 import { iterateTracksForShip } from "./sensors.js";
+import { AIRCRAFT_TEMP_CONFIG } from "./aircraft.js";
 
 // Shared empty list: when the per-tick missile-by-target index exists but holds
 // no bucket for a ship, that ship has nothing inbound — iterate nothing rather
@@ -184,21 +185,42 @@ function moveAirUnit(sim, ship, dt) {
       ship.heading = wrapAngle(ship.heading + delta);
     }
   }
-  const errFrac = Math.abs(headingErrorRad) / Math.PI; // 0 = on-heading, 1 = reversing course
-  const bleed = 1 - (isAggressiveAirManeuver(ship) ? 0.30 : 0.10) * errFrac;
-  const targetSpeed = ship.desiredSpeed * bleed;
-  const accelLimit = (targetSpeed >= ship.speed ? ship.accel : (ship.decel ?? ship.accel)) * dt;
-  const speedDelta = clamp(targetSpeed - ship.speed, -accelLimit, accelLimit);
-  const degrade = ship.damageDegrade ?? 0.1;
-  ship.speed = clamp(ship.speed + speedDelta, 0, ship.maxSpeed * Math.max(0.25, 1 - ship.damage * degrade));
   // Altitude is a commanded TARGET (targetAltitudeM, set by the AI layer in
   // aircraft.js), climbed/descended toward at a bounded vertical rate rather
   // than snapped — a strike descending from cruise to ingress altitude
-  // (9000m -> 150m) previously teleported there in one decision tick.
+  // (9000m -> 150m) previously teleported there in one decision tick. Computed
+  // here (before the speed integration below) so the same tick's climb/dive
+  // can feed the gravity energy-exchange term.
+  let altDelta = 0;
   if (Number.isFinite(ship.targetAltitudeM)) {
-    const altDelta = clamp(ship.targetAltitudeM - ship.altitudeM, -AIR_VERTICAL_RATE_MPS * dt, AIR_VERTICAL_RATE_MPS * dt);
-    ship.altitudeM = Math.max(0, ship.altitudeM + altDelta);
+    altDelta = clamp(ship.targetAltitudeM - ship.altitudeM, -AIR_VERTICAL_RATE_MPS * dt, AIR_VERTICAL_RATE_MPS * dt);
   }
+  const errFrac = Math.abs(headingErrorRad) / Math.PI; // 0 = on-heading, 1 = reversing course
+  const bleed = 1 - (isAggressiveAirManeuver(ship) ? 0.30 : 0.10) * errFrac;
+  // Afterburner: reheat unlocks meaningfully more top speed and much stronger
+  // acceleration than MIL power (see AIRCRAFT_TEMP_CONFIG.afterburner* and the
+  // decideAircraft branches that engage it) — modeled as a ceiling/rate
+  // multiplier rather than a separate speed field so every airframe benefits
+  // uniformly without new per-hull data.
+  const abActive = ship.afterburner === true;
+  const speedMult = abActive ? AIRCRAFT_TEMP_CONFIG.afterburnerSpeedMult : 1;
+  const accelMult = abActive ? AIRCRAFT_TEMP_CONFIG.afterburnerAccelMult : 1;
+  const effMaxSpeed = ship.maxSpeed * speedMult;
+  const targetSpeed = Math.min(ship.desiredSpeed * speedMult, effMaxSpeed) * bleed;
+  const accelLimit = (targetSpeed >= ship.speed ? ship.accel * accelMult : (ship.decel ?? ship.accel)) * dt;
+  // GPE <-> KE energy exchange: a real jet gains genuine airspeed diving and
+  // loses it climbing (specific energy trades between altitude and speed, not
+  // just the induced-drag bleed from turning above) — previously altitude and
+  // speed were two fully independent integrators with no physical coupling at
+  // all. Small-angle approximation (sin(gamma) =~ verticalRate/speed) is exact
+  // enough here since the vertical rate is already capped well below cruise
+  // speed. See docs/SIMULATION_ASSUMPTIONS.md.
+  const verticalRateMps = dt > 0 ? altDelta / dt : 0;
+  const gravityAccel = ship.speed > 1 ? -G_MPS2 * clamp(verticalRateMps / ship.speed, -1, 1) : 0;
+  const speedDelta = clamp(targetSpeed - ship.speed, -accelLimit, accelLimit) + gravityAccel * dt;
+  const degrade = ship.damageDegrade ?? 0.1;
+  ship.speed = clamp(ship.speed + speedDelta, 0, effMaxSpeed * Math.max(0.25, 1 - ship.damage * degrade));
+  ship.altitudeM = Math.max(0, ship.altitudeM + altDelta);
   ship.x = clamp(ship.x + Math.cos(ship.heading) * ship.speed * dt, -sim.widthM / 2, sim.widthM / 2);
   ship.y = clamp(ship.y + Math.sin(ship.heading) * ship.speed * dt, -sim.heightM / 2, sim.heightM / 2);
 }
@@ -311,8 +333,17 @@ export function decideShip(sim, ship) {
   } else if (!nearestEnemy) {
     ship.desiredSpeed = ship.cruiseSpeed ?? 16 * KNOT * SHIP_SPEED_MULTIPLIER;
     if (!ship.waypoint) {
-      const patrol = ship.side === SIDE.BLUE ? 1 : -1;
-      ship.waypoint = { x: ship.x + patrol * 9 * NM, y: ship.y + sim.rng.range(-6, 6) * NM };
+      // Patrol toward the fleet's rough strategic bearing estimate (see
+      // strategicBearingEstimate in command.js) instead of a random heading —
+      // a picket with no contact still has a general sense of where the
+      // enemy operates, the same real battlespace awareness an aircraft's CAP
+      // fallback already uses. Previously this was pure sim.rng jitter with no
+      // relationship whatsoever to the enemy's actual position, so a ship
+      // patrolling with zero contacts wandered aimlessly rather than
+      // searching in roughly the right direction.
+      const axis = sim.fleetCommand?.get(ship.side)?.axis;
+      const bearing = Number.isFinite(axis) ? axis : (ship.side === SIDE.BLUE ? 0 : Math.PI);
+      ship.waypoint = { x: ship.x + Math.cos(bearing) * 9 * NM, y: ship.y + Math.sin(bearing) * 9 * NM };
     }
     return;
   }

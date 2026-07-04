@@ -1,5 +1,14 @@
 // Missile catalogue and missile-level display helpers. Depends only on unit
 // constants.
+//
+// `rcsM2` is the same physical concept used for ships/aircraft (radar
+// cross-section, m²) but on a munition scale — every missile here is 3-4
+// orders of magnitude smaller than even a stealth fighter, let alone a
+// destroyer, so it is scaled against its own reference point rather than the
+// platform one (see MISSILE_REF_RCS_M2 / missileRcsRangeFactor in sensors.js).
+// Values are open-source-approximate (small guided-weapon airframes broadly
+// fall in the 0.01-0.5 m² range depending on size/shaping), not classified or
+// authoritative, consistent with every other weapon value in this catalogue.
 
 import { NM } from "./constants.js";
 
@@ -14,7 +23,9 @@ export const MISSILES = {
     displayName: "Standard Missile 2 MR",
     shortLabel: "SM2",
     role: "area air defense",
-    category: "anti_air",
+    category: "ship_sam",
+    platforms: ["sea", "ground"],
+    rcsM2: 0.1,
     symbol: "triangle",
     rangeM: 90 * NM,
     speedMps: 1050,
@@ -41,7 +52,9 @@ export const MISSILES = {
     displayName: "Evolved Sea Sparrow Missile",
     shortLabel: "ESSM",
     role: "point defense",
-    category: "anti_air",
+    category: "ship_sam",
+    platforms: ["sea", "ground"],
+    rcsM2: 0.05,
     symbol: "triangle",
     rangeM: 28 * NM,
     speedMps: 980,
@@ -69,6 +82,8 @@ export const MISSILES = {
     shortLabel: "MSTK",
     role: "anti-surface cruise missile approx.",
     category: "anti_ship",
+    platforms: ["sea", "ground"],
+    rcsM2: 0.3,
     symbol: "square",
     rangeM: 120 * NM,
     speedMps: 270,
@@ -96,6 +111,8 @@ export const MISSILES = {
     shortLabel: "TLAM",
     role: "long-range surface strike approx.",
     category: "anti_ship",
+    platforms: ["sea", "ground"],
+    rcsM2: 0.5,
     symbol: "square",
     rangeM: 650 * NM,
     speedMps: 245,
@@ -122,7 +139,9 @@ export const MISSILES = {
     displayName: "AIM-120 AMRAAM",
     shortLabel: "120",
     role: "BVR active-radar air-to-air",
-    category: "anti_air",
+    category: "air_to_air",
+    platforms: ["air"],
+    rcsM2: 0.03,
     symbol: "triangle",
     rangeM: 55 * NM,
     speedMps: 1200,
@@ -150,7 +169,9 @@ export const MISSILES = {
     displayName: "AIM-9X Sidewinder",
     shortLabel: "AIM9",
     role: "WVR infrared air-to-air",
-    category: "anti_air",
+    category: "air_to_air",
+    platforms: ["air"],
+    rcsM2: 0.02,
     symbol: "triangle",
     rangeM: 18 * NM,
     speedMps: 900,
@@ -179,6 +200,8 @@ export const MISSILES = {
     shortLabel: "HPN",
     role: "air-launched anti-ship",
     category: "anti_ship",
+    platforms: ["air"],
+    rcsM2: 0.25,
     symbol: "square",
     rangeM: 67 * NM,
     speedMps: 240,
@@ -211,6 +234,8 @@ export const MISSILES = {
     // "ship" targets for that category, so no new targeting path is needed.
     role: "air-launched stand-off anti-ground strike",
     category: "anti_ship",
+    platforms: ["air"],
+    rcsM2: 0.4,
     symbol: "square",
     rangeM: 70 * NM,
     speedMps: 220,
@@ -238,6 +263,8 @@ export const MISSILES = {
     shortLabel: "SM6",
     role: "dual-role: fleet air defense / anti-surface",
     category: "dual_role",
+    platforms: ["sea", "ground"],
+    rcsM2: 0.15,
     symbol: "diamond",
     rangeM: 200 * NM,
     speedMps: 1190,
@@ -292,11 +319,41 @@ export function missileSymbol(missileId) {
   return MISSILES[missileId]?.symbol ?? "unknown";
 }
 
+// Category taxonomy: "ship_sam" (ship/ground area+point air-defense, e.g.
+// SM-2MR/ESSM) and "air_to_air" (aircraft-carried AAM, e.g. AIM-120/AIM-9X)
+// split what used to be one shared "anti_air" bucket. The two are launched by
+// different platform types and were never meant to be interchangeable, but
+// nothing enforced that: an aircraft's loadout accepted a ship point-defense
+// round with no platform check anywhere, so the Unit Workshop would happily
+// let a custom (or even edited) squadron carry ESSM as if it were an AAM. See
+// missileAllowedForDomain for the actual platform gate; these two helpers are
+// the display/behavior-classification side (unchanged combat/UI semantics —
+// every old `=== "anti_air"` check just needs to match both new values now).
+export function isAntiAirCategory(category) {
+  return category === "ship_sam" || category === "air_to_air";
+}
+// Broader "this round provides air-defense capability" check, additionally
+// including dual-role weapons (e.g. SM-6, also usable offensively vs ships).
+export function isAirDefenseCategory(category) {
+  return isAntiAirCategory(category) || category === "dual_role";
+}
+
+// Which platform domains ("sea", "ground", "air") may carry a given missile.
+// A spec with no `platforms` array is unrestricted -- legacy/custom ammo saved
+// before this field existed keeps working everywhere, so existing mods are
+// never silently broken by this gate.
+export function missileAllowedForDomain(missileId, domain) {
+  const spec = MISSILES[missileId];
+  if (!spec) return false;
+  if (!Array.isArray(spec.platforms) || !spec.platforms.length) return true;
+  return spec.platforms.includes(domain);
+}
+
 export function missileDisplayRole(missile) {
   if (!missile?.alive) return null;
   const spec = MISSILES[missile.missileId];
   if (!spec) return null;
-  if (spec.category === "anti_air") return "anti_air";
+  if (isAntiAirCategory(spec.category)) return "anti_air";
   if (spec.category === "anti_ship") return "anti_ship";
   if (missile.launchRole === "anti_air" || missile.launchRole === "anti_ship") return missile.launchRole;
   // Legacy saves did not persist the role; their non-retargetable target is the launch intent.

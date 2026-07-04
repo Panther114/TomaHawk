@@ -40,6 +40,19 @@ function rcsRangeFactor(rcsM2) {
   return clamp(Math.pow((rcsM2 ?? REF_RCS_M2) / REF_RCS_M2, 0.25), 0.12, 1.0);
 }
 
+// Same radar-range equation as rcsRangeFactor above, but referenced to the
+// largest vanilla munition (TomahawkBlockV, ~0.5 m²) instead of a destroyer:
+// every missile is 3-4 orders of magnitude smaller than even a stealth
+// fighter, so reusing the platform reference point would clamp every weapon
+// to the same floor and erase any distinction between, say, a tiny AIM-9X and
+// a much larger cruise missile. Also capped at 1.0 for the same reason as the
+// platform version (RCS only shortens detection, it never extends a radar
+// beyond its rated reach).
+const MISSILE_REF_RCS_M2 = 0.6;
+function missileRcsRangeFactor(rcsM2) {
+  return clamp(Math.pow((rcsM2 ?? MISSILE_REF_RCS_M2) / MISSILE_REF_RCS_M2, 0.25), 0.35, 1.0);
+}
+
 // Radar-reflective height for the geometric horizon: a flying entity uses its
 // altitude (so a high-flying aircraft looks — and is seen — much farther than
 // the horizon would suggest at sea level, and a sea-skimmer is masked beyond
@@ -67,61 +80,60 @@ function radarDetectionChance(rangeM, radarRangeM, target) {
 export function missileDetectionEnvelope(observer, missile) {
   const spec = MISSILES[missile?.missileId];
   if (!spec) return { detectRangeM: 0, horizonM: 0, targetHeightM: 8, visibilityFactor: 0.34, baseChance: 0.8 };
+  // Altitude/profile and detection-confidence still vary by weapon (a
+  // sea-skimmer flies low and is masked by the horizon; a lofted
+  // air-defence round flies high and is seen far outside it) — that is a
+  // genuinely different physical axis from radar cross-section (how big the
+  // return is once in view) and stays a per-weapon lookup here. RCS itself
+  // used to be folded into this same table as a hand-tuned "visibilityFactor"
+  // magic number with no relationship to any actual per-weapon RCS value;
+  // it is now derived from spec.rcsM2 via missileRcsRangeFactor below, the
+  // same physical concept already used for ship/aircraft detection.
   let targetHeightM = 15;
-  let visibilityFactor = 0.34;
   let baseChance = 0.80;
   switch (missile.missileId) {
     case "TomahawkBlockV":
       targetHeightM = missile.terminal ? 12 : 30;
-      visibilityFactor = missile.terminal ? 0.18 : 0.16;
       baseChance = 0.72;
       break;
     case "MaritimeStrike":
       targetHeightM = missile.terminal ? 8 : 20;
-      visibilityFactor = missile.terminal ? 0.22 : 0.19;
       baseChance = 0.74;
       break;
     case "SM-6":
       targetHeightM = missile.terminal ? 1400 : 7000;
-      visibilityFactor = missile.terminal ? 0.82 : 0.72;
       baseChance = 0.92;
       break;
     case "SM-2MR":
       targetHeightM = missile.terminal ? 900 : 5000;
-      visibilityFactor = missile.terminal ? 0.68 : 0.60;
       baseChance = 0.88;
       break;
     case "ESSM":
       targetHeightM = missile.terminal ? 250 : 900;
-      visibilityFactor = missile.terminal ? 0.48 : 0.42;
       baseChance = 0.84;
       break;
     case "AGM-84": // air-launched sea-skimming anti-ship
       targetHeightM = missile.terminal ? 8 : 18;
-      visibilityFactor = missile.terminal ? 0.22 : 0.19;
       baseChance = 0.74;
       break;
     case "AGM-154": // air-launched stand-off glide weapon (anti-ground), not sea-skimming
       targetHeightM = missile.terminal ? 10 : 40;
-      visibilityFactor = missile.terminal ? 0.22 : 0.24;
       baseChance = 0.74;
       break;
     case "AIM-120": // BVR air-to-air, fast high-flyer
       targetHeightM = missile.terminal ? 3000 : 8000;
-      visibilityFactor = missile.terminal ? 0.55 : 0.5;
       baseChance = 0.8;
       break;
     case "AIM-9X": // WVR IR, small and lower
       targetHeightM = missile.terminal ? 400 : 1500;
-      visibilityFactor = missile.terminal ? 0.34 : 0.3;
       baseChance = 0.7;
       break;
     default:
       targetHeightM = missile.terminal ? 20 : 60;
-      visibilityFactor = missile.terminal ? 0.28 : 0.24;
       baseChance = 0.78;
       break;
   }
+  const visibilityFactor = missileRcsRangeFactor(spec.rcsM2);
   const horizonM = radarHorizonM(scatterHeightM(observer), targetHeightM);
   const detectRangeM = Math.min(observer.radarRangeM * visibilityFactor, horizonM * 1.1);
   return { detectRangeM, horizonM, targetHeightM, visibilityFactor, baseChance };

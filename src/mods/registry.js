@@ -8,18 +8,27 @@ import {
   MISSILES,
   SHIP_CLASSES,
   defaultLoadout,
+  defaultRcsM2,
   registerMissile,
   unregisterMissile,
   isBuiltinMissile,
   registerShipClass,
   unregisterShipClass,
-  isBuiltinShipClass
+  isBuiltinShipClass,
+  missileAllowedForDomain
 } from "../sim.js";
 
 /** Registry key for a unit: ammo keys on its name/id, ships on their hull id. */
 export function unitId(unit) {
   return unit.kind === "ammo" ? String(unit.name) : String(unit.id);
 }
+
+// Maps an editor-JSON unit kind to the missile-platform domain it corresponds
+// to ("sea" for naval, "ground" for ground, "air" for aircraft) -- the same
+// domain vocabulary a ship's own `domain` field uses. Used both by the
+// Workshop's loadout picker and by validateUnit's cross-check (see
+// missileAllowedForDomain) so a unit can only be given ammo built for it.
+export const UNIT_KIND_DOMAIN = { naval: "sea", ground: "ground", aircraft: "air" };
 
 /** True when this editor-JSON unit corresponds to a built-in (locked) type. */
 export function isBuiltinUnit(unit) {
@@ -57,6 +66,12 @@ function toMissileSpec(u) {
     shortLabel: u.name,
     role: u.role || "custom",
     category: u.category,
+    rcsM2: Number(u.rcsM2),
+    platforms: [
+      u.platformSea ? "sea" : null,
+      u.platformGround ? "ground" : null,
+      u.platformAir ? "air" : null
+    ].filter(Boolean),
     symbol: u.symbol,
     rangeM: Number(u.rangeNm) * NM,
     speedMps: Number(u.speedMps),
@@ -89,6 +104,7 @@ function toNavalClass(u) {
     hull: u.id, className: u.name, prefix: u.prefix, domain: "sea", isFixed: false,
     lengthM: Number(u.lengthM) || 150, beamM: Number(u.beamM) || 20,
     draftM: Number(u.draftM) || 9, displacementT: Number(u.displacementT) || 9000,
+    rcsM2: Number(u.rcsM2),
     cruiseSpeedKt: Number(u.cruiseSpeedKt), maxSpeedKt: Number(u.maxSpeedKt),
     accelMps2: Number(u.accelMps2), decelMps2: Number(u.decelMps2),
     turnRateDps: Number(u.turnRateDps), turnRateFlankDps: Number(u.turnRateFlankDps),
@@ -113,6 +129,7 @@ function toGroundClass(u) {
     hull: u.id, className: u.name, prefix: u.prefix, domain: "ground", isFixed: true,
     isAirfield, glyph: u.glyph ?? (isAirfield ? "airfield" : "bunker"),
     lengthM: Number(u.lengthM), beamM: Number(u.beamM), draftM: 10, displacementT: 4000,
+    rcsM2: Number(u.rcsM2),
     cruiseSpeedKt: 0, maxSpeedKt: 0, accelMps2: 0, decelMps2: 0, turnRateDps: 0, turnRateFlankDps: 0,
     radarRangeNm: Number(u.radarRangeNm), radarIntervalS: Number(u.radarIntervalS),
     vlsCells: Math.round(Number(u.vlsCells)),
@@ -131,6 +148,7 @@ function toAircraftClass(u) {
   return {
     hull: u.id, className: u.name, prefix: u.prefix, domain: "air", isFixed: false, glyph: "aircraft",
     lengthM: Number(u.lengthM) || 20, beamM: Number(u.beamM) || 14, draftM: 5, displacementT: 30,
+    rcsM2: Number(u.rcsM2),
     cruiseSpeedKt: Number(u.cruiseSpeedKt), maxSpeedKt: Number(u.maxSpeedKt),
     accelMps2: Number(u.accelMps2), decelMps2: Number(u.decelMps2),
     turnRateDps: Number(u.turnRateDps), turnRateFlankDps: Number(u.turnRateFlankDps),
@@ -160,6 +178,16 @@ function fromMissileSpec(id, s) {
   return {
     kind: "ammo", id, name: id, displayName: s.displayName, shortLabel: s.shortLabel, role: s.role,
     category: s.category, symbol: s.symbol, target: s.target, defenseLayer: s.defenseLayer,
+    // A legacy custom weapon saved before this field existed has no rcsM2 at
+    // all; fall back to a plausible mid-size-munition default rather than
+    // showing an empty/zero field.
+    rcsM2: Number.isFinite(s.rcsM2) ? s.rcsM2 : 0.3,
+    // A spec with no `platforms` predates this field and is unrestricted (see
+    // missileAllowedForDomain), so it round-trips into the editor as "every
+    // platform enabled" rather than silently losing all of them.
+    platformSea: !s.platforms || s.platforms.includes("sea"),
+    platformGround: !s.platforms || s.platforms.includes("ground"),
+    platformAir: !s.platforms || s.platforms.includes("air"),
     rangeNm: s.rangeM / NM, preferredMinRangeNm: s.preferredMinRangeM / NM, preferredMaxRangeNm: s.preferredMaxRangeM / NM,
     seekerRangeNm: s.seekerRangeM / NM, speedMps: s.speedMps, maxTurnRateDps: s.maxTurnRateDps,
     cellCost: s.cellCost, pk: s.pk, salvo: s.salvo, interceptorsPerThreat: s.interceptorsPerThreat,
@@ -174,6 +202,11 @@ function fromShipClass(hull, c) {
     id: hull, name: c.className, prefix: c.prefix,
     lengthM: c.lengthM, beamM: c.beamM,
     radarRangeNm: c.radarRangeNm, radarIntervalS: c.radarIntervalS,
+    // A hull that predates this field (or was never given an explicit
+    // rcsM2) round-trips using the exact same domain/displacement-based
+    // default the sim itself falls back to (see defaultRcsM2 in ships.js),
+    // so the editor never shows a value the sim wouldn't actually use.
+    rcsM2: defaultRcsM2(c),
     vlsCells: c.vlsCells, damageResist: c.damageResist, damageDegrade: c.damageDegrade,
     defenseArea: c.defenseChannels?.area ?? 0, defensePoint: c.defenseChannels?.point ?? 0,
     baseLoadout: { ...(c.baseLoadout ?? defaultLoadout(hull)) }
@@ -183,6 +216,7 @@ function fromShipClass(hull, c) {
       kind: "aircraft", id: hull, name: c.className, prefix: c.prefix,
       squadronSize: Math.max(1, Math.round(c.damageResist ?? 4)),
       commandHub: c.commandHub === true,
+      rcsM2: defaultRcsM2(c),
       cruiseSpeedKt: c.cruiseSpeedKt, maxSpeedKt: c.maxSpeedKt,
       accelMps2: c.accelMps2, decelMps2: c.decelMps2,
       turnRateDps: c.turnRateDps, turnRateFlankDps: c.turnRateFlankDps,
@@ -231,7 +265,11 @@ export function unregisterUnit(unit) {
   return unit.kind === "ammo" ? unregisterMissile(unitId(unit)) : unregisterShipClass(unitId(unit));
 }
 
-/** Available ammo ids (for loadout pickers): all registered missiles. */
-export function availableAmmoIds() {
-  return Object.keys(MISSILES);
+/** Available ammo ids (for loadout pickers): all registered missiles, or --
+ *  when `domain` ("sea"/"ground"/"air") is given -- only those a unit of
+ *  that platform type may actually carry (see missileAllowedForDomain). */
+export function availableAmmoIds(domain) {
+  const ids = Object.keys(MISSILES);
+  if (!domain) return ids;
+  return ids.filter((id) => missileAllowedForDomain(id, domain));
 }

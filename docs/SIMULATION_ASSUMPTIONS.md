@@ -113,6 +113,59 @@ top-down — altitude is a hidden scalar that drives the radar horizon, the drag
 model, and the detail display, not a third movement axis. The per-tick cost is a
 few arithmetic operations per missile.
 
+Two further effects couple this to real energy physics rather than a flat
+formula:
+
+- **Maneuver-induced drag.** A missile forced to pull a hard turn to keep
+  tracking a maneuvering/notching target bleeds real speed doing it — the same
+  induced-drag effect that costs an aircraft airspeed through a hard break.
+  The bleed scales with how large a fraction of the missile's own design
+  turn-rate ceiling it is pulling that tick (missiles here have a flat
+  turn-rate cap with no separate airspeed-dependent formula, unlike aircraft,
+  so this is a proportionate load-factor proxy, not a full derivation), and is
+  most significant in the terminal endgame — the exact moment a missile has
+  the least energy margin left, which is the real physical mechanism behind
+  why the notch/beam+dive defense works, not just the aspect/NEZ PK penalty
+  below (which reflects the same effect at the hit-probability level but
+  previously never touched the missile's own kinematics).
+- **Terminal-dive GPE→KE conversion.** At the exact tick a missile snaps into
+  its terminal dive (sea-skim run-in, or JSOW's terminal glide), it gains a
+  small, heavily-damped one-time speed bump proportional to the altitude just
+  dropped — a controlled guided descent converts only a small fraction of that
+  potential energy into forward speed (most of it is bled off as drag
+  maintaining stable flight, unlike a literal free-fall), but it is a real,
+  physically-motivated effect rather than the dive being energy-free.
+
+### Aircraft Energy State (GPE ↔ KE)
+An aircraft's altitude and airspeed were previously two fully independent
+bounded-rate integrators with no physical coupling at all — climbing or diving
+never affected speed. A small-angle gravity term now couples them: diving
+genuinely gains real airspeed (gravity trades altitude for speed) and climbing
+genuinely costs it, on top of (not instead of) the existing thrust/drag-limited
+accel/decel model and the turn-induced speed bleed from a hard heading change.
+This is what makes the defensive dive above actually matter kinematically, not
+just cosmetically — a flight that dives hard during a break measurably outruns
+one that doesn't.
+
+### Afterburner
+Every aircraft class (5th- and 4.5-gen alike — reheat is an engine property,
+not an airframe generation) can go to afterburner: a configurable multiplier
+over its MIL-power top speed and a much stronger acceleration multiplier, at a
+steep fuel-burn multiplier. The AI engages it only for demanding moments — a
+missile-defense break or closing an air-to-air intercept — and reverts to MIL
+power for cruise/ingress/patrol/RTB so fuel is conserved on those legs.
+
+### Strategic Bearing Estimate (Imperfect Pre-Contact Awareness)
+Before any side holds a real radar contact, its units are not aimless: a
+periodically-refreshed (not instantaneous), deliberately imprecise (bounded
+random error, not a precise fix) estimate of the opposing force's general
+bearing orients CAP/orbit stations and ship patrol legs — representing the
+general battlespace awareness a real task group has (patrol patterns, prior
+contact reports, expected transit lanes) rather than either a fixed compass
+heading or the literal random patrol heading used previously for ships. Once a
+side holds a real fused track, its actual (sensor-quality-limited) bearing is
+used instead — this estimate is only the pre-contact default.
+
 ### Air-to-Air Geometry
 Air-to-air kill probability is shaped by engagement geometry, not just a flat PK:
 
@@ -232,6 +285,28 @@ Both are cheap scalars (one `pow` and one height lookup per detection candidate)
 they do not change the O(observers × candidates) sensor cost. Altitude is shown in
 a selected squadron's detail card; it is not drawn on the top-down map.
 
+**Munitions now carry RCS too.** Every missile in the catalogue has an
+`rcsM2` (public-source-approximate, from a tiny WVR dogfight round to a larger
+long-range cruise missile) and a radar's chance of picking one up scales the
+same fourth-root way, referenced to the largest vanilla munition rather than a
+destroyer (every weapon is 3-4 orders of magnitude smaller than even a stealth
+fighter, so reusing the platform reference would clamp every missile to the
+same floor and erase the distinction between them). This replaces what used
+to be a hand-tuned "visibilityFactor" magic number per weapon with no
+relationship to any actual per-weapon RCS value. Altitude/profile (sea-skim
+vs. lofted) remains a separate, legitimate per-weapon factor feeding the same
+horizon model above — RCS governs how big the return is once in view, not
+whether the horizon masks it.
+
+**RCS is now editable in the Unit Workshop.** Every naval, ground, and
+aircraft class (and every ammo record) exposes `rcsM2` as a plain numeric
+field, round-tripping the exact value the sim uses (vanilla hulls without an
+explicit value show the same domain/displacement-derived default the engine
+itself falls back to, rather than an invented number). Previously RCS was
+fully implemented in the engine but completely invisible and non-editable in
+the Workshop — every custom/cloned unit silently got an auto-computed default
+with no way to see or override it.
+
 ### CEC Latency
 Track sharing now has a 1.8s propagation delay. Tracks younger than the latency window are not shared to other units. Shared track quality is degraded (0.85×) with increased uncertainty (+1500m).
 CEC selects from local sensor reports only, so a track cannot relay through multiple ships. One shared report is stored per side/contact and resolved together with each receiver's local reports; it is not copied into every receiving ship. The fused force picture refreshes fully every 0.5s and updates dirty contacts immediately when radar or CEC data changes.
@@ -281,7 +356,23 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   shots) plus an intrinsic `airEvasionBonus`; the 4.5-gen trio (`F15E`, `F15N`,
   `F15C`) is non-stealth — a larger radar cross-section and no evasion bonus,
   but the biggest magazines of the roster (they survive by stand-off and
-  terrain masking, not signature). All six are tunable `SHIP_CLASSES` entries.
+  terrain masking, not signature). All six are tunable `SHIP_CLASSES` entries
+  (the internal hull ids — `F22`, `F35A`, etc. — are unchanged and still what
+  `placeShip`/scenarios reference; only the *displayed* unit tag and class name
+  changed, see below).
+- **Concise unit tags and class names, uniform hardpoints per generation.**
+  Displayed names used to read as a real-airframe name plus a parenthetical
+  ("F-22 Raptor Squadron (5th-gen air-superiority) approx."). Tags now follow
+  a Generation × Role scheme — `G5`/`G4` × `AA` (air-superiority) / `AG`
+  (anti-ground, matching this project's own `AGM-`-prefixed weapon naming) /
+  `AS` (anti-ship) — paired with a short class name ("5th Gen Air Supremacy",
+  "5th Gen Strike", "5th Gen Naval Strike", and the 4.5-gen equivalents
+  rounded to "4th Gen" for the same brevity already used in the Chinese
+  labels). Every 5th-gen hull shares the same hardpoint count (8) and every
+  4.5-gen hull shares its own (14) — a deliberate uniform gameplay number, not
+  a claim about real internal-bay capacity (a real 5th-gen internal bay is
+  smaller; external carriage's RCS penalty is a future refinement, not
+  modeled yet) — with each loadout rebalanced to fill its cap exactly.
 - **A seventh, unarmed hull: AWAC (AEW&C) as a command hub.** `AWAC` carries no
   weapons at all (`baseLoadout: {}`) and models a single, high-value, moving
   radar (`damageResist: 1` — one aircraft, not a 4-ship flight; any hit is a
@@ -342,6 +433,22 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   vertical rate, rather than teleporting between them. It drives the sensor
   radar-horizon only; the map stays top-down. No RNG is involved, so determinism
   is unaffected.
+- **Missile defense is a combination maneuver, not just a lateral break.** Real
+  BVR/WVR doctrine pairs the beam/notch (turning perpendicular to the threat's
+  line of sight, nulling the closure rate a semi-active/active seeker keys on)
+  with a hard descent — "go low" — and afterburner: diving trades altitude for
+  the airspeed/energy needed to keep out-turning a missile with little energy
+  margin left late in its flight, denies a look-down seeker a clean picture, and
+  (via the missile's own maneuver-drag model below) costs the missile more to
+  keep following. Previously the evasion branch changed heading but never
+  touched altitude at all — the defensive dive was completely missing.
+- **Afterburner.** Every airframe in the roster, 5th- or 4.5-gen alike, has
+  reheat available (a property of the engine, not the generation): a
+  meaningfully higher speed ceiling and much stronger acceleration than MIL
+  power, at several times the fuel-flow rate. The AI reserves it for genuinely
+  demanding moments — a defensive break, closing an air-to-air intercept —
+  rather than running it continuously, so cruise/ingress/patrol/RTB legs still
+  fly on MIL power and conserve fuel.
 - **Air defence of the fleet.** A squadron will hard-kill an inbound anti-ship
   missile with its long-range radar AAM, but only conservatively — IR rounds are
   reserved for the dogfight and a heavy (≈70%) reserve of the radar AAM is kept,

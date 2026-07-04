@@ -7,8 +7,8 @@
 import { getLang } from "../ui/lang.js";
 import { SCHEMAS, DEFAULTS, DEPLOYABLE_TYPES, validateUnit } from "./schema.js";
 import { loadMods, saveMod, deleteMod, recordKey } from "./store.js";
-import { unitId, isBuiltinUnit, makeUniqueShipId, availableAmmoIds } from "./registry.js";
-import { MISSILES, usedCells } from "../sim.js";
+import { unitId, isBuiltinUnit, makeUniqueShipId, availableAmmoIds, UNIT_KIND_DOMAIN } from "./registry.js";
+import { MISSILES, usedCells, isAirDefenseCategory } from "../sim.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
   { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
@@ -92,7 +92,11 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
       return `<div class="mods-lo-row"><span class="mods-lo-name" title="${esc(id)}">${esc(label)}</span>
         <input type="number" min="0" step="1" data-loadout-id="${esc(id)}" value="${esc(count)}"${locked ? " disabled" : ""} />${rm}</div>`;
     }).join("");
-    const avail = availableAmmoIds().filter((id) => !(id in lo));
+    // Only offer ammo this unit's platform type can actually carry (see
+    // missileAllowedForDomain) -- this is the fix for a naval/ground/aircraft
+    // unit being able to pick up any registered weapon regardless of whether
+    // it makes any sense for that platform (e.g. an aircraft equipping ESSM).
+    const avail = availableAmmoIds(UNIT_KIND_DOMAIN[form.kind]).filter((id) => !(id in lo));
     const addSel = locked
       ? `<div class="mods-lo-hint">${esc(getLang() === "zh" ? "内置单位：点击「克隆」后即可添加/编辑载弹" : "Built-in — click Clone to add or edit weapons")}</div>`
       : `<div class="mods-lo-add"><select data-loadout-add>
@@ -110,13 +114,13 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
   // Role-dependent fields on ammo: salvo (volley size) is an offensive concept,
   // shown for anti-ship / dual; interceptors-per-threat is a defensive concept,
-  // shown for anti-air / dual. Everything else is always visible.
+  // shown for ship_sam / air_to_air / dual. Everything else is always visible.
   function fieldVisible(f) {
     if (form.kind !== "ammo") return true;
     const cat = form.category;
     if (f.key === "salvo") return cat === "anti_ship" || cat === "dual_role";
-    if (f.key === "interceptorsPerThreat") return cat === "anti_air" || cat === "dual_role";
-    if (f.key === "nezFraction") return cat === "anti_air" || cat === "dual_role";
+    if (f.key === "interceptorsPerThreat") return isAirDefenseCategory(cat);
+    if (f.key === "nezFraction") return isAirDefenseCategory(cat);
     return true;
   }
 

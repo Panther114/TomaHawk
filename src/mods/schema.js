@@ -9,7 +9,8 @@
 //     unit?, step?, min?, max?, options?:[{value,label:{en,zh}}], placeholder? }
 // Sections group fields for a dense, readable form layout.
 
-import { usedCells } from "../sim.js";
+import { usedCells, missileAllowedForDomain } from "../sim.js";
+import { UNIT_KIND_DOMAIN } from "./registry.js";
 
 export const UNIT_TYPES = ["naval", "ground", "aircraft", "ammo"];
 
@@ -20,8 +21,16 @@ export const DEPLOYABLE_TYPES = ["naval", "ground", "aircraft"];
 const num = (key, label, opts = {}) => ({ key, type: "number", label, ...opts });
 const text = (key, label, opts = {}) => ({ key, type: "text", label, ...opts });
 
+// "ship_sam" (ship/ground area+point air-defense, e.g. SM-2MR/ESSM) and
+// "air_to_air" (aircraft-carried AAM, e.g. AIM-120/AIM-9X) replace the old
+// single "anti_air" bucket, which conflated the two: nothing distinguished a
+// ship point-defense round from a fighter's dogfight missile, so the Unit
+// Workshop happily let an aircraft's loadout accept ESSM. The `platform*`
+// checkboxes below are the actual gate (see missileAllowedForDomain) — the
+// category split just makes the classification itself legible.
 const CATEGORY_OPTIONS = [
-  { value: "anti_air", label: { en: "Anti-air", zh: "防空" } },
+  { value: "ship_sam", label: { en: "Ship SAM", zh: "舰载防空" } },
+  { value: "air_to_air", label: { en: "Air-to-air", zh: "空空导弹" } },
   { value: "anti_ship", label: { en: "Anti-ship", zh: "反舰" } },
   { value: "dual_role", label: { en: "Dual-role", zh: "双重用途" } }
 ];
@@ -79,6 +88,9 @@ const NAVAL_SCHEMA = {
       num("radarRangeNm", { en: "Radar range", zh: "雷达距离" }, { unit: "NM", min: 0, max: 600, step: 1 }),
       num("radarIntervalS", { en: "Radar interval", zh: "扫描间隔" }, { unit: "s", min: 0.5, max: 30, step: 0.5 })
     ] },
+    { title: { en: "Signature", zh: "信号特征" }, fields: [
+      num("rcsM2", { en: "Radar cross-section", zh: "雷达散射截面" }, { unit: "m²", min: 50, max: 100000, step: 50 })
+    ] },
     { title: { en: "Magazine", zh: "弹库" }, fields: [
       num("vlsCells", { en: "VLS cells", zh: "垂发单元" }, { min: 0, max: 1024, step: 1 })
     ] },
@@ -113,6 +125,9 @@ const GROUND_SCHEMA = {
     { title: { en: "Sensors", zh: "传感器" }, fields: [
       num("radarRangeNm", { en: "Radar range", zh: "雷达距离" }, { unit: "NM", min: 0, max: 600, step: 1 }),
       num("radarIntervalS", { en: "Radar interval", zh: "扫描间隔" }, { unit: "s", min: 0.5, max: 30, step: 0.5 })
+    ] },
+    { title: { en: "Signature", zh: "信号特征" }, fields: [
+      num("rcsM2", { en: "Radar cross-section", zh: "雷达散射截面" }, { unit: "m²", min: 100, max: 50000, step: 50 })
     ] },
     { title: { en: "Magazine", zh: "弹库" }, fields: [
       num("vlsCells", { en: "Cells", zh: "发射单元" }, { min: 0, max: 1024, step: 1 })
@@ -157,6 +172,9 @@ const AIRCRAFT_SCHEMA = {
       num("radarRangeNm", { en: "Radar range", zh: "雷达距离" }, { unit: "NM", min: 0, max: 600, step: 1 }),
       num("radarIntervalS", { en: "Radar interval", zh: "扫描间隔" }, { unit: "s", min: 0.5, max: 30, step: 0.5 })
     ] },
+    { title: { en: "Signature", zh: "信号特征" }, fields: [
+      num("rcsM2", { en: "Radar cross-section", zh: "雷达散射截面" }, { unit: "m²", min: 0.05, max: 200, step: 0.05 })
+    ] },
     { title: { en: "Hardpoints", zh: "挂架" }, fields: [
       num("vlsCells", { en: "Hardpoints", zh: "挂架数" }, { min: 0, max: 64, step: 1 })
     ] },
@@ -182,7 +200,22 @@ const AMMO_SCHEMA = {
       { key: "category", type: "select", label: { en: "Category", zh: "类别" }, options: CATEGORY_OPTIONS },
       { key: "symbol", type: "select", label: { en: "Symbol", zh: "符号" }, options: SYMBOL_OPTIONS },
       { key: "target", type: "select", label: { en: "Target", zh: "目标" }, options: TARGET_OPTIONS },
-      { key: "defenseLayer", type: "select", label: { en: "Defense layer", zh: "防御层级" }, options: LAYER_OPTIONS }
+      { key: "defenseLayer", type: "select", label: { en: "Defense layer", zh: "防御层级" }, options: LAYER_OPTIONS },
+      // Every munition is 3-4 orders of magnitude smaller than even a stealth
+      // fighter, so this is scaled against its own reference point rather than
+      // the platform one -- see missileRcsRangeFactor in sensors.js.
+      num("rcsM2", { en: "Radar cross-section", zh: "雷达散射截面" }, { unit: "m²", min: 0.005, max: 5, step: 0.005 })
+    ] },
+    // Which platform types may actually carry this round. Independent of
+    // category (an "anti_ship" weapon legitimately spans both a ship-launched
+    // Harpoon-alike and an air-launched one) and independent of any built-in
+    // hull -- this is what the Unit Workshop's loadout picker and validateUnit
+    // actually gate on (see missileAllowedForDomain), so a modder always
+    // decides for themselves which unit types a custom weapon fits.
+    { title: { en: "Launch platforms", zh: "发射平台" }, fields: [
+      { key: "platformSea", type: "checkbox", label: { en: "Ship-launched", zh: "舰载" } },
+      { key: "platformGround", type: "checkbox", label: { en: "Ground-launched", zh: "岸基发射" } },
+      { key: "platformAir", type: "checkbox", label: { en: "Air-launched", zh: "机载" } }
     ] },
     { title: { en: "Ranges", zh: "射程" }, fields: [
       num("rangeNm", { en: "Max range", zh: "最大射程" }, { unit: "NM", min: 0.1, max: 2000, step: 1 }),
@@ -226,7 +259,7 @@ export const SCHEMAS = {
 export const DEFAULTS = {
   naval: () => ({
     kind: "naval", name: "New Warship", prefix: "XXG",
-    lengthM: 150, beamM: 20, draftM: 9, displacementT: 9000,
+    lengthM: 150, beamM: 20, draftM: 9, displacementT: 9000, rcsM2: 5000,
     cruiseSpeedKt: 16, maxSpeedKt: 30, accelMps2: 0.12, decelMps2: 0.22,
     turnRateDps: 2.6, turnRateFlankDps: 1.8, radarRangeNm: 180, radarIntervalS: 4,
     vlsCells: 96, damageResist: 2, damageDegrade: 0.3,
@@ -236,14 +269,14 @@ export const DEFAULTS = {
   }),
   ground: () => ({
     kind: "ground", name: "New Emplacement", prefix: "GND", glyph: "bunker", isAirfield: false,
-    lengthM: 50, beamM: 50, radarRangeNm: 160, radarIntervalS: 4,
+    lengthM: 50, beamM: 50, radarRangeNm: 160, radarIntervalS: 4, rcsM2: 9000,
     vlsCells: 48, damageResist: 2, damageDegrade: 0.3,
     defenseArea: 3, defensePoint: 2,
     baseLoadout: { "SM-2MR": 24 }
   }),
   aircraft: () => ({
     kind: "aircraft", name: "New Squadron", prefix: "VFX",
-    squadronSize: 4, commandHub: false,
+    squadronSize: 4, commandHub: false, rcsM2: 25,
     cruiseSpeedKt: 420, maxSpeedKt: 540, accelMps2: 3.0, decelMps2: 3.0,
     turnRateDps: 6, turnRateFlankDps: 4, radarRangeNm: 90, radarIntervalS: 3,
     vlsCells: 20, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1, flares: 60,
@@ -251,7 +284,8 @@ export const DEFAULTS = {
   }),
   ammo: () => ({
     kind: "ammo", name: "NEW-MSL",
-    category: "anti_air", symbol: "triangle", target: "missile", defenseLayer: "area",
+    category: "ship_sam", symbol: "triangle", target: "missile", defenseLayer: "area", rcsM2: 0.1,
+    platformSea: true, platformGround: true, platformAir: false,
     rangeNm: 90, preferredMinRangeNm: 8, preferredMaxRangeNm: 90, seekerRangeNm: 14,
     speedMps: 1000, maxTurnRateDps: 30, cellCost: 1, pk: 0.45, salvo: 2,
     interceptorsPerThreat: 1, nezFraction: 0.5, magazineReserveRatio: 0.18, launchIntervalS: 2.2, salvoSpacingS: 2.8,
@@ -275,6 +309,9 @@ export function validateUnit(unit) {
 
   if (kind === "ammo") {
     if (!ID_RE.test(String(unit.name ?? ""))) fail("name", "ID must be alphanumeric (._- allowed)");
+    if (!unit.platformSea && !unit.platformGround && !unit.platformAir) {
+      fail("platformSea", "select at least one launch platform");
+    }
   } else {
     if (!String(unit.name ?? "").trim()) fail("name", "Name is required");
     if (!TAG_RE.test(String(unit.prefix ?? ""))) fail("prefix", "Tag must be alphanumeric");
@@ -298,8 +335,13 @@ export function validateUnit(unit) {
   if (kind !== "ammo") {
     const lo = unit.baseLoadout;
     if (lo && typeof lo === "object") {
+      const domain = UNIT_KIND_DOMAIN[kind];
       for (const [id, count] of Object.entries(lo)) {
         if (!Number.isFinite(Number(count)) || Number(count) < 0) fail("baseLoadout", `${id} count invalid`);
+        // Defense-in-depth beyond the Workshop's own loadout-picker filter (a
+        // hand-edited import could otherwise smuggle in an incompatible round,
+        // e.g. an aircraft loadout carrying a ship-only SAM).
+        if (!missileAllowedForDomain(id, domain)) fail("baseLoadout", `${id} cannot be carried by a ${kind} unit`);
       }
       // Total magazine cost must fit the VLS capacity, accounting for per-missile
       // cell cost (e.g. ESSM = 0.25 cells), not just the missile count.
