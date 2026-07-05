@@ -591,9 +591,10 @@ test("visual tactical symbols are intentionally compact", () => {
   assert.ok(VISUAL_CONFIG.shipLabelPx >= 8.75);
 });
 
-test("HTML defaults to all-ship WEZ rings and 60x maximum speed", () => {
+test("HTML keeps WEZ as a single toggle and 60x maximum speed", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /<option value="all" selected[^>]*>ALL<\/option>/);
+  assert.match(html, /id="filter-ranges"/);
+  assert.doesNotMatch(html, /id="ranges-mode"/);
   assert.match(html, /id="speed"[^>]*max="60"/);
   assert.match(html, /id="copy-fire-log"/);
   assert.doesNotMatch(html, /id="duplicate"|id="clear-blue"|id="clear-red"/);

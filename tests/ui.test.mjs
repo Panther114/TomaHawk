@@ -249,7 +249,7 @@ test("shipDetailCardHtml dispatches naval/ground/air layouts by unit TYPE, not h
   assert.match(ewrHtml, new RegExp(t("detail.radar")));
 
   // Air (F22): no VLS label (it's relabeled LOAD for aircraft too), a fuel
-  // bar, and an AAW count (it carries AIM-120/AIM-9X) but no ASUW (it's a
+  // bar, and an AAW count (it carries AIM-120C/D/AIM-9X) but no ASUW (it's a
   // pure air-superiority loadout, carries no anti-ship weapon).
   const airHtml = shipDetailCardHtml(f22, 120);
   assert.doesNotMatch(airHtml, new RegExp(t("detail.vls")));

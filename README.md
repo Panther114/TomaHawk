@@ -2,7 +2,7 @@
 
 # ⚓ TomaHawk / 战斧
 
-### A deterministic 2D naval-warfare command sandbox — in your browser, no install
+### A deterministic 2D modern battle simulator — in your browser, no install
 
 [![CI](https://github.com/Panther114/TomaHawk/actions/workflows/ci.yml/badge.svg)](https://github.com/Panther114/TomaHawk/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/badge/version-0.3.0-orange)](CHANGELOG.md)
@@ -19,7 +19,7 @@ defense, saturation strikes, and dogfights. Every run is **byte-for-byte
 deterministic**, ships as **plain ES modules with zero dependencies**, and needs
 **nothing but Node** to run.
 
-在浏览器中部署蓝、红两方编队——驱逐舰、巡洋舰、岸基阵地、雷达站、舰载机中队——按下播放键，
+在浏览器中部署蓝、红两方战斗群——驱逐舰、巡洋舰、岸基阵地、雷达站、航空兵中队——按下播放键，
 观看一套完全自主的指挥 AI 打一场导弹战：带不确定性的雷达航迹、协同交战、分层防空、饱和打击与
 空战格斗。每一局都是**逐字节确定性**的，代码为**零依赖的原生 ES 模块**，除 Node 本身外**无需
 任何安装**。
@@ -82,8 +82,8 @@ destroyers and one cruiser per side) sitting in **setup** mode — press `▶` o
 阶段——按 `▶` 或 `Space` 开始推演。
 
 <div align="center">
-<img src="docs/screenshots/air-combat.png" alt="Two fighter squadrons closing to merge range under their AIM-120 no-escape-zone rings, with a missile exchange visible between the surface groups behind them" width="720">
-<br><sub><em>Air-to-air: an F-22 flight and an F-15C flight closing for the merge, AIM-120 no-escape-zone rings drawn live.</em></sub>
+<img src="docs/screenshots/air-combat.png" alt="Two fighter squadrons closing to merge range under their AMRAAM no-escape-zone rings, with a missile exchange visible between the surface groups behind them" width="720">
+<br><sub><em>Air-to-air: an F-22 flight and an F-15C flight closing for the merge, AMRAAM no-escape-zone rings drawn live.</em></sub>
 </div>
 
 ### Railway deployment / Railway 部署
@@ -111,17 +111,16 @@ A scenario moves through three modes:
 | --- | --- |
 | **setup** | Place, drag, select, and delete units for both sides. Choose the map. Nothing moves or fires yet. |
 | **running** | The simulation advances in real time (or fast-forwarded). Every unit senses, decides, and fights on its own — you can pause, single-step, or change speed, but you no longer edit the fleet. |
-| **ended** | One side has no ship left alive. The battle is frozen; the surviving side "controls the battlespace." |
+| **ended** | One side has no unit left alive. The battle is frozen; the surviving side controls the battlespace. |
 
 **Victory condition:** a side loses the instant it has zero living units. There
-is no scoring beyond that — you either still have a fleet, or you don't.
-Missiles in flight don't count as "units," so a side can win even mid-salvo if
-its last enemy ship goes down first.
+is no scoring beyond that. Missiles in flight don't count as units, so a side
+can win even mid-salvo if the last enemy unit goes down first.
 
 You cannot press play with only one side on the map — the game needs at least
 one living Blue **and** one living Red unit to run.
 
-### 2. Setting up your fleet
+### 2. Setting up your force
 
 - Click **BLUE** or **RED**, pick a unit type from the class dropdown, then
   left-click the map to place it. The dropdown is grouped into **Naval**
@@ -152,7 +151,6 @@ one living Blue **and** one living Red unit to run.
 | Input | Action |
 | --- | --- |
 | `Space` | Play / pause (also starts the scenario from setup) |
-| `.` | Step forward exactly one simulation tick (0.25 s) while paused |
 | `Esc` | Cancel the current tool / clear selection |
 | `R` | Toggle the ruler tool (range + bearing; click again to clear all measurements) |
 | `Tab` | Cycle the selected ship |
@@ -163,8 +161,8 @@ one living Blue **and** one living Red unit to run.
 | Middle mouse / `Alt`+drag | Pan the camera |
 | Scroll wheel | Zoom in / out |
 | Speed slider | Time compression from `1x` to `60x` while running |
-| `SAVE` / `LOAD` | Export or import the full scenario as JSON |
-| `AAR` | Export an after-action JSON report |
+| `SAVE` / `LOAD` | Save or load the full scenario as JSON |
+| `AAR` | Download an after-action JSON report |
 | `COPY FEED` | Copy the formatted tactical log to your clipboard, in the active language |
 | 中/EN toggle | Switch the whole UI between English and Chinese instantly |
 
@@ -207,12 +205,12 @@ carries an anti-ship weapon, and vice versa.
 
 | Unit | Role | Radar reach | Default weapons |
 | --- | --- | ---: | --- |
-| `F22` | 5th-gen air-superiority only (F-22 approx.) | 120 nm | `AIM-120`, `AIM-9X` |
-| `F35A` | 5th-gen dedicated anti-ground strike (F-35A approx.) | 110 nm | `AIM-120`, `AIM-9X`, `AGM-154` |
-| `F35C` | 5th-gen dedicated anti-ship strike (F-35C approx.) | 110 nm | `AIM-120`, `AIM-9X`, `AGM-84` |
-| `F15E` | 4.5-gen dedicated anti-ground strike (F-15E approx.) | 90 nm | `AIM-120`, `AIM-9X`, `AGM-154` |
-| `F15N` | 4.5-gen dedicated anti-ship strike (fictional) | 90 nm | `AIM-120`, `AIM-9X`, `AGM-84` |
-| `F15C` | 4.5-gen air-superiority only (F-15C approx.) | 95 nm | `AIM-120`, `AIM-9X` |
+| `F22` | 5th-gen air-superiority only (F-22 approx.) | 120 nm | `AIM-120D`, `AIM-9X` |
+| `F35A` | 5th-gen dedicated anti-ground strike (F-35A approx.) | 110 nm | `AIM-120D`, `AIM-9X`, `AGM-154` |
+| `F35C` | 5th-gen dedicated anti-ship strike (F-35C approx.) | 110 nm | `AIM-120D`, `AIM-9X`, `AGM-84` |
+| `F15E` | 4.5-gen dedicated anti-ground strike (F-15E approx.) | 90 nm | `AIM-120C`, `AIM-9X`, `AGM-154` |
+| `F15N` | 4.5-gen dedicated anti-ship strike (fictional) | 90 nm | `AIM-120C`, `AIM-9X`, `AGM-84` |
+| `F15C` | 4.5-gen air-superiority only (F-15C approx.) | 95 nm | `AIM-120C`, `AIM-9X` |
 | `AWAC` | AEW&C — unarmed moving radar, acts as a fleet command hub (E-2D approx.) | 350 nm | — |
 
 The `F22`/`F35A`/`F35C` trio is 5th-gen and low-observable (a much smaller
@@ -234,7 +232,8 @@ of anything else.
 | `SM-6` | `SM6` | dual-role: air defense *or* anti-surface | 370 km |
 | `MaritimeStrike` | `MSTK` | dedicated anti-surface cruise missile | 222 km |
 | `TomahawkBlockV` | `TLAM` | long-range anti-surface strike | 1,204 km |
-| `AIM-120` | `120` | BVR active-radar air-to-air | 102 km |
+| `AIM-120C` | `120C` | BVR active-radar air-to-air | 102 km |
+| `AIM-120D` | `120D` | extended-envelope BVR active-radar air-to-air | 152 km |
 | `AIM-9X` | `AIM9` | WVR infrared air-to-air (decoyable by flares) | 33 km |
 | `AGM-84` | `HPN` | air-launched sea-skimming anti-ship | 124 km |
 | `AGM-154` | `JSOW` | air-launched stand-off anti-ground strike | 130 km |
@@ -379,10 +378,10 @@ field-by-field reference.
 | --- | --- |
 | **setup（部署）** | 为双方部署、拖动、选择、删除单位；切换地图。此阶段一切静止，不会移动或开火。 |
 | **running（推演）** | 仿真实时（或加速）推进。每个单位自主感知、决策、开火——你可以暂停、单步、调整速度，但不能再编辑编队。 |
-| **ended（结束）** | 一方已无存活单位，战斗冻结，存活方“控制战场”。 |
+| **ended（结束）** | 一方已无存活单位，战斗冻结，存活方控制战场。 |
 
-**胜负判定：** 一方单位全部阵亡即刻落败，没有其他计分方式——你要么还有编队，要么没有。飞行中
-的导弹不计入“单位”，所以即便自己正在被齐射攻击，只要率先击沉对方最后一艘舰，也能获胜。
+**胜负判定：** 一方单位全部阵亡即刻落败，没有其他计分方式。飞行中的导弹不计入“单位”，所以即
+便自己正在被齐射攻击，只要先摧毁对方最后一个单位，也能获胜。
 
 只要有一方在地图上没有任何单位，就无法开始推演——双方都必须至少有一个存活单位。
 
@@ -457,12 +456,12 @@ field-by-field reference.
 
 | 单位 | 定位 | 雷达距离 | 默认武器 |
 | --- | --- | ---: | --- |
-| `F22` | 5 代纯空优（F-22 近似型） | 120 海里 | `AIM-120`、`AIM-9X` |
-| `F35A` | 5 代专用对地打击（F-35A 近似型） | 110 海里 | `AIM-120`、`AIM-9X`、`AGM-154` |
-| `F35C` | 5 代专用反舰打击（F-35C 近似型） | 110 海里 | `AIM-120`、`AIM-9X`、`AGM-84` |
-| `F15E` | 4.5 代专用对地打击（F-15E 近似型） | 90 海里 | `AIM-120`、`AIM-9X`、`AGM-154` |
-| `F15N` | 4.5 代专用反舰打击（虚构型号） | 90 海里 | `AIM-120`、`AIM-9X`、`AGM-84` |
-| `F15C` | 4.5 代纯空优（F-15C 近似型） | 95 海里 | `AIM-120`、`AIM-9X` |
+| `F22` | 5 代纯空优（F-22 近似型） | 120 海里 | `AIM-120D`、`AIM-9X` |
+| `F35A` | 5 代专用对地打击（F-35A 近似型） | 110 海里 | `AIM-120D`、`AIM-9X`、`AGM-154` |
+| `F35C` | 5 代专用反舰打击（F-35C 近似型） | 110 海里 | `AIM-120D`、`AIM-9X`、`AGM-84` |
+| `F15E` | 4.5 代专用对地打击（F-15E 近似型） | 90 海里 | `AIM-120C`、`AIM-9X`、`AGM-154` |
+| `F15N` | 4.5 代专用反舰打击（虚构型号） | 90 海里 | `AIM-120C`、`AIM-9X`、`AGM-84` |
+| `F15C` | 4.5 代纯空优（F-15C 近似型） | 95 海里 | `AIM-120C`、`AIM-9X` |
 | `AWAC` | 预警机——无武装的移动雷达，兼任舰队指挥节点（E-2D 近似型） | 350 海里 | — |
 
 `F22`/`F35A`/`F35C` 三型为 5 代隐身机型（雷达信号小得多，更难被发现）；`F15E`/`F15N`/`F15C`
@@ -479,7 +478,8 @@ field-by-field reference.
 | `SM-6` | `SM6` | 双用途：防空或对海 | 370 公里 |
 | `MaritimeStrike` | `MSTK` | 专用对海巡航导弹 | 222 公里 |
 | `TomahawkBlockV` | `TLAM` | 远程对海打击 | 1,204 公里 |
-| `AIM-120` | `120` | 超视距主动雷达空空导弹 | 102 公里 |
+| `AIM-120C` | `120C` | 超视距主动雷达空空导弹 | 102 公里 |
+| `AIM-120D` | `120D` | 扩展包线超视距主动雷达空空导弹 | 152 公里 |
 | `AIM-9X` | `AIM9` | 近距红外空空导弹（可被诱饵弹欺骗） | 33 公里 |
 | `AGM-84` | `HPN` | 机载海面掠飞反舰导弹 | 124 公里 |
 | `AGM-154` | `JSOW` | 机载防区外对地打击武器 | 130 公里 |
@@ -586,6 +586,7 @@ these run from the repository root:
 | `npm start` | Serve the app at `http://127.0.0.1:4172` |
 | `npm test` | Run the full deterministic test suite (`node --test`, 179 tests) |
 | `npm run bench` | Determinism check + machine-independent complexity/perf regression guard |
+| `npm run bench:terrain` | Terrain-navigation benchmark for East China Sea blocked-route movement |
 | `npm run bench:frontend` | Render-path performance harness |
 | `npm run debug:sim` | Headless run of a large mixed air/ground/naval battle, writing a per-tick performance trace and a human-readable tactical narrative log to `debug/` |
 | `npm run map:data` / `npm run refresh:start` | Regenerate the bundled Natural Earth coastline asset |

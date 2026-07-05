@@ -29,20 +29,16 @@ const strings = {
   "opt.radar":   { en: "RADAR",   zh: "雷达" },
   "opt.wez":     { en: "WEZ",     zh: "杀伤区" },
   "opt.weapons": { en: "WEAPONS", zh: "武器" },
-  "opt.all":     { en: "ALL",     zh: "全部" },
-  "opt.sel":     { en: "SEL",     zh: "选定" },
-  "opt.off":     { en: "OFF",     zh: "关闭" },
   "map.select":       { en: "Tactical map", zh: "战术地图" },
-  "map.eastChinaSea": { en: "EAST CHINA SEA", zh: "东海" },
+  "map.coastline":    { en: "COASTLINE", zh: "沿岸" },
   "map.openSea":      { en: "OPEN SEA", zh: "开放海域" },
   "scale.aria":       { en: "Map scale", zh: "地图比例尺" },
   "scale.grid":       { en: "GRID {n} km", zh: "网格 {n} 公里" },
 
   // Bottom bar buttons
-  "btn.step":    { en: "STEP",    zh: "步进" },
-  "btn.save":    { en: "SAVE",    zh: "保存" },
-  "btn.load":    { en: "LOAD",    zh: "加载" },
-  "btn.aar":     { en: "AAR",     zh: "战报" },
+  "btn.save":    { en: "SAVE",    zh: "保存存档" },
+  "btn.load":    { en: "LOAD",    zh: "加载存档" },
+  "btn.aar":     { en: "AAR",     zh: "下载战报" },
   "btn.speed":   { en: "SPD",     zh: "速度" },
   "btn.playPause": { en: "Play or pause simulation", zh: "开始或暂停推演" },
 
@@ -126,60 +122,96 @@ const strings = {
   "ship.afb":  { en: "AFB", zh: "机场" },
 
   // Placement / setup
-  "place.addBlue": { en: "Add blue ship", zh: "添加蓝方舰艇" },
-  "place.addRed":  { en: "Add red ship",  zh: "添加红方舰艇" },
-  "place.class":   { en: "Ship class for placement", zh: "选择舰型" },
+  "place.addBlue": { en: "Add blue unit", zh: "添加蓝方单位" },
+  "place.addRed":  { en: "Add red unit",  zh: "添加红方单位" },
+  "place.class":   { en: "Unit class for placement", zh: "选择单位类型" },
   "place.measure": { en: "Measure range/bearing (R)", zh: "测距/测向 (R)" },
   "place.revert":  { en: "Revert scenario",          zh: "重置想定" },
   "place.collapse":{ en: "Collapse panel (Tab)",      zh: "折叠面板 (Tab)" },
 
   // About overlay
   "about.title":      { en: "TOMAHAWK",            zh: "TOMAHAWK" },
-  "about.subtitle":   { en: "Naval Sandbox v0.3",   zh: "海战沙盘 v0.3" },
+  "about.subtitle":   { en: "Modern Battle Simulator v0.3",   zh: "现代战斗模拟器 v0.3" },
   "about.desc1":      {
-    en: "TomaHawk is a real-time naval-warfare sandbox. Place a Blue and a Red fleet, press Play, and watch two autonomous AI commands fight it out with radar detection, cooperative engagement, and layered missile defense. A side wins the instant the other has no ship left alive — there's no other scoring.",
-    zh: "战斧是一款实时海战沙盘。为蓝、红双方部署舰队，按下播放键，观看两套自主 AI 指挥体系用雷达探测、协同交战与分层导弹防御展开较量。只要一方失去全部舰艇，对方立即获胜——没有其他计分方式。"
+    en: "TomaHawk is a deterministic modern battle simulator for testing force composition, sensing, cooperative engagement, and missile defense across sea, ground, and air units. Place Blue and Red forces, press Play, and let both command AIs fight from what they can actually detect. A side wins when the other side has no surviving unit.",
+    zh: "TomaHawk 是一款确定性的现代战斗模拟器，用来测试海上、陆基与空中单位的兵力编组、探测、协同交战与导弹防御。部署蓝、红双方兵力后按下播放键，双方指挥 AI 会根据实际探测到的态势自主交战。一方失去全部存活单位时，另一方获胜。"
+  },
+  "about.h2loop":     { en: "Simulation loop", zh: "推演流程" },
+  "about.flowSetup":  { en: "Deploy", zh: "部署" },
+  "about.flowDetect": { en: "Detect", zh: "探测" },
+  "about.flowFuse":   { en: "Share tracks", zh: "共享航迹" },
+  "about.flowFire":   { en: "Plan fires", zh: "火力规划" },
+  "about.flowResolve":{ en: "Resolve damage", zh: "结算损伤" },
+  "about.h2model":    { en: "What is modeled", zh: "模型要点" },
+  "about.modelSensorsH": { en: "Sensors", zh: "传感器" },
+  "about.modelSensors":  {
+    en: "Radar contacts have quality, uncertainty, range limits, scan intervals, and track ageing.",
+    zh: "雷达接触包含航迹质量、不确定性、探测距离、扫描间隔与航迹衰减。"
+  },
+  "about.modelCommandH": { en: "Command", zh: "指挥" },
+  "about.modelCommand":  {
+    en: "Each side builds a fused picture from local and shared tracks, then chooses a posture from survival to saturation.",
+    zh: "每一方会融合本舰探测与共享航迹，再在自保、压制、饱和打击等姿态之间切换。"
+  },
+  "about.modelWeaponsH": { en: "Weapons", zh: "武器" },
+  "about.modelWeapons":  {
+    en: "Magazines track VLS or hardpoint capacity, cell cost, salvo timing, guidance, seeker range, and terminal probability.",
+    zh: "弹药库会记录垂发或挂架容量、单元占用、齐射节奏、制导方式、导引头距离与末段杀伤概率。"
+  },
+  "about.modelDamageH": { en: "Damage", zh: "损伤" },
+  "about.modelDamage":  {
+    en: "Hits reduce HP and degrade radar, propulsion, fire control, CIWS, CIC, or aircraft flight strength.",
+    zh: "命中会扣减耐久，并可能削弱雷达、动力、射控、近防、战情中心或飞机编队规模。"
   },
   "about.h2controls": { en: "Controls",     zh: "操作" },
   "about.h2setup":    { en: "Setup",        zh: "部署" },
   "about.descSetup":  {
-    en: "Pick BLUE or RED, choose a unit type — naval, ground, or air — from the class list, then click the map to place it. Ships need water and ground units need land; an illegal drop snaps back to the nearest legal spot. Drag a placed unit to reposition it, right-click to inspect it, and press Delete to remove your selection. Everything here locks the moment the battle starts.",
-    zh: "选择 BLUE 或 RED，从类别列表中选取海上、陆基或空中单位，点击地图放置。舰艇需部署在水域，陆基单位需部署在陆地——放到非法位置会自动吸附回最近的合法位置。拖动已放置的单位可调整位置，右键可查看详情，按 Delete 可删除选中项。战斗一旦开始，这些操作全部锁定。"
+    en: "Pick BLUE or RED, choose a naval, ground, or air unit from the class list, then click the map to place it. Ships need water and most ground units need land; an illegal drop snaps back to the nearest legal spot. Drag a placed unit to reposition it, right-click to inspect it, and press Delete to remove your selection. Setup locks when the battle starts.",
+    zh: "选择 BLUE 或 RED，再从类别列表中选择海上、陆基或空中单位，点击地图即可放置。舰艇需要水域，大多数陆基单位需要陆地；非法位置会自动吸附到最近的合法位置。拖动已放置单位可调整位置，右键可查看详情，按 Delete 可删除选中项。战斗开始后，部署内容会锁定。"
   },
-  "about.h2mechanics":{ en: "Mechanics",    zh: "机制" },
-  "about.descMech1":  {
-    en: "Each ship carries its own VLS magazine, six subsystems (radar, propulsion, fire control, CIWS, CIC) that degrade hit by hit, and a doctrine that governs how aggressively it fights. No unit ever sees the enemy's exact position — every contact is a radar track with quality and uncertainty that fades over time.",
-    zh: "每艘舰艇都有自己的垂发弹药库、六个会随命中逐步受损的子系统（雷达、动力、射控、近防、战情），以及决定其交战积极程度的条令。没有任何单位能看到敌方的精确坐标——每个目标都只是一条带质量与不确定性、并会随时间衰减的雷达航迹。"
-  },
-  "about.descMech2":  {
-    en: "SM-2MR and SM-6 are long-range air-defense interceptors, ESSM is the faster point-defense layer, and CIWS is the last-ditch gun. MaritimeStrike and TLAM are anti-ship strike missiles; AIM-120, AIM-9X, and AGM-84 arm your fighter squadrons for air-to-air combat and air-launched strikes.",
-    zh: "SM-2MR 与 SM-6 是远程防空拦截弹，ESSM 是反应更快的点防御层，近防系统是最后一道防线；MaritimeStrike 与 TLAM 是反舰打击导弹；AIM-120、AIM-9X 与 AGM-84 则装备于战斗机中队，用于空战与机载对海打击。"
-  },
-  "about.descMech3":  {
-    en: "The command AI weighs its own strength against whatever it can actually observe of the enemy, then settles into a posture from cautious survival to an all-out saturation strike — a concentrated, coordinated raid is what breaks through layered defenses, not a wide, thin one. Every ship always fires in self-defense, no matter its rules of engagement. Right-click any ship (or drag to select several) to inspect its live subsystem health and loadout.",
-    zh: "指挥 AI 会将己方实力与观测到的敌情进行比较，并据此在“自保”与“全力饱和打击”之间切换姿态——真正能突破分层防御的，是集中、协同的齐射，而非分散的火力。无论交战规则如何设定，每艘舰艇始终会自卫还击。右键点击任意舰艇（或拖动多选）即可实时查看子系统状态与弹药情况。"
+  "about.h2workshop": { en: "Unit Workshop", zh: "单位工坊" },
+  "about.descWorkshop": {
+    en: "The folder button opens the Unit Workshop. Ships, ground sites, aircraft, and weapons are editable data records stored in the browser and exportable as JSON. Built-in records are locked; clone one when you want a custom variant.",
+    zh: "点击文件夹按钮可打开单位工坊。舰艇、陆基阵地、飞机与武器都以数据记录形式编辑，保存在浏览器中，也可以导出为 JSON。内置记录会被锁定；需要自定义版本时，先克隆再修改。"
   },
   "about.kbSpace":    { en: "Play / Pause simulation",          zh: "播放 / 暂停模拟" },
-  "about.kbDot":      { en: "Step forward 0.25 s",              zh: "前进 0.25 秒" },
   "about.kbEsc":      { en: "Cancel tool / deselect",           zh: "取消工具 / 取消选择" },
   "about.kbR":        { en: "Activate ruler tool",              zh: "启用标尺工具" },
   "about.kbTab":      { en: "Cycle selected ship",              zh: "循环选择舰艇" },
   "about.kbTilde":    { en: "Toggle tactical feed",             zh: "切换战术日志" },
   "about.kbDel":      { en: "Delete selected (setup only)",     zh: "删除选中（仅部署阶段）" },
-  "about.kbLmb":      { en: "Select ship / place unit",         zh: "选择舰艇 / 放置单位" },
+  "about.kbLmb":      { en: "Select / place unit",              zh: "选择 / 放置单位" },
   "about.kbRmb":      { en: "Add to selection / box select",    zh: "追加选择 / 框选" },
   "about.kbMmb":      { en: "Pan map",                          zh: "平移地图" },
   "about.kbScroll":   { en: "Zoom in / out",                    zh: "缩放" },
   "about.close":      { en: "CLOSE",                            zh: "关闭" },
 
   // Tooltip hints for map options
-  "tip.wzAll":   { en: "All ships",     zh: "全部舰艇" },
-  "tip.wzSel":   { en: "Selected only", zh: "仅选中" },
-  "tip.wzOff":   { en: "Hide rings",    zh: "隐藏" },
-  "tip.wzMode":  { en: "Weapon range ring mode", zh: "武器射程圈显示模式" },
-
   // Language toggle
   "lang.toggle": { en: "中", zh: "EN" },
+
+  // Generic confirm dialog
+  "confirm.yes": { en: "OK", zh: "确定" },
+
+  // Save scenario popup
+  "save.title":          { en: "SAVE SCENARIO", zh: "保存想定" },
+  "save.name":           { en: "Name", zh: "名称" },
+  "save.namePlaceholder":{ en: "Untitled", zh: "未命名" },
+  "save.locDefault":     { en: "Default location", zh: "默认位置" },
+  "save.locCustom":      { en: "Custom location", zh: "自定义位置" },
+  "save.cancel":         { en: "CANCEL", zh: "取消" },
+  "save.confirm":        { en: "SAVE", zh: "保存" },
+  "save.overwrite":      { en: "A saved scenario named \"{n}\" already exists. Overwrite it?", zh: "已存在名为“{n}”的存档，是否覆盖？" },
+  "save.done":           { en: "Scenario saved.", zh: "想定已保存。" },
+  "save.failed":         { en: "Save failed.", zh: "保存失败。" },
+
+  // Load scenario popup
+  "load.title":   { en: "LOAD SCENARIO", zh: "载入想定" },
+  "load.import":  { en: "IMPORT FROM FILE…", zh: "从文件导入…" },
+  "load.empty":   { en: "No saved scenarios yet.", zh: "暂无已保存的想定。" },
+  "load.delete":  { en: "Delete", zh: "删除" },
+  "load.deleteConfirm": { en: "Delete saved scenario \"{n}\"?", zh: "删除存档“{n}”？" },
+  "load.failed":  { en: "Could not load the scenario list.", zh: "无法加载存档列表。" },
 
   // Unit Workshop (modding)
   "mods.open":  { en: "Unit Workshop",  zh: "单位工坊" },
@@ -220,7 +252,7 @@ const strings = {
   "evt.removed":    { en: "removed from scenario.",  zh: "已从想定中移除。" },
   "evt.sideCleared":{ en: "side cleared from scenario.", zh: "该方已清除。" },
   "evt.controls":   { en: "side controls the battlespace. Simulation ended.", zh: "方控制战场。模拟结束。" },
-  "evt.cannotRun":  { en: "Cannot run: both Blue and Red require at least one alive ship.", zh: "无法运行：蓝红双方各需至少一艘存活舰艇。" },
+  "evt.cannotRun":  { en: "Cannot run: both Blue and Red require at least one alive ship.", zh: "无法运行：蓝红双方各需至少一个存活单位。" },
 };
 
 /** Return the translated string for `key` in the current language. */

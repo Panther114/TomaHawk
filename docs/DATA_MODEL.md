@@ -305,12 +305,12 @@ on land or water that serves as the rearm/refuel node:
 
 | Hull | Role | Prefix | Radar | Default loadout |
 |------|------|--------|------:|-----------------|
-| F22 | 5th-gen air-superiority-only squadron (F-22 approx.) | F22 | 120 nm | AIM-120×6, AIM-9X×2 |
-| F35A | 5th-gen anti-ground strike squadron (F-35A approx.) | F35A | 110 nm | AIM-120×4, AIM-9X×2, AGM-154×8 |
-| F35C | 5th-gen anti-ship strike squadron (F-35C approx.) | F35C | 110 nm | AIM-120×4, AIM-9X×2, AGM-84×8 |
-| F15E | 4.5-gen anti-ground strike squadron (F-15E approx.) | F15E | 90 nm | AIM-120×4, AIM-9X×2, AGM-154×10 |
-| F15N | 4.5-gen anti-ship strike squadron (fictional) | F15N | 90 nm | AIM-120×4, AIM-9X×2, AGM-84×10 |
-| F15C | 4.5-gen air-superiority-only squadron (F-15C approx.) | F15C | 95 nm | AIM-120×8, AIM-9X×4 |
+| F22 | 5th-gen air-superiority-only squadron (F-22 approx.) | F22 | 120 nm | AIM-120D×6, AIM-9X×2 |
+| F35A | 5th-gen anti-ground strike squadron (F-35A approx.) | F35A | 110 nm | AIM-120D×2, AIM-9X×2, AGM-154×4 |
+| F35C | 5th-gen anti-ship strike squadron (F-35C approx.) | F35C | 110 nm | AIM-120D×2, AIM-9X×2, AGM-84×4 |
+| F15E | 4.5-gen anti-ground strike squadron (F-15E approx.) | F15E | 90 nm | AIM-120C×4, AIM-9X×2, AGM-154×10 |
+| F15N | 4.5-gen anti-ship strike squadron (fictional) | F15N | 90 nm | AIM-120C×4, AIM-9X×2, AGM-84×10 |
+| F15C | 4.5-gen air-superiority-only squadron (F-15C approx.) | F15C | 95 nm | AIM-120C×10, AIM-9X×4 |
 | AWAC | AEW&C — unarmed, command hub (E-2D approx.) | AWAC | 350 nm | — |
 | AFB | airfield / rearm-refuel node (land or water) | AFB | 180 nm | — |
 

@@ -34,13 +34,14 @@ export function defaultLoadout(hull = "DDG") {
   return loadout;
 }
 
-export function normalizeLoadout(loadout) {
+export function normalizeLoadout(loadout, legacyAim120Id = "AIM-120C") {
   const normalized = {};
   for (const [id, count] of Object.entries(loadout || {})) {
-    if (!MISSILES[id]) continue;
+    const missileId = id === "AIM-120" ? legacyAim120Id : id;
+    if (!MISSILES[missileId]) continue;
     const numeric = Number.isFinite(count) ? count : 0;
     const rounded = Math.round(numeric);
-    normalized[id] = Math.max(0, rounded);
+    normalized[missileId] = Math.max(0, rounded);
   }
   return normalized;
 }
@@ -178,26 +179,26 @@ const SHIP_CLASSES = {
   // 5th-GEN air-superiority — 4-aircraft squadron. No strike weapons at all:
   // the lowest radar cross-section and the highest agility of the six, built
   // to win the air-to-air fight before anyone else can shoot.
-  F22: { hull:"F22",className:"5th Gen Air Supremacy",prefix:"G5AA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19,beamM:13.5,draftM:5,displacementT:28,cruiseSpeedKt:460,maxSpeedKt:580,accelMps2:3.4,decelMps2:3.2,turnRateDps:10,turnRateFlankDps:8,maxGLoad:9.0,radarRangeNm:120,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:1.5,damageResist:4,damageDegrade:0.09,enduranceS:1700,rearmTimeS:85,flares:60,airEvasionBonus:0.12,baseLoadout:{ "AIM-120":6,"AIM-9X":2 } },
+  F22: { hull:"F22",className:"5th Gen Air Supremacy",prefix:"G5AA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19,beamM:13.5,draftM:5,displacementT:28,cruiseSpeedKt:460,maxSpeedKt:580,accelMps2:3.4,decelMps2:3.2,turnRateDps:10,turnRateFlankDps:8,maxGLoad:9.0,radarRangeNm:120,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:1.5,damageResist:4,damageDegrade:0.09,enduranceS:1700,rearmTimeS:85,flares:60,airEvasionBonus:0.12,baseLoadout:{ "AIM-120D":6,"AIM-9X":2 } },
   // 5th-GEN anti-ground — 4-aircraft squadron. Self-defence AAMs plus a JSOW
   // stand-off strike load; carries no anti-ship weapon.
-  F35A: { hull:"F35A",className:"5th Gen Strike",prefix:"G5AG",domain:"air",isFixed:false,glyph:"aircraft",lengthM:15.7,beamM:10.7,draftM:4.4,displacementT:29,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5,maxGLoad:7.0,radarRangeNm:110,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2.3,damageResist:4,damageDegrade:0.10,enduranceS:1850,rearmTimeS:95,flares:56,airEvasionBonus:0.06,baseLoadout:{ "AIM-120":2,"AIM-9X":2,"AGM-154":4 } },
+  F35A: { hull:"F35A",className:"5th Gen Strike",prefix:"G5AG",domain:"air",isFixed:false,glyph:"aircraft",lengthM:15.7,beamM:10.7,draftM:4.4,displacementT:29,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5,maxGLoad:7.0,radarRangeNm:110,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2.3,damageResist:4,damageDegrade:0.10,enduranceS:1850,rearmTimeS:95,flares:56,airEvasionBonus:0.06,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-154":4 } },
   // 5th-GEN anti-ship — 4-aircraft squadron, the carrier variant. Same stealth
   // family as the anti-ground hull but loaded with AGM-84 instead of JSOW;
   // bigger wing and fuel fraction give it the longest endurance of the six.
-  F35C: { hull:"F35C",className:"5th Gen Naval Strike",prefix:"G5AS",domain:"air",isFixed:false,glyph:"aircraft",lengthM:15.7,beamM:13.1,draftM:4.4,displacementT:32,cruiseSpeedKt:400,maxSpeedKt:520,accelMps2:2.8,decelMps2:2.8,turnRateDps:6.5,turnRateFlankDps:5,maxGLoad:6.5,radarRangeNm:110,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2.3,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:100,flares:56,airEvasionBonus:0.06,baseLoadout:{ "AIM-120":2,"AIM-9X":2,"AGM-84":4 } },
+  F35C: { hull:"F35C",className:"5th Gen Naval Strike",prefix:"G5AS",domain:"air",isFixed:false,glyph:"aircraft",lengthM:15.7,beamM:13.1,draftM:4.4,displacementT:32,cruiseSpeedKt:400,maxSpeedKt:520,accelMps2:2.8,decelMps2:2.8,turnRateDps:6.5,turnRateFlankDps:5,maxGLoad:6.5,radarRangeNm:110,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:2.3,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:100,flares:56,airEvasionBonus:0.06,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-84":4 } },
   // 4.5-GEN anti-ground — 4-aircraft squadron. Non-stealth (large radar
   // cross-section, no evasion bonus) but the biggest bomb truck of the six: a
   // heavier JSOW load than the 5th-gen anti-ground hull and the toughest airframe.
-  F15E: { hull:"F15E",className:"4th Gen Strike",prefix:"G4AG",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:36,cruiseSpeedKt:430,maxSpeedKt:560,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5.5,maxGLoad:7.5,radarRangeNm:90,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:22,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-154":8 } },
+  F15E: { hull:"F15E",className:"4th Gen Strike",prefix:"G4AG",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:36,cruiseSpeedKt:430,maxSpeedKt:560,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5.5,maxGLoad:7.5,radarRangeNm:90,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:22,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":8 } },
   // 4.5-GEN anti-ship — 4-aircraft squadron. Not a real airframe: a fictional
   // naval-strike sibling of the anti-ground hull carrying AGM-84 instead of
   // JSOW, same non-stealth chassis and toughness.
-  F15N: { hull:"F15N",className:"4th Gen Naval Strike",prefix:"G4AS",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:36,cruiseSpeedKt:430,maxSpeedKt:560,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5.5,maxGLoad:7.5,radarRangeNm:90,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:22,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120":4,"AIM-9X":2,"AGM-84":8 } },
+  F15N: { hull:"F15N",className:"4th Gen Naval Strike",prefix:"G4AS",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:36,cruiseSpeedKt:430,maxSpeedKt:560,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5.5,maxGLoad:7.5,radarRangeNm:90,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:22,damageResist:4,damageDegrade:0.10,enduranceS:2000,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-84":8 } },
   // 4.5-GEN air-superiority — 4-aircraft squadron. No strike weapons at all,
   // like the 5th-gen air-superiority hull, but non-stealth: a bigger radar
   // signature traded for the biggest internal AAM load of the roster.
-  F15C: { hull:"F15C",className:"4th Gen Air Supremacy",prefix:"G4AA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:31,cruiseSpeedKt:440,maxSpeedKt:580,accelMps2:3.2,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,maxGLoad:8.5,radarRangeNm:95,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:1750,rearmTimeS:90,flares:60,airEvasionBonus:0.02,baseLoadout:{ "AIM-120":10,"AIM-9X":4 } },
+  F15C: { hull:"F15C",className:"4th Gen Air Supremacy",prefix:"G4AA",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:31,cruiseSpeedKt:440,maxSpeedKt:580,accelMps2:3.2,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,maxGLoad:8.5,radarRangeNm:95,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{area:0,point:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:1750,rearmTimeS:90,flares:60,airEvasionBonus:0.02,baseLoadout:{ "AIM-120C":10,"AIM-9X":4 } },
   // AEW&C — E-2D Hawkeye squadron approx. (1 aircraft: unlike the fighter
   // roster this models a single high-value, unescorted-feeling sensor
   // platform, not a 4-ship flight — damageResist:1 makes any hit a mission

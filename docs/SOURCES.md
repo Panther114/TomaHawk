@@ -39,6 +39,8 @@ Do not add classified, leaked, or operationally sensitive data. If a parameter i
 - Trump-class arsenal battleship: speculative arsenal-ship concept, 288-cell Mk 57 PVLS, ~28,000 t
 
 ### Weapons
+- AIM-120 AMRAAM: U.S. Air Force fact sheet (`https://www.af.mil/About-Us/Fact-Sheets/Display/Article/104576/aim-120-amraam/`) and NAVAIR AMRAAM public product page (`https://www.navair.navy.mil/product/AMRAAM`) for all-weather BVR active-radar guidance context
+- AIM-120C-8 / AIM-120D-3: RTX/Raytheon AMRAAM pages (`https://www.rtx.com/raytheon/what-we-do/air/amraam-missile`, `https://raytheon.mediaroom.com/2023-09-01-US-Air-Force%2C-RTX-complete-first-flight-test-of-AIM-120C-8`) for modern variant and F3R context
 - SM-6 (RIM-174 ERAM): public Raytheon factsheets, ~200 NM range, Mach 3.5, active radar seeker, dual-role
 - Nulka decoy: background reference only; not implemented in the current sim
 - Chaff: background reference only; not implemented in the current sim

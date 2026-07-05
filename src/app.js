@@ -61,7 +61,6 @@ import {
 const canvas = document.querySelector("#map");
 const ctx = canvas.getContext("2d");
 const play = document.querySelector("#play");
-const step = document.querySelector("#step");
 const speed = document.querySelector("#speed");
 const shipClassSelect = document.querySelector("#ship-class");
 const clock = document.querySelector("#clock");
@@ -85,7 +84,6 @@ const filters = {
   tracks: document.querySelector("#filter-tracks"),
   radar: document.querySelector("#filter-radar"),
   ranges: document.querySelector("#filter-ranges"),
-  rangesMode: document.querySelector("#ranges-mode"),
   missiles: document.querySelector("#filter-missiles")
 };
 
@@ -347,16 +345,13 @@ function cachedWeaponRangeEntries(ship) {
 }
 
 // Collect every weapon range ring that should be drawn this frame, in screen
-// space. Honors the range-ring filter/mode exactly as before.
+// space. The top-bar WEZ toggle controls the whole layer.
 function collectWeaponRangeRings() {
   const rings = [];
   if (!filters.ranges.classList.contains("active")) return rings;
-  const mode = filters.rangesMode.value;
-  if (mode === "off") return rings;
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
     const selected = ship.id === sim.selectedId;
-    if (mode === "selected" && !selected) continue;
     const p = worldToScreen(ship);
     // Nearest distance from the viewport rectangle to this ship (ring centre).
     const nx = Math.max(0, Math.min(p.x, innerWidth));
@@ -950,6 +945,9 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n-label]').forEach((el) => {
     el.setAttribute('label', t(el.getAttribute('data-i18n-label')));
   });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+  });
   // Inventory column headers carry their own data-i18n keys and are localized
   // by the generic [data-i18n] pass above, so no special-case is needed here.
 }
@@ -960,7 +958,8 @@ function applyI18n() {
 function spawnOptionLabel(hull, cls) {
   const key = `ship.${hull.toLowerCase()}`;
   const localized = t(key);
-  return localized !== key ? localized : (cls.prefix || hull);
+  if (localized !== key) return localized;
+  return getLang() === "zh" && cls.prefixZh ? cls.prefixZh : (cls.prefix || hull);
 }
 function populateSpawnDropdown() {
   if (!shipClassSelect) return;
@@ -1348,11 +1347,6 @@ play.addEventListener("click", () => {
     sim.paused = !sim.paused;
   }
 });
-step.addEventListener("click", () => {
-  if (sim.mode === SCENARIO_MODE.SETUP && !startScenario()) return;
-  sim.paused = true;
-  stepSim(sim, 0.25);
-});
 document.querySelector("#reset").addEventListener("click", () => {
   sim = createDefaultScenario(undefined, sim.mapId);
   selectedIds = new Set([sim.selectedId]);
@@ -1369,12 +1363,114 @@ function downloadJson(name, data) {
   URL.revokeObjectURL(url);
 }
 
-document.querySelector("#save").addEventListener("click", () => {
-  downloadJson(`tomahawk-scenario-${Math.floor(sim.time)}.json`, serializeScenario(sim));
-});
+// Custom-location save: File System Access API where available (a real "Save
+// As" dialog, any folder), Blob-download fallback everywhere else. Either way
+// this never touches saves/scenarios/, so it never shows up in the Load popup.
+async function saveJsonToCustomLocation(name, data) {
+  const text = JSON.stringify(data, null, 2);
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: "JSON", accept: { "application/json": [".json"] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      // Fall through to Blob download on any other failure (e.g. unsupported in this context).
+    }
+  }
+  downloadJson(name, data);
+}
+
 document.querySelector("#aar").addEventListener("click", () => {
   downloadJson(`tomahawk-aar-${Math.floor(sim.time)}.json`, exportAfterAction(sim));
 });
+
+// Lightweight non-blocking replacement for window.confirm(): a real confirm()
+// call freezes the whole tab's JS thread, including the rAF sim loop, until
+// dismissed — unacceptable in a real-time simulator.
+function confirmDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "about-overlay";
+    const card = document.createElement("div");
+    card.className = "about-card save-card";
+    const p = document.createElement("p");
+    p.textContent = message;
+    const actions = document.createElement("div");
+    actions.className = "save-actions";
+    const no = document.createElement("button");
+    no.className = "about-close";
+    no.textContent = t("save.cancel");
+    const yes = document.createElement("button");
+    yes.className = "about-close";
+    yes.textContent = t("confirm.yes");
+    actions.append(no, yes);
+    card.append(p, actions);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    const finish = (result) => { overlay.remove(); resolve(result); };
+    no.addEventListener("click", () => finish(false));
+    yes.addEventListener("click", () => finish(true));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) finish(false); });
+  });
+}
+
+// --- save scenario popup ----------------------------------------------------
+const saveOverlay = document.querySelector("#save-overlay");
+const saveNameInput = document.querySelector("#save-name");
+let savePrevPaused = false;
+
+function openSavePopup() {
+  savePrevPaused = sim.paused;
+  sim.paused = true;
+  saveNameInput.value = "";
+  document.querySelector('input[name="save-location"][value="default"]').checked = true;
+  saveOverlay.hidden = false;
+  saveNameInput.focus();
+}
+
+function closeSavePopup() {
+  saveOverlay.hidden = true;
+  sim.paused = savePrevPaused;
+}
+
+async function submitSave(name, force) {
+  const location = document.querySelector('input[name="save-location"]:checked')?.value;
+  const data = serializeScenario(sim);
+  if (location === "custom") {
+    await saveJsonToCustomLocation(`${name || "Untitled"}.json`, data);
+    closeSavePopup();
+    return;
+  }
+  try {
+    const res = await fetch("/scenario/save", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, data, force })
+    });
+    const result = await res.json();
+    if (!result.ok && result.reason === "exists") {
+      if (await confirmDialog(t("save.overwrite").replace("{n}", result.name))) {
+        await submitSave(name, true);
+      }
+      return;
+    }
+    status.textContent = t("save.done");
+    closeSavePopup();
+  } catch {
+    status.textContent = t("save.failed");
+  }
+}
+
+document.querySelector("#save").addEventListener("click", openSavePopup);
+document.querySelector("#save-cancel").addEventListener("click", closeSavePopup);
+document.querySelector("#save-confirm").addEventListener("click", () => submitSave(saveNameInput.value.trim(), false));
+saveOverlay.addEventListener("click", (e) => { if (e.target === saveOverlay) closeSavePopup(); });
 copyFireLog.addEventListener("click", async () => {
   await copyLogToClipboard();
 });
@@ -1411,19 +1507,93 @@ async function copyLogToClipboard() {
     status.textContent = t('status.logFailed');
   }
 }
-document.querySelector("#load").addEventListener("click", () => document.querySelector("#load-file").click());
 document.querySelector("#load-file").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
     sim = restoreScenario(JSON.parse(await file.text()));
     selectedIds = new Set([sim.selectedId].filter(Boolean));
+    closeLoadPopup();
   } catch (error) {
     alert(error.message);
   } finally {
     event.target.value = "";
   }
 });
+
+// --- load scenario popup -----------------------------------------------------
+const loadOverlay = document.querySelector("#load-overlay");
+const loadList = document.querySelector("#load-list");
+let loadPrevPaused = false;
+
+function formatSavedAt(ms) {
+  const d = new Date(ms);
+  return d.toLocaleString(getLang() === "zh" ? "zh-CN" : "en-US", { dateStyle: "short", timeStyle: "short" });
+}
+
+async function refreshLoadList() {
+  loadList.textContent = "";
+  let entries = [];
+  try {
+    entries = await (await fetch("/scenario/list")).json();
+  } catch {
+    loadList.innerHTML = `<div class="load-empty">${t("load.failed")}</div>`;
+    return;
+  }
+  if (!entries.length) {
+    loadList.innerHTML = `<div class="load-empty">${t("load.empty")}</div>`;
+    return;
+  }
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "load-row";
+    const name = document.createElement("span");
+    name.className = "load-name";
+    name.textContent = entry.name;
+    const date = document.createElement("span");
+    date.className = "load-date";
+    date.textContent = formatSavedAt(entry.savedAt);
+    const del = document.createElement("button");
+    del.className = "load-delete";
+    del.type = "button";
+    del.textContent = t("load.delete");
+    del.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!(await confirmDialog(t("load.deleteConfirm").replace("{n}", entry.name)))) return;
+      await fetch(`/scenario/delete?name=${encodeURIComponent(entry.name)}`, { method: "DELETE" });
+      refreshLoadList();
+    });
+    row.append(name, date, del);
+    row.addEventListener("click", async () => {
+      try {
+        const data = await (await fetch(`/scenario/load?name=${encodeURIComponent(entry.name)}`)).json();
+        sim = restoreScenario(data);
+        selectedIds = new Set([sim.selectedId].filter(Boolean));
+        closeLoadPopup();
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    });
+    loadList.appendChild(row);
+  }
+}
+
+function openLoadPopup() {
+  loadPrevPaused = sim.paused;
+  sim.paused = true;
+  loadOverlay.hidden = false;
+  refreshLoadList();
+}
+
+function closeLoadPopup() {
+  loadOverlay.hidden = true;
+  sim.paused = loadPrevPaused;
+}
+
+document.querySelector("#load").addEventListener("click", openLoadPopup);
+document.querySelector("#load-cancel").addEventListener("click", closeLoadPopup);
+document.querySelector("#load-import").addEventListener("click", () => document.querySelector("#load-file").click());
+loadOverlay.addEventListener("click", (e) => { if (e.target === loadOverlay) closeLoadPopup(); });
 
 if (mapSelect) {
   mapSelect.addEventListener("change", () => {

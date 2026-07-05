@@ -5,8 +5,8 @@
 // HTML strings. This keeps the view logic unit-testable (see tests/ui.test.mjs)
 // and is the first step of separating rendering from `src/app.js`.
 
-import { SIDE, NM, MISSILES, usedCells, vlsCapacity, battleSummaryCounts, aliveAircraftCount, squadronSize } from "../sim.js";
-import { t, hullLabel } from "./lang.js";
+import { SIDE, NM, MISSILES, SHIP_CLASSES, usedCells, vlsCapacity, battleSummaryCounts, aliveAircraftCount, squadronSize } from "../sim.js";
+import { t, getLang } from "./lang.js";
 
 // A ground emplacement is a fixed, land-based unit; it gets its own inventory
 // sub-table (different columns) and glyph rather than the naval ship layout.
@@ -286,10 +286,11 @@ export function shipDisplayName(ship, separator = "-") {
   // Vanilla hulls have a localized label (e.g. DDG -> 驱逐舰). Custom (modded)
   // hulls have no translation, so `hullLabel` returns the raw i18n key; fall back
   // to the user-chosen unit tag, which is the prefix already embedded in the id.
+  const cls = SHIP_CLASSES[ship?.hull];
   const key = `ship.${(ship?.hull || "DDG").toLowerCase()}`;
   const localized = t(key);
   const label = localized === key
-    ? (dash >= 0 ? rawId.slice(0, dash) : rawId.replace(/[-0-9].*$/, ""))
+    ? (getLang() === "zh" && cls?.prefixZh ? cls.prefixZh : (dash >= 0 ? rawId.slice(0, dash) : rawId.replace(/[-0-9].*$/, "")))
     : localized;
   return suffix ? `${label}${separator}${suffix}` : label;
 }

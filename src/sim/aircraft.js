@@ -132,7 +132,7 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   flareDecoyChance: 0.6,
   // Hit-probability the airframe shaves off any missile by virtue of being a
   // small, fast, hard target (before maneuver/flares).
-  evasionBase: 0.22,
+  evasionBase: 0.16,
   // Additional hit-probability shaved while actively breaking (notching).
   evasionManeuver: 0.18,
   // Real BVR/WVR missile-defense doctrine (RWR spike / visual launch cue) is a

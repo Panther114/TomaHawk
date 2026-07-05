@@ -2,7 +2,7 @@
   "name": "tomahawk",
   "version": "0.3.0",
   "private": true,
-  "description": "战斧 / TomaHawk — a deterministic, local-first 2D naval combat sandbox (browser + Node, no build step).",
+  "description": "战斧 / TomaHawk — a deterministic, local-first 2D modern battle simulator (browser + Node, no build step).",
   "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "engines": {
@@ -13,6 +13,7 @@
     "refresh:start": "node scripts/build-east-china-sea-map.mjs && node server.mjs",
     "test": "node --test",
     "bench": "node scripts/bench.mjs",
+    "bench:terrain": "node scripts/bench-terrain.mjs",
     "bench:frontend": "node scripts/bench-frontend.mjs",
     "debug:sim": "node --expose-gc scripts/sim-debug.mjs",
     "map:data": "node scripts/build-east-china-sea-map.mjs"
