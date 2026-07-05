@@ -16,6 +16,7 @@ import {
 } from "../src/sim.js";
 import {
   firstLandCollisionFraction,
+  isWaterPoint,
   projectLonLat
 } from "../src/world/terrain.js";
 import { complexityScore } from "../scripts/perf-harness.mjs";
@@ -83,6 +84,27 @@ test("blocked navigation plans reuse their detour during the cache window", () =
   moveShips(sim, 0.25);
 
   assert.equal(ship.navPlan.plannedAt, plannedAt);
+  assert.deepEqual(ship.navigationWaypoint, detour);
+});
+
+test("blocked navigation keeps a valid detour after the short cache expires", () => {
+  const sim = createScenario(930, "eastChinaSea");
+  const ship = sim.ships[0];
+  const goal = projectLonLat(121.47, 31.23);
+  Object.assign(ship, projectLonLat(122.3, 30.9));
+  ship.waypoint = goal;
+
+  moveShips(sim, 0.25);
+  const detour = { ...ship.navigationWaypoint };
+  assert.ok(detour.x && detour.y, "blocked route should choose a detour");
+  for (let i = 0; i < 12; i++) {
+    sim.time += 0.25;
+    moveShips(sim, 0.25);
+    assert.equal(isWaterPoint(ship, sim.mapId, 0), true, `ship should remain on water at tick ${i}`);
+  }
+
+  assert.equal(ship.navPlan.goalX, goal.x);
+  assert.equal(ship.navPlan.goalY, goal.y);
   assert.deepEqual(ship.navigationWaypoint, detour);
 });
 

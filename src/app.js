@@ -61,7 +61,6 @@ import {
 const canvas = document.querySelector("#map");
 const ctx = canvas.getContext("2d");
 const play = document.querySelector("#play");
-const step = document.querySelector("#step");
 const speed = document.querySelector("#speed");
 const shipClassSelect = document.querySelector("#ship-class");
 const clock = document.querySelector("#clock");
@@ -85,7 +84,6 @@ const filters = {
   tracks: document.querySelector("#filter-tracks"),
   radar: document.querySelector("#filter-radar"),
   ranges: document.querySelector("#filter-ranges"),
-  rangesMode: document.querySelector("#ranges-mode"),
   missiles: document.querySelector("#filter-missiles")
 };
 
@@ -347,16 +345,13 @@ function cachedWeaponRangeEntries(ship) {
 }
 
 // Collect every weapon range ring that should be drawn this frame, in screen
-// space. Honors the range-ring filter/mode exactly as before.
+// space. The top-bar WEZ toggle controls the whole layer.
 function collectWeaponRangeRings() {
   const rings = [];
   if (!filters.ranges.classList.contains("active")) return rings;
-  const mode = filters.rangesMode.value;
-  if (mode === "off") return rings;
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
     const selected = ship.id === sim.selectedId;
-    if (mode === "selected" && !selected) continue;
     const p = worldToScreen(ship);
     // Nearest distance from the viewport rectangle to this ship (ring centre).
     const nx = Math.max(0, Math.min(p.x, innerWidth));
@@ -963,7 +958,8 @@ function applyI18n() {
 function spawnOptionLabel(hull, cls) {
   const key = `ship.${hull.toLowerCase()}`;
   const localized = t(key);
-  return localized !== key ? localized : (cls.prefix || hull);
+  if (localized !== key) return localized;
+  return getLang() === "zh" && cls.prefixZh ? cls.prefixZh : (cls.prefix || hull);
 }
 function populateSpawnDropdown() {
   if (!shipClassSelect) return;
@@ -1350,11 +1346,6 @@ play.addEventListener("click", () => {
   } else if (sim.mode !== SCENARIO_MODE.ENDED) {
     sim.paused = !sim.paused;
   }
-});
-step.addEventListener("click", () => {
-  if (sim.mode === SCENARIO_MODE.SETUP && !startScenario()) return;
-  sim.paused = true;
-  stepSim(sim, 0.25);
 });
 document.querySelector("#reset").addEventListener("click", () => {
   sim = createDefaultScenario(undefined, sim.mapId);

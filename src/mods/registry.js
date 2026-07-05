@@ -30,6 +30,14 @@ export function unitId(unit) {
 // missileAllowedForDomain) so a unit can only be given ammo built for it.
 export const UNIT_KIND_DOMAIN = { naval: "sea", ground: "ground", aircraft: "air" };
 
+const BUILTIN_PREFIX_ZH = {
+  DDG: "驱逐舰", CCG: "巡洋舰", BBG: "战列舰", FFG: "护卫舰",
+  SAM: "防空", CDB: "岸舰", EWR: "预警",
+  F22: "5代空优", F35A: "5代对地", F35C: "5代反舰",
+  F15E: "4代对地", F15N: "4代反舰", F15C: "4代空优",
+  AWAC: "预警机", AFB: "机场"
+};
+
 /** True when this editor-JSON unit corresponds to a built-in (locked) type. */
 export function isBuiltinUnit(unit) {
   return unit.kind === "ammo" ? isBuiltinMissile(unitId(unit)) : isBuiltinShipClass(unitId(unit));
@@ -101,7 +109,7 @@ function toNavalClass(u) {
   // flavor; length/beam only scale the map icon). Default them so custom ships
   // still render at a sensible size and hand-edited imports never break.
   return {
-    hull: u.id, className: u.name, prefix: u.prefix, domain: "sea", isFixed: false,
+    hull: u.id, className: u.name, prefix: u.prefix, prefixZh: String(u.prefixZh || "").trim(), domain: "sea", isFixed: false,
     lengthM: Number(u.lengthM) || 150, beamM: Number(u.beamM) || 20,
     draftM: Number(u.draftM) || 9, displacementT: Number(u.displacementT) || 9000,
     rcsM2: Number(u.rcsM2),
@@ -126,7 +134,7 @@ function toGroundClass(u) {
   return {
     // An airfield is a ground unit that may be placed anywhere and rearms
     // friendly squadrons; it carries the runway glyph by default.
-    hull: u.id, className: u.name, prefix: u.prefix, domain: "ground", isFixed: true,
+    hull: u.id, className: u.name, prefix: u.prefix, prefixZh: String(u.prefixZh || "").trim(), domain: "ground", isFixed: true,
     isAirfield, glyph: u.glyph ?? (isAirfield ? "airfield" : "bunker"),
     lengthM: Number(u.lengthM), beamM: Number(u.beamM), draftM: 10, displacementT: 4000,
     rcsM2: Number(u.rcsM2),
@@ -146,7 +154,7 @@ function toAircraftClass(u) {
   // rearmTimeS feed the (temporary) RTB/rearm model.
   const size = Math.max(1, Math.round(Number(u.squadronSize) || 4));
   return {
-    hull: u.id, className: u.name, prefix: u.prefix, domain: "air", isFixed: false, glyph: "aircraft",
+    hull: u.id, className: u.name, prefix: u.prefix, prefixZh: String(u.prefixZh || "").trim(), domain: "air", isFixed: false, glyph: "aircraft",
     lengthM: Number(u.lengthM) || 20, beamM: Number(u.beamM) || 14, draftM: 5, displacementT: 30,
     rcsM2: Number(u.rcsM2),
     cruiseSpeedKt: Number(u.cruiseSpeedKt), maxSpeedKt: Number(u.maxSpeedKt),
@@ -199,7 +207,7 @@ function fromMissileSpec(id, s) {
 
 function fromShipClass(hull, c) {
   const base = {
-    id: hull, name: c.className, prefix: c.prefix,
+    id: hull, name: c.className, prefix: c.prefix, prefixZh: c.prefixZh ?? BUILTIN_PREFIX_ZH[hull] ?? "",
     lengthM: c.lengthM, beamM: c.beamM,
     radarRangeNm: c.radarRangeNm, radarIntervalS: c.radarIntervalS,
     // A hull that predates this field (or was never given an explicit
@@ -213,7 +221,7 @@ function fromShipClass(hull, c) {
   };
   if (c.domain === "air") {
     return {
-      kind: "aircraft", id: hull, name: c.className, prefix: c.prefix,
+      kind: "aircraft", id: hull, name: c.className, prefix: c.prefix, prefixZh: c.prefixZh ?? BUILTIN_PREFIX_ZH[hull] ?? "",
       squadronSize: Math.max(1, Math.round(c.damageResist ?? 4)),
       commandHub: c.commandHub === true,
       rcsM2: defaultRcsM2(c),

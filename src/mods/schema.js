@@ -22,7 +22,7 @@ const num = (key, label, opts = {}) => ({ key, type: "number", label, ...opts })
 const text = (key, label, opts = {}) => ({ key, type: "text", label, ...opts });
 
 // "ship_sam" (ship/ground area+point air-defense, e.g. SM-2MR/ESSM) and
-// "air_to_air" (aircraft-carried AAM, e.g. AIM-120/AIM-9X) replace the old
+// "air_to_air" (aircraft-carried AAM, e.g. AIM-120C/D/AIM-9X) replace the old
 // single "anti_air" bucket, which conflated the two: nothing distinguished a
 // ship point-defense round from a fighter's dogfight missile, so the Unit
 // Workshop happily let an aircraft's loadout accept ESSM. The `platform*`
@@ -74,7 +74,8 @@ const NAVAL_SCHEMA = {
   sections: [
     { title: { en: "Identity", zh: "标识" }, fields: [
       text("name", { en: "Class name", zh: "舰级名称" }, { placeholder: "Arleigh Burke approx." }),
-      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "DDG", maxlength: 6 })
+      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "DDG", maxlength: 6 }),
+      text("prefixZh", { en: "Chinese unit tag", zh: "中文单位代号" }, { placeholder: "驱逐舰", maxlength: 12 })
     ] },
     { title: { en: "Mobility", zh: "机动" }, fields: [
       num("cruiseSpeedKt", { en: "Cruise speed", zh: "巡航速度" }, { unit: "kt", min: 0, max: 60, step: 0.5 }),
@@ -113,6 +114,7 @@ const GROUND_SCHEMA = {
     { title: { en: "Identity", zh: "标识" }, fields: [
       text("name", { en: "Site name", zh: "阵地名称" }, { placeholder: "Coastal SAM Battery" }),
       text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "SAM", maxlength: 6 }),
+      text("prefixZh", { en: "Chinese unit tag", zh: "中文单位代号" }, { placeholder: "防空", maxlength: 12 }),
       { key: "glyph", type: "select", label: { en: "Map glyph", zh: "地图符号" }, options: GLYPH_OPTIONS },
       // An airfield may be placed anywhere (land or water) and rearms friendly
       // squadrons. Otherwise it behaves like any fixed ground emplacement.
@@ -150,6 +152,7 @@ const AIRCRAFT_SCHEMA = {
     { title: { en: "Identity", zh: "标识" }, fields: [
       text("name", { en: "Squadron name", zh: "中队名称" }, { placeholder: "Strike Fighter Squadron" }),
       text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "F22", maxlength: 6 }),
+      text("prefixZh", { en: "Chinese unit tag", zh: "中文单位代号" }, { placeholder: "5代空优", maxlength: 12 }),
       // A command hub tightens fleet-wide CEC track-sharing latency while it's
       // alive and airborne on mission (see shareTracks in sensors.js) -- a
       // moving-radar/AEW&C role, not a combat one. Any aircraft can opt in;
@@ -258,7 +261,7 @@ export const SCHEMAS = {
 // Sensible defaults for a freshly created unit of each type (editor JSON form).
 export const DEFAULTS = {
   naval: () => ({
-    kind: "naval", name: "New Warship", prefix: "XXG",
+    kind: "naval", name: "New Warship", prefix: "XXG", prefixZh: "",
     lengthM: 150, beamM: 20, draftM: 9, displacementT: 9000, rcsM2: 5000,
     cruiseSpeedKt: 16, maxSpeedKt: 30, accelMps2: 0.12, decelMps2: 0.22,
     turnRateDps: 2.6, turnRateFlankDps: 1.8, radarRangeNm: 180, radarIntervalS: 4,
@@ -268,19 +271,19 @@ export const DEFAULTS = {
     baseLoadout: { "SM-2MR": 36, ESSM: 32, MaritimeStrike: 16 }
   }),
   ground: () => ({
-    kind: "ground", name: "New Emplacement", prefix: "GND", glyph: "bunker", isAirfield: false,
+    kind: "ground", name: "New Emplacement", prefix: "GND", prefixZh: "", glyph: "bunker", isAirfield: false,
     lengthM: 50, beamM: 50, radarRangeNm: 160, radarIntervalS: 4, rcsM2: 9000,
     vlsCells: 48, damageResist: 2, damageDegrade: 0.3,
     defenseArea: 3, defensePoint: 2,
     baseLoadout: { "SM-2MR": 24 }
   }),
   aircraft: () => ({
-    kind: "aircraft", name: "New Squadron", prefix: "VFX",
+    kind: "aircraft", name: "New Squadron", prefix: "VFX", prefixZh: "",
     squadronSize: 4, commandHub: false, rcsM2: 25,
     cruiseSpeedKt: 420, maxSpeedKt: 540, accelMps2: 3.0, decelMps2: 3.0,
     turnRateDps: 6, turnRateFlankDps: 4, radarRangeNm: 90, radarIntervalS: 3,
     vlsCells: 20, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1, flares: 60,
-    baseLoadout: { "AIM-120": 8, "AIM-9X": 4, "AGM-84": 8 }
+    baseLoadout: { "AIM-120C": 8, "AIM-9X": 4, "AGM-84": 8 }
   }),
   ammo: () => ({
     kind: "ammo", name: "NEW-MSL",

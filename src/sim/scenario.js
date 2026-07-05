@@ -33,6 +33,10 @@ function scenarioDimension(value, fallback) {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
 }
 
+function legacyAim120IdForHull(hull) {
+  return hull === "F22" || hull === "F35A" || hull === "F35C" ? "AIM-120D" : "AIM-120C";
+}
+
 export function clampShipToBounds(sim, ship) {
   const x = Number(ship.x);
   const y = Number(ship.y);
@@ -249,7 +253,8 @@ export function restoreScenario(data) {
       const hull = ship.hull || "DDG";
       const cls = SHIP_CLASSES[hull] || SHIP_CLASSES.DDG;
       const domain = ship.domain ?? cls.domain ?? "sea";
-      const loadout = normalizeLoadout({ ...defaultLoadout(hull), ...(ship.loadout || {}) });
+      const legacyAim120Id = legacyAim120IdForHull(hull);
+      const loadout = normalizeLoadout({ ...defaultLoadout(hull), ...(ship.loadout || {}) }, legacyAim120Id);
       // Air units carry lifecycle/fuel state; seed class defaults then keep any
       // serialized values so a saved mid-flight squadron restores faithfully.
       const airState = domain === "air"
@@ -273,7 +278,7 @@ export function restoreScenario(data) {
         className: ship.className || cls.className,
         tracks: new Map((ship.tracks || []).map((track) => [track.id, track])),
         loadout,
-        baseLoadoutSnapshot: ship.baseLoadoutSnapshot ? { ...ship.baseLoadoutSnapshot } : { ...loadout },
+        baseLoadoutSnapshot: ship.baseLoadoutSnapshot ? normalizeLoadout(ship.baseLoadoutSnapshot, legacyAim120Id) : { ...loadout },
         ...airState,
         editable: ship.editable ?? true,
         vlsCells: ship.vlsCells ?? cls.vlsCells,

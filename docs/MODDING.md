@@ -46,7 +46,8 @@ objects, draft for ground, etc.) are filled from sensible defaults. Ranges shown
 the form are in **nautical miles (NM)** and stored internally in metres.
 
 ### Naval
-Identity (`name`, unit tag `prefix`); Mobility (`cruise`, `max`, `accel`, `decel`,
+Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`);
+Mobility (`cruise`, `max`, `accel`, `decel`,
 `turn`, `flank turn`); Sensors (`radar range`, `radar interval`); Magazine
 (`VLS cells`, `loadout`); Survivability (`hit points`, `degrade`);
 Defense channels (`area`, `point`, `ciws`).
@@ -61,7 +62,8 @@ Defense channels (`area`, `point`, `ciws`).
   the close-in layer can engage at once.
 
 ### Ground
-Identity (`name`, unit tag `prefix`, **map glyph** = `sam`/`radar`/`bunker`);
+Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`,
+**map glyph** = `sam`/`radar`/`bunker`);
 Footprint (`length`, `width`); Sensors (`radar range`, `radar interval`); Magazine
 (`cells`, `loadout` — leave empty for a pure radar site); Survivability (`hit points`,
 `degrade`); Defense channels (`area`, `point`). Speed and CIWS are forced to zero.
@@ -69,7 +71,8 @@ For an anti-ship coastal battery, set the radar range above the weapon's range s
 can engage over the horizon.
 
 ### Aircraft
-Identity (`name`, unit tag `prefix`, **command hub** checkbox); Squadron
+Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`,
+**command hub** checkbox); Squadron
 (`aircraft in flight` — the hit-point pool: each hit downs one plane);
 Mobility (`cruise`, `max`, `accel`, `decel`, `turn`, `flank turn`); Sensors
 (`radar range`, `radar interval`); Hardpoints (`hardpoints` — sized like naval

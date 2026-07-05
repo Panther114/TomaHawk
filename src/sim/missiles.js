@@ -134,10 +134,10 @@ export const MISSILES = {
     retargetable: false,
     selfDestructOnLoss: true
   },
-  "AIM-120": {
-    name: "AIM-120",
-    displayName: "AIM-120 AMRAAM",
-    shortLabel: "120",
+  "AIM-120C": {
+    name: "AIM-120C",
+    displayName: "AIM-120C AMRAAM",
+    shortLabel: "120C",
     role: "BVR active-radar air-to-air",
     category: "air_to_air",
     platforms: ["air"],
@@ -146,7 +146,7 @@ export const MISSILES = {
     rangeM: 55 * NM,
     speedMps: 1200,
     cellCost: 1,
-    pk: 0.50,
+    pk: 0.66,
     salvo: 2,
     target: "air",
     defenseLayer: "area",
@@ -160,7 +160,38 @@ export const MISSILES = {
     maxTurnRateDps: 40,
     seekerRangeM: 16 * NM,
     guidance: "command_inertial_active",
-    nezFraction: 0.5,
+    nezFraction: 0.55,
+    legacyIds: ["AIM-120"],
+    retargetable: false,
+    selfDestructOnLoss: true
+  },
+  "AIM-120D": {
+    name: "AIM-120D",
+    displayName: "AIM-120D AMRAAM",
+    shortLabel: "120D",
+    role: "extended-envelope BVR active-radar air-to-air",
+    category: "air_to_air",
+    platforms: ["air"],
+    rcsM2: 0.03,
+    symbol: "triangle",
+    rangeM: 82 * NM,
+    speedMps: 1220,
+    cellCost: 1,
+    pk: 0.70,
+    salvo: 2,
+    target: "air",
+    defenseLayer: "area",
+    preferredMinRangeM: 3 * NM,
+    preferredMaxRangeM: 74 * NM,
+    interceptorsPerThreat: 1,
+    magazineReserveRatio: 0.1,
+    launchIntervalS: 1.6,
+    salvoSpacingS: 1.8,
+    ringStyle: "dotted",
+    maxTurnRateDps: 42,
+    seekerRangeM: 18 * NM,
+    guidance: "command_inertial_active",
+    nezFraction: 0.62,
     retargetable: false,
     selfDestructOnLoss: true
   },
@@ -320,7 +351,7 @@ export function missileSymbol(missileId) {
 }
 
 // Category taxonomy: "ship_sam" (ship/ground area+point air-defense, e.g.
-// SM-2MR/ESSM) and "air_to_air" (aircraft-carried AAM, e.g. AIM-120/AIM-9X)
+// SM-2MR/ESSM) and "air_to_air" (aircraft-carried AAM, e.g. AIM-120C/D/AIM-9X)
 // split what used to be one shared "anti_air" bucket. The two are launched by
 // different platform types and were never meant to be interchangeable, but
 // nothing enforced that: an aircraft's loadout accepted a ship point-defense

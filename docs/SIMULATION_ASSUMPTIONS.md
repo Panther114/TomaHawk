@@ -539,6 +539,7 @@ which POSTs them to the server (`POST /debug/save`) on every run.
 - `ESSM`: point-defence interceptor, quad-packable (28 NM, Mach 2.9, PK 0.35)
 - `MaritimeStrike` / `MSTK`: subsonic anti-ship cruise missile (120 NM, Mach 0.8, PK 0.42)
 - `TomahawkBlockV` / `TLAM`: long-range surface strike (650 NM, Mach 0.7, PK 0.34)
-- `AIM-120` / `120`: BVR active-radar air-to-air missile (55 NM, PK 0.50, `target: "air"`)
+- `AIM-120C` / `120C`: BVR active-radar air-to-air missile for 4.5-gen aircraft (55 NM, PK 0.66, `target: "air"`)
+- `AIM-120D` / `120D`: extended-envelope BVR active-radar air-to-air missile for 5th-gen aircraft (82 NM, PK 0.70, `target: "air"`)
 - `AIM-9X` / `AIM9`: WVR infrared air-to-air missile (18 NM, PK 0.72, flare-decoyable)
 - `AGM-84` / `HPN`: air-launched anti-ship missile (67 NM, subsonic, PK 0.45)

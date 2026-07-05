@@ -120,7 +120,8 @@ export function missileDetectionEnvelope(observer, missile) {
       targetHeightM = missile.terminal ? 10 : 40;
       baseChance = 0.74;
       break;
-    case "AIM-120": // BVR air-to-air, fast high-flyer
+    case "AIM-120C": // BVR air-to-air, fast high-flyer
+    case "AIM-120D":
       targetHeightM = missile.terminal ? 3000 : 8000;
       baseChance = 0.8;
       break;

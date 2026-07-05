@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TomaHawk / 战斧 Naval Sandbox</title>
+    <title>TomaHawk / 战斧 Modern Battle Simulator</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%2379c8ff' d='M14 3h4v8h8v10h-8v8h-4v-8H6V11h8z'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="src/styles.css" />
   </head>
   <body>
     <main id="app">
       <canvas id="map" aria-label="TomaHawk tactical map"></canvas>
-      <header id="brand-panel" class="panel" aria-label="TomaHawk naval sandbox">
+      <header id="brand-panel" class="panel" aria-label="TomaHawk modern battle simulator">
         <div class="brand-wordmark">TOMAHAWK<span class="brand-version">v0.3</span></div>
         <button id="lang-toggle" class="tool" title="中/EN">中</button>
         <button id="mods-toggle" class="tool icon-btn" title="Unit Workshop" data-i18n-title="mods.open" aria-label="Unit Workshop">
@@ -22,9 +22,9 @@
       <section id="left-rail" class="panel" aria-labelledby="spawn-heading">
         <span id="spawn-heading" data-i18n="panel.shipSpawning">SHIP SPAWNING</span>
         <div class="spawn-tools">
-        <button data-tool="blue" class="tool blue" title="Add blue ship" data-i18n="tool.blue" data-i18n-title="place.addBlue">BLUE</button>
-        <button data-tool="red" class="tool red" title="Add red ship" data-i18n="tool.red" data-i18n-title="place.addRed">RED</button>
-        <select id="ship-class" class="tool" title="Ship class for placement" data-i18n-title="place.class">
+        <button data-tool="blue" class="tool blue" title="Add blue unit" data-i18n="tool.blue" data-i18n-title="place.addBlue">BLUE</button>
+        <button data-tool="red" class="tool red" title="Add red unit" data-i18n="tool.red" data-i18n-title="place.addRed">RED</button>
+        <select id="ship-class" class="tool" title="Unit class for placement" data-i18n-title="place.class">
           <optgroup label="Naval" data-i18n-label="naval.group">
             <option value="DDG" data-i18n="ship.ddg">DDG</option>
             <option value="CCG" data-i18n="ship.ccg">CCG</option>
@@ -51,11 +51,6 @@
         <button id="filter-tracks" class="toggle-btn active" data-i18n="opt.tracks">TRACKS</button>
         <button id="filter-radar" class="toggle-btn" data-i18n="opt.radar">RADAR</button>
         <button id="filter-ranges" class="toggle-btn active" data-i18n="opt.wez">WEZ</button>
-        <select id="ranges-mode" title="Weapon range ring mode" data-i18n-title="tip.wzMode">
-          <option value="all" selected data-i18n="opt.all">ALL</option>
-          <option value="selected" data-i18n="opt.sel">SEL</option>
-          <option value="off" data-i18n="opt.off">OFF</option>
-        </select>
         <button id="filter-missiles" class="toggle-btn active" data-i18n="opt.weapons">WEAPONS</button>
         <select id="map-select" title="Tactical map" data-i18n-title="map.select">
           <option value="eastChinaSea" data-i18n="map.coastline">COASTLINE</option>
@@ -69,7 +64,6 @@
       <section id="bottom-bar" class="panel">
         <div class="transport-controls">
           <button id="play" aria-label="Play or pause simulation" data-i18n-aria-label="btn.playPause">▶</button>
-          <button id="step" data-i18n="btn.step">STEP</button>
           <label><span data-i18n="btn.speed">SPD</span> <input id="speed" type="range" min="1" max="60" value="8" /></label>
           <span id="clock">00:00</span>
         </div>
@@ -102,28 +96,42 @@
     <div id="about-overlay" class="about-overlay" hidden>
       <div class="about-card">
         <h1 data-i18n="about.title">TOMAHAWK</h1>
-        <span class="about-version" data-i18n="about.subtitle">Naval Sandbox v0.3</span>
-        <p data-i18n="about.desc1">TomaHawk is a real-time naval-warfare sandbox. Place a Blue and a Red fleet, press Play, and watch two autonomous AI commands fight it out with radar detection, cooperative engagement, and layered missile defense. A side wins the instant the other has no ship left alive — there's no other scoring.</p>
+        <span class="about-version" data-i18n="about.subtitle">Modern Battle Simulator v0.3</span>
+        <p data-i18n="about.desc1">TomaHawk is a deterministic modern battle simulator for testing force composition, sensing, cooperative engagement, and missile defense across sea, ground, and air units. Place Blue and Red forces, press Play, and let both command AIs fight from what they can actually detect. A side wins when the other side has no surviving unit.</p>
+        <h2 data-i18n="about.h2loop">Simulation loop</h2>
+        <div class="about-flow" aria-label="Simulation loop">
+          <span data-i18n="about.flowSetup">Deploy</span>
+          <span data-i18n="about.flowDetect">Detect</span>
+          <span data-i18n="about.flowFuse">Share tracks</span>
+          <span data-i18n="about.flowFire">Plan fires</span>
+          <span data-i18n="about.flowResolve">Resolve damage</span>
+        </div>
+        <h2 data-i18n="about.h2model">What is modeled</h2>
+        <table class="about-table">
+          <tbody>
+            <tr><th data-i18n="about.modelSensorsH">Sensors</th><td data-i18n="about.modelSensors">Radar contacts have quality, uncertainty, range limits, scan intervals, and track ageing.</td></tr>
+            <tr><th data-i18n="about.modelCommandH">Command</th><td data-i18n="about.modelCommand">Each side builds a fused picture from local and shared tracks, then chooses a posture from survival to saturation.</td></tr>
+            <tr><th data-i18n="about.modelWeaponsH">Weapons</th><td data-i18n="about.modelWeapons">Magazines track VLS or hardpoint capacity, cell cost, salvo timing, guidance, seeker range, and terminal probability.</td></tr>
+            <tr><th data-i18n="about.modelDamageH">Damage</th><td data-i18n="about.modelDamage">Hits reduce HP and degrade radar, propulsion, fire control, CIWS, CIC, or aircraft flight strength.</td></tr>
+          </tbody>
+        </table>
         <h2 data-i18n="about.h2controls">Controls</h2>
         <div class="kb-grid">
           <kbd>Space</kbd><span data-i18n="about.kbSpace">Play / Pause simulation</span>
-          <kbd>.</kbd><span data-i18n="about.kbDot">Step forward 0.25 s</span>
           <kbd>Esc</kbd><span data-i18n="about.kbEsc">Cancel tool / deselect</span>
           <kbd>R</kbd><span data-i18n="about.kbR">Activate ruler tool</span>
           <kbd>Tab</kbd><span data-i18n="about.kbTab">Cycle selected ship</span>
           <kbd>~</kbd><span data-i18n="about.kbTilde">Toggle tactical feed</span>
           <kbd>Del</kbd><span data-i18n="about.kbDel">Delete selected (setup only)</span>
-          <kbd>LMB</kbd><span data-i18n="about.kbLmb">Select ship / place unit</span>
+          <kbd>LMB</kbd><span data-i18n="about.kbLmb">Select / place unit</span>
           <kbd>RMB</kbd><span data-i18n="about.kbRmb">Add to selection / box select</span>
           <kbd>MMB</kbd><span data-i18n="about.kbMmb">Pan map</span>
           <kbd>Scroll</kbd><span data-i18n="about.kbScroll">Zoom in / out</span>
         </div>
         <h2 data-i18n="about.h2setup">Setup</h2>
         <p data-i18n="about.descSetup">Pick BLUE or RED, choose a unit type — naval, ground, or air — from the class list, then click the map to place it. Ships need water and ground units need land; an illegal drop snaps back to the nearest legal spot. Drag a placed unit to reposition it, right-click to inspect it, and press Delete to remove your selection. Everything here locks the moment the battle starts.</p>
-        <h2 data-i18n="about.h2mechanics">Mechanics</h2>
-        <p data-i18n="about.descMech1">Each ship carries its own VLS magazine, six subsystems (radar, propulsion, fire control, CIWS, CIC) that degrade hit by hit, and a doctrine that governs how aggressively it fights. No unit ever sees the enemy's exact position — every contact is a radar track with quality and uncertainty that fades over time.</p>
-        <p data-i18n="about.descMech2">SM-2MR and SM-6 are long-range air-defense interceptors, ESSM is the faster point-defense layer, and CIWS is the last-ditch gun. MaritimeStrike and TLAM are anti-ship strike missiles; AIM-120, AIM-9X, and AGM-84 arm your fighter squadrons for air-to-air combat and air-launched strikes.</p>
-        <p data-i18n="about.descMech3">The command AI weighs its own strength against whatever it can actually observe of the enemy, then settles into a posture from cautious survival to an all-out saturation strike — a concentrated, coordinated raid is what breaks through layered defenses, not a wide, thin one. Every ship always fires in self-defense, no matter its rules of engagement. Right-click any ship (or drag to select several) to inspect its live subsystem health and loadout.</p>
+        <h2 data-i18n="about.h2workshop">Unit Workshop</h2>
+        <p data-i18n="about.descWorkshop">The folder button opens the Unit Workshop. Ships, ground sites, aircraft, and weapons are editable data records stored in the browser and exportable as JSON. Built-in records are locked; clone one when you want a custom variant.</p>
         <button class="about-close" id="about-close" data-i18n="about.close">CLOSE</button>
       </div>
     </div>

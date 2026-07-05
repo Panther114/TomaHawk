@@ -11,7 +11,8 @@ import {
   makeUniqueShipId, unitId, availableAmmoIds
 } from "../src/mods/registry.js";
 import { loadMods, deleteMod, recordKey } from "../src/mods/store.js";
-import { weaponColumns, groundRowHtml } from "../src/ui/view.js";
+import { setLang } from "../src/ui/lang.js";
+import { weaponColumns, groundRowHtml, shipDisplayName } from "../src/ui/view.js";
 
 test("schema exposes four types; naval+ground+aircraft are deployable", () => {
   assert.deepEqual(UNIT_TYPES, ["naval", "ground", "aircraft", "ammo"]);
@@ -63,6 +64,31 @@ test("vanilla ship round-trip reproduces core internal fields", () => {
   assert.equal(spec.vlsCells, SHIP_CLASSES.DDG.vlsCells);
   assert.equal(spec.radarRangeNm, SHIP_CLASSES.DDG.radarRangeNm);
   assert.equal(spec.defenseChannels.area, SHIP_CLASSES.DDG.defenseChannels.area);
+});
+
+test("deployable units expose optional Chinese unit tags with English fallback", () => {
+  const ddg = vanillaUnits().find((u) => u.kind === "naval" && unitId(u) === "DDG");
+  assert.equal(ddg.prefix, "DDG");
+  assert.equal(ddg.prefixZh, "驱逐舰");
+
+  const custom = { ...DEFAULTS.naval(), name: "Bilingual", prefix: "BLG", prefixZh: "双语舰" };
+  custom.id = makeUniqueShipId(custom.prefix);
+  const spec = toInternalSpec(custom);
+  assert.equal(spec.prefixZh, "双语舰");
+
+  registerUnit(custom);
+  const ship = makeShip(SIDE.BLUE, 0, 0, custom.id);
+  setLang("zh");
+  assert.match(shipDisplayName(ship, "-"), /^双语舰-\d+$/);
+  unregisterUnit(custom);
+
+  const fallback = { ...DEFAULTS.naval(), name: "Fallback", prefix: "FBK", prefixZh: "" };
+  fallback.id = makeUniqueShipId(fallback.prefix);
+  registerUnit(fallback);
+  const fallbackShip = makeShip(SIDE.BLUE, 0, 0, fallback.id);
+  assert.match(shipDisplayName(fallbackShip, "-"), /^FBK-\d+$/);
+  setLang("en");
+  unregisterUnit(fallback);
 });
 
 // Regression: RCS used to be invisible in the Unit Workshop entirely (no

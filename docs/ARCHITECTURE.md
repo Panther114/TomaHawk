@@ -1,6 +1,6 @@
 # TomaHawk Architecture
 
-TomaHawk is a local 2D modern naval sandbox inspired by the tactical density of the DCS World F10/map view, not the 3D cockpit or external camera view. The current implementation is a dependency-light browser app served locally with Node so the project is playable immediately in this environment.
+TomaHawk is a local 2D modern battle simulator inspired by the tactical density of the DCS World F10/map view, not the 3D cockpit or external camera view. The current implementation is a dependency-light browser app served locally with Node so the project is playable immediately in this environment.
 
 The implemented stack uses static HTML, CSS, and JavaScript with a deterministic simulation core. This keeps the project local, fast to run, and easy to inspect.
 
@@ -27,7 +27,7 @@ Scenarios move through three modes:
 
 - `setup`: units can be added, dragged, selected by right-click or box select, and deleted with keyboard commands. Placement is domain-aware (sea units on water, ground emplacements on land), dragging holds the last valid position for the unit's domain, and map changes are only allowed here.
 - `running`: the deterministic simulation advances.
-- `ended`: one side has no surviving ship and the battle is frozen.
+- `ended`: one side has no surviving unit and the battle is frozen.
 
 ## Visual Layers
 

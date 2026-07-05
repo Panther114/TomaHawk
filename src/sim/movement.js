@@ -13,6 +13,9 @@ import { AIRCRAFT_TEMP_CONFIG } from "./aircraft.js";
 // no bucket for a ship, that ship has nothing inbound — iterate nothing rather
 // than falling back to a full O(missiles) scan (the pre-index fallback only).
 const NO_INCOMING = [];
+const CLEAR_ROUTE_CACHE_S = 10;
+const BLOCKED_DETOUR_CACHE_S = 10;
+const WAYPOINT_DEADBAND_M = 0.1 * NM;
 function incomingMissilesFor(sim, shipId) {
   if (sim._missilesByTarget) return sim._missilesByTarget.get(shipId) ?? NO_INCOMING;
   return sim.missiles;
@@ -64,6 +67,11 @@ function strategicTarget(ship) {
 
 function waypointReached(ship, waypoint, thresholdM) {
   return waypoint && distance(ship, waypoint) < thresholdM;
+}
+
+function setShipWaypoint(ship, waypoint, deadbandM = WAYPOINT_DEADBAND_M) {
+  if (ship.waypoint && distance(ship.waypoint, waypoint) <= deadbandM) return;
+  ship.waypoint = waypoint;
 }
 
 function detourCandidate(base, bearing, side, forwardM, lateralM) {
@@ -119,10 +127,11 @@ function resolveNavigationTarget(sim, ship) {
     return null;
   }
   const clearanceM = shipWaterClearanceM(ship);
-  const cacheValid = ship.navPlan
+  const sameGoal = ship.navPlan
     && ship.navPlan.goalX === target.x
-    && ship.navPlan.goalY === target.y
-    && sim.time - ship.navPlan.plannedAt < 2;
+    && ship.navPlan.goalY === target.y;
+  const cacheWindowS = ship.navPlan?.blocked ? BLOCKED_DETOUR_CACHE_S : CLEAR_ROUTE_CACHE_S;
+  const cacheValid = sameGoal && sim.time - ship.navPlan.plannedAt < cacheWindowS;
   if (ship.navigationWaypoint && waypointReached(ship, ship.navigationWaypoint, 0.35 * NM)) {
     ship.navigationWaypoint = null;
   }
@@ -132,15 +141,27 @@ function resolveNavigationTarget(sim, ship) {
   if (cacheValid && ship.navPlan.blocked && ship.navigationWaypoint) {
     return ship.navigationWaypoint;
   }
+  if (sameGoal && ship.navPlan.blocked && ship.navigationWaypoint) {
+    const detourStillUsable = isWaterPoint(ship.navigationWaypoint, sim.mapId, clearanceM)
+      && !segmentCrossesLand(ship, ship.navigationWaypoint, sim.mapId, clearanceM);
+    if (detourStillUsable) {
+      ship.navPlan.plannedAt = sim.time;
+      return ship.navigationWaypoint;
+    }
+    ship.navigationWaypoint = null;
+  }
   if (!segmentCrossesLand(ship, target, sim.mapId, clearanceM)) {
     ship.navigationWaypoint = null;
     ship.navPlan = { goalX: target.x, goalY: target.y, plannedAt: sim.time, blocked: false };
     return target;
   }
-  if (ship.navigationWaypoint) {
+  if (sameGoal && ship.navigationWaypoint) {
     const detourStillUsable = isWaterPoint(ship.navigationWaypoint, sim.mapId, clearanceM)
       && !segmentCrossesLand(ship, ship.navigationWaypoint, sim.mapId, clearanceM);
-    if (detourStillUsable) return ship.navigationWaypoint;
+    if (detourStillUsable) {
+      ship.navPlan.plannedAt = sim.time;
+      return ship.navigationWaypoint;
+    }
   }
   ship.navigationWaypoint = chooseWaterDetour(sim, ship, target);
   ship.navPlan = { goalX: target.x, goalY: target.y, plannedAt: sim.time, blocked: true };
@@ -148,7 +169,9 @@ function resolveNavigationTarget(sim, ship) {
 }
 
 function applyWaterCollisionGuard(sim, ship, nextPosition) {
+  if (nextPosition.x === ship.x && nextPosition.y === ship.y) return nextPosition;
   const clearanceM = shipWaterClearanceM(ship);
+  if (distance(ship, nextPosition) <= 0.02 * NM) return nextPosition;
   const collision = terrainCollision(ship, nextPosition, sim.mapId, clearanceM);
   if (!collision) return nextPosition;
   const blockedT = collision.fraction;
@@ -304,19 +327,19 @@ export function decideShip(sim, ship) {
   if (incoming) {
     ship.desiredSpeed = ship.maxSpeed;
     const threat = incoming;
-    ship.waypoint = {
+    setShipWaypoint(ship, {
       x: ship.x + Math.cos(angleTo(threat, ship) + Math.PI / 2) * 8 * NM,
       y: ship.y + Math.sin(angleTo(threat, ship) + Math.PI / 2) * 8 * NM
-    };
+    });
     return;
   }
   if (offensiveMissileCount(ship, false) <= 0) {
     const fallback = ship.side === SIDE.BLUE ? Math.PI : 0;
     const retreatBearing = nearestEnemy ? angleTo(nearestEnemy, ship) : fallback;
-    ship.waypoint = {
+    setShipWaypoint(ship, {
       x: ship.x + Math.cos(retreatBearing) * 45 * NM,
       y: ship.y + Math.sin(retreatBearing) * 18 * NM
-    };
+    });
     ship.desiredSpeed = Math.max(ship.cruiseSpeed ?? 0, ship.maxSpeed * 0.86);
     return;
   }
@@ -324,7 +347,7 @@ export function decideShip(sim, ship) {
   // close contact; the guide (and single-ship sides) patrol/advance normally.
   if (ship.station && !ship.isOTC) {
     const d = distance(ship, ship.station);
-    ship.waypoint = { x: ship.station.x, y: ship.station.y };
+    setShipWaypoint(ship, { x: ship.station.x, y: ship.station.y });
     // Close the station briskly when out of position, ease off once on station.
     ship.desiredSpeed = d > 1.5 * NM
       ? clamp(16 * KNOT * SHIP_SPEED_MULTIPLIER + d / 60, 16 * KNOT, ship.maxSpeed)
@@ -343,7 +366,7 @@ export function decideShip(sim, ship) {
       // searching in roughly the right direction.
       const axis = sim.fleetCommand?.get(ship.side)?.axis;
       const bearing = Number.isFinite(axis) ? axis : (ship.side === SIDE.BLUE ? 0 : Math.PI);
-      ship.waypoint = { x: ship.x + Math.cos(bearing) * 9 * NM, y: ship.y + Math.sin(bearing) * 9 * NM };
+      setShipWaypoint(ship, { x: ship.x + Math.cos(bearing) * 9 * NM, y: ship.y + Math.sin(bearing) * 9 * NM });
     }
     return;
   }
@@ -352,10 +375,10 @@ export function decideShip(sim, ship) {
   const standoffM = ship.doctrine.standoffNm * NM;
   if (rangeM < standoffM * 0.72) {
     const away = angleTo(target, ship);
-    ship.waypoint = { x: ship.x + Math.cos(away) * 12 * NM, y: ship.y + Math.sin(away) * 12 * NM };
+    setShipWaypoint(ship, { x: ship.x + Math.cos(away) * 12 * NM, y: ship.y + Math.sin(away) * 12 * NM });
     ship.desiredSpeed = 25 * KNOT * SHIP_SPEED_MULTIPLIER;
   } else if (rangeM > standoffM * 1.25) {
-    ship.waypoint = { x: target.x, y: target.y };
+    setShipWaypoint(ship, { x: target.x, y: target.y });
     ship.desiredSpeed = 24 * KNOT * SHIP_SPEED_MULTIPLIER;
   } else {
     ship.desiredSpeed = 18 * KNOT * SHIP_SPEED_MULTIPLIER;

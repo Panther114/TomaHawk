@@ -99,6 +99,17 @@ export function terrainCollision(start, end, mapOrId = TACTICAL_MAPS.openSea, cl
   const map = typeof mapOrId === "string" ? tacticalMap(mapOrId) : (mapOrId ?? TACTICAL_MAPS.openSea);
   const index = terrainIndex(map);
   if (!index.ringEntries.length) return null;
+  const segmentLength = Math.hypot(end.x - start.x, end.y - start.y);
+  if (segmentLength <= WATER_MASK_CELL_M) {
+    const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+    if (
+      waterMaskCellIsClear(index, start, clearanceM)
+      && waterMaskCellIsClear(index, mid, clearanceM)
+      && waterMaskCellIsClear(index, end, clearanceM)
+    ) {
+      return null;
+    }
+  }
   const bounds = {
     minX: Math.min(start.x, end.x) - clearanceM,
     maxX: Math.max(start.x, end.x) + clearanceM,
@@ -107,7 +118,7 @@ export function terrainCollision(start, end, mapOrId = TACTICAL_MAPS.openSea, cl
   };
   const candidates = entriesInBounds(index, bounds);
   if (!candidates.length) return null;
-  const edgeCandidates = indexedEntriesInBounds(index.edgeEntries, index.edgeCells, bounds);
+  const edgeCandidates = indexedEntriesInBounds(index, index.edgeEntries, index.edgeCells, index.edgeQueryMarks, bounds);
   const offsets = clearanceM > 0
     ? [{ x: 0, y: 0 }, ...WATER_SAMPLE_ANGLES.map((angle) => ({
         x: Math.cos(angle) * clearanceM,
@@ -142,6 +153,9 @@ function terrainIndex(map) {
       cells: buildSpatialCells(ringEntries),
       edgeEntries,
       edgeCells: buildSpatialCells(edgeEntries),
+      ringQueryMarks: new Uint32Array(ringEntries.length),
+      edgeQueryMarks: new Uint32Array(edgeEntries.length),
+      queryStamp: 0,
       safeWaterMask: new Map()
     };
     landCache.set(normalized, cached);
@@ -196,14 +210,25 @@ function entriesAtPoint(index, point) {
 }
 
 function entriesInBounds(index, bounds) {
-  return indexedEntriesInBounds(index.ringEntries, index.cells, bounds);
+  return indexedEntriesInBounds(index, index.ringEntries, index.cells, index.ringQueryMarks, bounds);
 }
 
-function indexedEntriesInBounds(entriesSource, cells, bounds) {
-  const ids = new Set();
+function indexedEntriesInBounds(index, entriesSource, cells, marks, bounds) {
+  index.queryStamp = (index.queryStamp + 1) >>> 0;
+  if (index.queryStamp === 0) {
+    index.ringQueryMarks.fill(0);
+    index.edgeQueryMarks.fill(0);
+    index.queryStamp = 1;
+  }
+  const stamp = index.queryStamp;
+  const ids = [];
   for (let x = gridCoordinate(bounds.minX); x <= gridCoordinate(bounds.maxX); x++) {
     for (let y = gridCoordinate(bounds.minY); y <= gridCoordinate(bounds.maxY); y++) {
-      for (const id of cells.get(gridKey(x, y)) ?? []) ids.add(id);
+      for (const id of cells.get(gridKey(x, y)) ?? []) {
+        if (marks[id] === stamp) continue;
+        marks[id] = stamp;
+        ids.push(id);
+      }
     }
   }
   const entries = [];

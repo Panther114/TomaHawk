@@ -62,7 +62,18 @@ test("F-22 and F-15C squadrons are air-to-air only: zero strike weapons of any k
     const loadout = SHIP_CLASSES[hull].baseLoadout;
     assert.equal(loadout["AGM-84"] ?? 0, 0, `${hull} should carry no AGM-84`);
     assert.equal(loadout["AGM-154"] ?? 0, 0, `${hull} should carry no AGM-154`);
-    assert.ok((loadout["AIM-120"] ?? 0) > 0 && (loadout["AIM-9X"] ?? 0) > 0, `${hull} should carry both AAMs`);
+    assert.ok(((loadout["AIM-120C"] ?? 0) + (loadout["AIM-120D"] ?? 0)) > 0 && (loadout["AIM-9X"] ?? 0) > 0, `${hull} should carry both AAMs`);
+  }
+});
+
+test("5th-gen aircraft carry AIM-120D while 4.5-gen aircraft carry AIM-120C", () => {
+  for (const hull of FIFTH_GEN_HULLS) {
+    assert.ok((SHIP_CLASSES[hull].baseLoadout["AIM-120D"] ?? 0) > 0, `${hull} should carry AIM-120D`);
+    assert.equal(SHIP_CLASSES[hull].baseLoadout["AIM-120C"] ?? 0, 0, `${hull} should not carry AIM-120C`);
+  }
+  for (const hull of FOURTH_HALF_GEN_HULLS) {
+    assert.ok((SHIP_CLASSES[hull].baseLoadout["AIM-120C"] ?? 0) > 0, `${hull} should carry AIM-120C`);
+    assert.equal(SHIP_CLASSES[hull].baseLoadout["AIM-120D"] ?? 0, 0, `${hull} should not carry AIM-120D`);
   }
 });
 
@@ -254,6 +265,7 @@ test("RTB → rearm → relaunch refills the magazine and refuels", () => {
   assert.ok(states.has("rtb"), "entered RTB");
   assert.ok(states.has("rearming"), "parked to rearm");
   assert.ok(relaunched, "relaunched with a refilled magazine");
+  assert.deepEqual(f15n.loadout, SHIP_CLASSES.F15N.baseLoadout, "rearmed to the exact built-in default loadout");
   assert.ok(f15n.fuelS > 1000, "refuelled on rearm");
 });
 
@@ -342,22 +354,23 @@ test("air inventory row reports flight strength, state and effector counts", () 
 });
 
 test("aircraft weapons exist with correct categories (AMRAAM/Sidewinder/Harpoon/JSOW)", () => {
-  assert.equal(MISSILES["AIM-120"].category, "air_to_air");
+  assert.equal(MISSILES["AIM-120C"].category, "air_to_air");
+  assert.equal(MISSILES["AIM-120D"].category, "air_to_air");
   assert.equal(MISSILES["AIM-9X"].category, "air_to_air");
   assert.equal(MISSILES["AIM-9X"].guidance, "infrared", "Sidewinder is IR (flare-decoyable)");
   assert.equal(MISSILES["AGM-84"].category, "anti_ship");
   assert.equal(MISSILES["AGM-154"].category, "anti_ship");
-  for (const id of ["AIM-120", "AIM-9X", "AGM-84", "AGM-154"]) assert.ok(MISSILES[id].shortLabel.length >= 3, id);
+  for (const id of ["AIM-120C", "AIM-120D", "AIM-9X", "AGM-84", "AGM-154"]) assert.ok(MISSILES[id].shortLabel.length >= 3, id);
 });
 
 // Regression: "anti_air" used to be a single bucket shared by ship-launched
-// SAMs (SM-2MR/ESSM) and aircraft-carried AAMs (AIM-120/AIM-9X), so nothing
+// SAMs (SM-2MR/ESSM) and aircraft-carried AAMs (AIM-120C/D/AIM-9X), so nothing
 // stopped a squadron's loadout from containing a ship point-defense round as
 // if it were a dogfight weapon. Every air-to-air missile must now declare
 // "air" as an eligible launch platform, and no aircraft-only weapon may be
 // carried by a ship/ground unit.
 test("every air-to-air missile is air-launched only; ship SAMs are not air-launchable", () => {
-  for (const id of ["AIM-120", "AIM-9X"]) {
+  for (const id of ["AIM-120C", "AIM-120D", "AIM-9X"]) {
     assert.equal(MISSILES[id].category, "air_to_air");
     assert.deepEqual(MISSILES[id].platforms, ["air"]);
   }
@@ -385,7 +398,7 @@ test("two squadrons fight air-to-air with AAMs and attrit each other", () => {
   let firedAAM = false;
   for (let i = 0; i < 1800; i++) {
     stepSim(sim, 0.25);
-    if (sim.missiles.some((mm) => mm.missileId === "AIM-120" || mm.missileId === "AIM-9X")) firedAAM = true;
+    if (sim.missiles.some((mm) => mm.missileId === "AIM-120C" || mm.missileId === "AIM-120D" || mm.missileId === "AIM-9X")) firedAAM = true;
   }
   assert.ok(firedAAM, "air-to-air missiles were launched");
   assert.ok(aliveAircraftCount(b) < 4 || aliveAircraftCount(r) < 4, "at least one flight took losses");
@@ -408,7 +421,7 @@ test("two squadrons placed in the REVERSED (blue-east, red-west) layout still cl
   let minSepM = Infinity;
   for (let i = 0; i < 1200; i++) {
     stepSim(sim, 0.25);
-    if (sim.missiles.some((mm) => mm.missileId === "AIM-120" || mm.missileId === "AIM-9X")) firedAAM = true;
+    if (sim.missiles.some((mm) => mm.missileId === "AIM-120C" || mm.missileId === "AIM-120D" || mm.missileId === "AIM-9X")) firedAAM = true;
     minSepM = Math.min(minSepM, Math.hypot(b.x - r.x, b.y - r.y));
     if (firedAAM) break;
   }
@@ -485,7 +498,7 @@ test("a striker returns to base once its anti-ship load is spent", () => {
   placeShip(sim, SIDE.BLUE, -40 * NM, 0, "AFB");
   const v = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "F35C");
   placeShip(sim, SIDE.RED, 80 * NM, 0, "EWR");
-  v.loadout = { "AIM-120": 4 }; // air-to-air left, strike (AGM-84) depleted
+  v.loadout = { "AIM-120D": 4 }; // air-to-air left, strike (AGM-84) depleted
   let rtb = false;
   for (let i = 0; i < 200 && !rtb; i++) { stepSim(sim, 0.25); rtb = v.airState === "rtb" || v.airState === "rearming"; }
   assert.ok(rtb, "striker headed home with strike ammo spent");
@@ -504,7 +517,7 @@ test("a CAP fighter hard-kills an inbound ASCM but keeps an air-to-air reserve",
   assert.ok(firedAtMissile, "the fighter engaged an inbound anti-ship missile with an AAM");
   // It must not have stripped its air-to-air load: a heavy reserve of the radar
   // AAM remains (started at 8; conservative defence keeps most of it).
-  assert.ok((cap.loadout["AIM-120"] ?? 0) >= 5, `kept an AAM reserve (${cap.loadout["AIM-120"]} of 8)`);
+  assert.ok((cap.loadout["AIM-120C"] ?? 0) >= 5, `kept an AAM reserve (${cap.loadout["AIM-120C"]} of 10)`);
 });
 
 test("a full flight relaunches faster than a lone survivor (rate scales with aircraft)", () => {
@@ -530,7 +543,7 @@ test("a full flight relaunches faster than a lone survivor (rate scales with air
 });
 
 test("air-to-air missiles carry a customizable no-escape-zone fraction", () => {
-  for (const id of ["AIM-120", "AIM-9X"]) {
+  for (const id of ["AIM-120C", "AIM-120D", "AIM-9X"]) {
     const nez = MISSILES[id].nezFraction;
     assert.ok(Number.isFinite(nez) && nez > 0 && nez <= 1, `${id} nezFraction in (0,1]`);
   }

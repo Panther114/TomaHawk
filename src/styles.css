@@ -922,12 +922,20 @@ small,
 }
 
 @media (max-width: 860px) {
+  #map-options {
+    top: 44px;
+    left: 88px;
+    right: 8px;
+    flex-wrap: wrap;
+    min-height: 28px;
+  }
+
   #right-panel {
-    top: 48px;
+    top: 106px;
     left: 66px;
     right: auto;
     width: calc(100vw - 74px);
-    max-height: 38vh;
+    max-height: 32vh;
   }
 
   #event-console {
@@ -949,6 +957,7 @@ small,
     padding-left: 3px;
     padding-right: 3px;
   }
+
 }
 
 /* --- About overlay -------------------------------------------------------- */
@@ -968,8 +977,8 @@ small,
 .about-overlay[hidden] { display: none; }
 
 .about-card {
-  width: min(480px, 88vw);
-  max-height: 80vh;
+  width: min(720px, 92vw);
+  max-height: 86vh;
   overflow: auto;
   border: 1px solid var(--panel-strong);
   background: rgba(9, 25, 32, 0.96);
@@ -1009,6 +1018,61 @@ small,
   color: #a8cbd4;
 }
 
+.about-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin: 7px 0 9px;
+}
+
+.about-flow span {
+  min-width: 0;
+  padding: 4px 5px;
+  border: 1px solid rgba(142, 193, 205, 0.18);
+  background: rgba(8, 25, 34, 0.72);
+  color: #d4edf4;
+  text-align: center;
+  font: 600 14px/1.12 var(--font-ui);
+}
+
+.about-flow span + span {
+  position: relative;
+}
+
+.about-flow span + span::before {
+  content: ">";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--amber);
+  font: 600 14px var(--font-mono);
+}
+
+.about-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 5px 0 8px;
+}
+
+.about-table th,
+.about-table td {
+  border: 1px solid rgba(142, 193, 205, 0.13);
+  padding: 5px 7px;
+  vertical-align: top;
+}
+
+.about-table th {
+  width: 112px;
+  color: var(--amber);
+  text-align: left;
+  font: 650 14px/1.2 var(--font-ui);
+}
+
+.about-table td {
+  color: #a8cbd4;
+}
+
 .about-card .kb-grid {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1043,6 +1107,16 @@ small,
   font: 500 14px var(--font-mono);
   letter-spacing: 0.08em;
   cursor: pointer;
+}
+
+@media (max-width: 860px) {
+  .about-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .about-flow span + span::before {
+    content: none;
+  }
 }
 
 

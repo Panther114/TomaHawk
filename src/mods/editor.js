@@ -35,7 +35,8 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
   let open = false;
 
   const findUnit = (key) => units.find((u) => recordKey(u) === key);
-  const labelOf = (u) => (u.kind === "ammo" ? unitId(u) : `${u.prefix} · ${u.name}`);
+  const unitTag = (u) => getLang() === "zh" && u.prefixZh ? u.prefixZh : u.prefix;
+  const labelOf = (u) => (u.kind === "ammo" ? unitId(u) : `${unitTag(u)} · ${u.name}`);
   // Host callback must never break the editor's own flow (e.g. a render fault).
   const safeNotify = () => { try { onChange?.(); } catch (e) { console.warn("[mods] onChange failed", e); } };
 
