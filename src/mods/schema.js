@@ -21,34 +21,21 @@ export const DEPLOYABLE_TYPES = ["naval", "ground", "aircraft"];
 const num = (key, label, opts = {}) => ({ key, type: "number", label, ...opts });
 const text = (key, label, opts = {}) => ({ key, type: "text", label, ...opts });
 
-// "ship_sam" (ship/ground area+point air-defense, e.g. SM-2MR/ESSM) and
-// "air_to_air" (aircraft-carried AAM, e.g. AIM-120C/D/AIM-9X) replace the old
-// single "anti_air" bucket, which conflated the two: nothing distinguished a
-// ship point-defense round from a fighter's dogfight missile, so the Unit
-// Workshop happily let an aircraft's loadout accept ESSM. The `platform*`
-// checkboxes below are the actual gate (see missileAllowedForDomain) — the
-// category split just makes the classification itself legible.
-const CATEGORY_OPTIONS = [
-  { value: "ship_sam", label: { en: "Ship SAM", zh: "舰载防空" } },
-  { value: "air_to_air", label: { en: "Air-to-air", zh: "空空导弹" } },
-  { value: "anti_ship", label: { en: "Anti-ship", zh: "反舰" } },
-  { value: "dual_role", label: { en: "Dual-role", zh: "双重用途" } }
+const LAUNCHER_OPTIONS = [
+  { value: "sea", label: { en: "Naval", zh: "海上" } },
+  { value: "ground", label: { en: "Ground", zh: "陆基" } },
+  { value: "air", label: { en: "Air", zh: "空中" } }
+];
+const TARGET_OPTIONS = [
+  { value: "air", label: { en: "Aircraft", zh: "飞机" } },
+  { value: "missile", label: { en: "Missile", zh: "导弹" } },
+  { value: "sea", label: { en: "Ship", zh: "舰艇" } },
+  { value: "ground", label: { en: "Ground", zh: "地面" } }
 ];
 const SYMBOL_OPTIONS = [
   { value: "triangle", label: { en: "Triangle", zh: "三角" } },
   { value: "square", label: { en: "Square", zh: "方块" } },
   { value: "diamond", label: { en: "Diamond", zh: "菱形" } }
-];
-const TARGET_OPTIONS = [
-  { value: "missile", label: { en: "Missile", zh: "导弹" } },
-  { value: "ship", label: { en: "Ship", zh: "舰艇" } },
-  { value: "air", label: { en: "Aircraft", zh: "飞机" } },
-  { value: "dual", label: { en: "Dual", zh: "两者" } }
-];
-const LAYER_OPTIONS = [
-  { value: "area", label: { en: "Area", zh: "区域" } },
-  { value: "point", label: { en: "Point", zh: "点防御" } },
-  { value: "strike", label: { en: "Strike", zh: "打击" } }
 ];
 const RING_OPTIONS = [
   { value: "dotted", label: { en: "Dotted", zh: "点线" } },
@@ -100,8 +87,7 @@ const NAVAL_SCHEMA = {
       num("damageDegrade", { en: "Degrade", zh: "损伤衰减" }, { min: 0, max: 1, step: 0.01 })
     ] },
     { title: { en: "Defense channels", zh: "防御通道" }, fields: [
-      num("defenseArea", { en: "Area", zh: "区域" }, { min: 0, max: 16, step: 1 }),
-      num("defensePoint", { en: "Point", zh: "点防御" }, { min: 0, max: 16, step: 1 }),
+      num("defenseSam", { en: "SAM", zh: "防空导弹" }, { min: 0, max: 32, step: 1 }),
       num("defenseCiws", { en: "CIWS", zh: "近防" }, { min: 0, max: 16, step: 1 })
     ] }
   ]
@@ -139,8 +125,7 @@ const GROUND_SCHEMA = {
       num("damageDegrade", { en: "Degrade", zh: "损伤衰减" }, { min: 0, max: 1, step: 0.01 })
     ] },
     { title: { en: "Defense channels", zh: "防御通道" }, fields: [
-      num("defenseArea", { en: "Area", zh: "区域" }, { min: 0, max: 16, step: 1 }),
-      num("defensePoint", { en: "Point", zh: "点防御" }, { min: 0, max: 16, step: 1 })
+      num("defenseSam", { en: "SAM", zh: "防空导弹" }, { min: 0, max: 32, step: 1 })
     ] }
   ]
 };
@@ -200,25 +185,13 @@ const AMMO_SCHEMA = {
       text("name", { en: "Weapon ID", zh: "武器编号" }, { placeholder: "SM-2MR", maxlength: 24 })
     ] },
     { title: { en: "Classification", zh: "分类" }, fields: [
-      { key: "category", type: "select", label: { en: "Category", zh: "类别" }, options: CATEGORY_OPTIONS },
+      { key: "launchers", type: "multicheck", label: { en: "Launchers", zh: "发射方" }, options: LAUNCHER_OPTIONS },
+      { key: "targets", type: "multicheck", label: { en: "Targets", zh: "目标" }, options: TARGET_OPTIONS },
       { key: "symbol", type: "select", label: { en: "Symbol", zh: "符号" }, options: SYMBOL_OPTIONS },
-      { key: "target", type: "select", label: { en: "Target", zh: "目标" }, options: TARGET_OPTIONS },
-      { key: "defenseLayer", type: "select", label: { en: "Defense layer", zh: "防御层级" }, options: LAYER_OPTIONS },
       // Every munition is 3-4 orders of magnitude smaller than even a stealth
       // fighter, so this is scaled against its own reference point rather than
       // the platform one -- see missileRcsRangeFactor in sensors.js.
       num("rcsM2", { en: "Radar cross-section", zh: "雷达散射截面" }, { unit: "m²", min: 0.005, max: 5, step: 0.005 })
-    ] },
-    // Which platform types may actually carry this round. Independent of
-    // category (an "anti_ship" weapon legitimately spans both a ship-launched
-    // Harpoon-alike and an air-launched one) and independent of any built-in
-    // hull -- this is what the Unit Workshop's loadout picker and validateUnit
-    // actually gate on (see missileAllowedForDomain), so a modder always
-    // decides for themselves which unit types a custom weapon fits.
-    { title: { en: "Launch platforms", zh: "发射平台" }, fields: [
-      { key: "platformSea", type: "checkbox", label: { en: "Ship-launched", zh: "舰载" } },
-      { key: "platformGround", type: "checkbox", label: { en: "Ground-launched", zh: "岸基发射" } },
-      { key: "platformAir", type: "checkbox", label: { en: "Air-launched", zh: "机载" } }
     ] },
     { title: { en: "Ranges", zh: "射程" }, fields: [
       num("rangeNm", { en: "Max range", zh: "最大射程" }, { unit: "NM", min: 0.1, max: 2000, step: 1 }),
@@ -232,7 +205,13 @@ const AMMO_SCHEMA = {
     ] },
     { title: { en: "Effect", zh: "效能" }, fields: [
       num("cellCost", { en: "Cell cost", zh: "占用单元" }, { min: 0.05, max: 8, step: 0.05 }),
-      num("pk", { en: "Kill probability", zh: "杀伤概率" }, { min: 0, max: 1, step: 0.01 }),
+      num("pk", { en: "Kill probability", zh: "杀伤概率" }, {
+        min: 0, max: 1, step: 0.01,
+        help: {
+          en: "Base per-shot success chance before track, geometry, speed, saturation, and countermeasure modifiers.",
+          zh: "单发基础成功率，尚未计入航迹、几何、速度、饱和与对抗修正。"
+        }
+      }),
       num("salvo", { en: "Salvo size", zh: "齐射数量" }, { min: 1, max: 16, step: 1 }),
       num("interceptorsPerThreat", { en: "Interceptors per threat", zh: "每目标拦截数" }, { min: 0, max: 8, step: 1 }),
       num("nezFraction", { en: "No-escape-zone frac", zh: "不可逃逸区比例" }, { min: 0, max: 1, step: 0.05 }),
@@ -267,14 +246,14 @@ export const DEFAULTS = {
     turnRateDps: 2.6, turnRateFlankDps: 1.8, radarRangeNm: 180, radarIntervalS: 4,
     vlsCells: 96, damageResist: 2, damageDegrade: 0.3,
     ciwsCount: 1, ciwsAmmo: 1550, ciwsBurstRounds: 180, ciwsBurstS: 1.4, ciwsCycleS: 5.5,
-    defenseArea: 2, defensePoint: 2, defenseCiws: 1,
+    defenseSam: 4, defenseCiws: 1,
     baseLoadout: { "SM-2MR": 36, ESSM: 32, MaritimeStrike: 16 }
   }),
   ground: () => ({
     kind: "ground", name: "New Emplacement", prefix: "GND", prefixZh: "", glyph: "bunker", isAirfield: false,
     lengthM: 50, beamM: 50, radarRangeNm: 160, radarIntervalS: 4, rcsM2: 9000,
     vlsCells: 48, damageResist: 2, damageDegrade: 0.3,
-    defenseArea: 3, defensePoint: 2,
+    defenseSam: 5,
     baseLoadout: { "SM-2MR": 24 }
   }),
   aircraft: () => ({
@@ -287,7 +266,7 @@ export const DEFAULTS = {
   }),
   ammo: () => ({
     kind: "ammo", name: "NEW-MSL",
-    category: "ship_sam", symbol: "triangle", target: "missile", defenseLayer: "area", rcsM2: 0.1,
+    launchers: ["sea", "ground"], targets: ["missile", "air"], category: "ship_sam", symbol: "triangle", target: "missile", rcsM2: 0.1,
     platformSea: true, platformGround: true, platformAir: false,
     rangeNm: 90, preferredMinRangeNm: 8, preferredMaxRangeNm: 90, seekerRangeNm: 14,
     speedMps: 1000, maxTurnRateDps: 30, cellCost: 1, pk: 0.45, salvo: 2,
@@ -309,12 +288,24 @@ export function validateUnit(unit) {
   }
   const schema = SCHEMAS[kind];
   const fail = (field, msg) => errors.push({ field, msg });
+  let ammoLaunchers = null;
+  let ammoTargets = null;
 
   if (kind === "ammo") {
     if (!ID_RE.test(String(unit.name ?? ""))) fail("name", "ID must be alphanumeric (._- allowed)");
-    if (!unit.platformSea && !unit.platformGround && !unit.platformAir) {
-      fail("platformSea", "select at least one launch platform");
-    }
+    ammoLaunchers = Array.isArray(unit.launchers) ? unit.launchers : [
+      unit.platformSea ? "sea" : null,
+      unit.platformGround ? "ground" : null,
+      unit.platformAir ? "air" : null
+    ].filter(Boolean);
+    ammoTargets = Array.isArray(unit.targets) ? unit.targets
+      : unit.target === "missile" ? ["missile"]
+        : unit.target === "air" ? ["air"]
+          : unit.target === "dual" ? ["missile", "air", "sea", "ground"]
+            : unit.target === "ship" || unit.category === "anti_ship" ? ["sea", "ground"]
+              : [];
+    if (!ammoLaunchers.length) fail("launchers", "select at least one launcher");
+    if (!ammoTargets.length) fail("targets", "select at least one target");
   } else {
     if (!String(unit.name ?? "").trim()) fail("name", "Name is required");
     if (!TAG_RE.test(String(unit.prefix ?? ""))) fail("prefix", "Tag must be alphanumeric");
@@ -322,7 +313,9 @@ export function validateUnit(unit) {
 
   for (const section of schema.sections) {
     for (const f of section.fields) {
-      const v = unit[f.key];
+      const v = kind === "ammo" && f.key === "launchers" ? ammoLaunchers
+        : kind === "ammo" && f.key === "targets" ? ammoTargets
+          : unit[f.key];
       if (f.type === "number") {
         const n = Number(v);
         if (!Number.isFinite(n)) { fail(f.key, "must be a number"); continue; }
@@ -331,6 +324,11 @@ export function validateUnit(unit) {
       } else if (f.type === "select") {
         const ok = f.options.some((o) => o.value === v);
         if (!ok) fail(f.key, "invalid option");
+      } else if (f.type === "multicheck") {
+        const values = Array.isArray(v) ? v : [];
+        const allowed = new Set(f.options.map((o) => o.value));
+        if (!values.length) fail(f.key, "select at least one");
+        for (const value of values) if (!allowed.has(value)) fail(f.key, "invalid option");
       }
     }
   }

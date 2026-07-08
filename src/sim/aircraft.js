@@ -14,7 +14,7 @@
 
 import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE, SCENARIO_MODE } from "./constants.js";
 import { distance, angleTo } from "./math.js";
-import { MISSILES } from "./missiles.js";
+import { MISSILES, missileCanTarget, missileHasSurfaceTarget } from "./missiles.js";
 import { addEvent } from "./events.js";
 import { markContactDead, iterateTracksForShip } from "./sensors.js";
 
@@ -46,6 +46,8 @@ export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
   // never bore into the ship's air-defence envelope. Fractions of the best
   // carried anti-ship weapon's range.
   standoffFrac: 0.9,
+  lowObservableReleaseAltitudeM: 500,
+  lowObservableStandInFrac: 0.65,
   // Ingress/on-station/egress sub-phase boundaries, given as HYSTERESIS PAIRS
   // (enter/exit) rather than a single line. A single threshold flip-flops: the
   // 5NM on-station weave plus normal target drift walks the range back and
@@ -351,7 +353,7 @@ function bestStrikeRangeM(ship) {
   let max = 0;
   const lo = ship.loadout;
   if (lo) for (const id in lo) {
-    if (lo[id] > 0 && MISSILES[id]?.category === "anti_ship") max = Math.max(max, MISSILES[id].rangeM);
+    if (lo[id] > 0 && missileHasSurfaceTarget(MISSILES[id])) max = Math.max(max, MISSILES[id].rangeM);
   }
   return max;
 }
@@ -359,12 +361,7 @@ function bestStrikeRangeM(ship) {
 function hasAirToAir(ship) {
   const lo = ship.loadout;
   if (lo) for (const id in lo) {
-    const cat = MISSILES[id]?.category;
-    // Deliberately narrower than the generic "air defense" category set: a
-    // "ship_sam" round (SM-2MR/ESSM) does not count as this flight having a
-    // dogfight weapon even if it somehow ended up in the loadout -- only a
-    // true air_to_air AAM or a dual-role round does.
-    if (lo[id] > 0 && (cat === "air_to_air" || cat === "dual_role")) return true;
+    if (lo[id] > 0 && missileCanTarget(MISSILES[id], "air")) return true;
   }
   return false;
 }
@@ -390,13 +387,17 @@ function nearestIncomingMissile(sim, ship) {
 function strikeAmmo(ship) {
   let n = 0;
   const lo = ship.loadout;
-  if (lo) for (const id in lo) { const c = lo[id]; if (c > 0 && MISSILES[id]?.category === "anti_ship") n += c; }
+  if (lo) for (const id in lo) { const c = lo[id]; if (c > 0 && missileHasSurfaceTarget(MISSILES[id])) n += c; }
   return n;
 }
 function carriedStrike(ship) {
   const snap = ship.baseLoadoutSnapshot;
-  if (snap) for (const id in snap) { if (snap[id] > 0 && MISSILES[id]?.category === "anti_ship") return true; }
+  if (snap) for (const id in snap) { if (snap[id] > 0 && missileHasSurfaceTarget(MISSILES[id])) return true; }
   return false;
+}
+
+function lowObservableAntiShipProfile(ship, surf) {
+  return ship.hull === "F35C" && (surf?.domain ?? "sea") === "sea" && (ship.loadout?.["AGM-84"] ?? 0) > 0;
 }
 
 // Whether this squadron's design carries any weapon at all (any hardpoint in
@@ -534,7 +535,9 @@ export function decideAircraft(sim, ship) {
   const { surf, surfRangeM, air, airRangeM } = acquireAirTargets(sim, ship);
   const aam = hasAirToAir(ship);
   const strikeRangeM = bestStrikeRangeM(ship);
-  ship._standoffNm = strikeRangeM > 0 ? (strikeRangeM * cfg.standoffFrac) / NM : null;
+  const lowObservableStrike = lowObservableAntiShipProfile(ship, surf);
+  const strikeReleaseFrac = lowObservableStrike ? cfg.lowObservableStandInFrac : cfg.standoffFrac;
+  ship._standoffNm = strikeRangeM > 0 ? (strikeRangeM * strikeReleaseFrac) / NM : null;
 
   const canStrike = surf && strikeRangeM > 0;
   // Reheat is reserved for genuinely demanding moments (closing an intercept,
@@ -577,7 +580,7 @@ export function decideAircraft(sim, ship) {
   //    from just inside weapon reach, never inside the ship's air-defence
   //    envelope. Too close → turn cold and re-open range (egress).
   if (surf && strikeRangeM > 0) {
-    const standoffM = strikeRangeM * cfg.standoffFrac;
+    const standoffM = strikeRangeM * strikeReleaseFrac;
     const r = surfRangeM;
     ship.targetAltitudeM = r <= standoffM * cfg.ingressStartFrac ? cfg.ingressAltitudeM : cfg.cruiseAltitudeM;
     // Sub-phase hysteresis: which boundary applies depends on which sub-phase

@@ -47,7 +47,7 @@ export const TACTICAL_MAPS = {
   eastChinaSea: {
     id: "eastChinaSea",
     projection: {
-      type: "azimuthal-equidistant",
+      type: "equirectangular",
       center: EAST_CHINA_SEA_CENTER,
       sourceCrs: "EPSG:4326"
     },

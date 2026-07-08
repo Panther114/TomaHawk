@@ -25,15 +25,16 @@ export const MISSILES = {
     role: "area air defense",
     category: "ship_sam",
     platforms: ["sea", "ground"],
+    launchers: ["sea", "ground"],
+    targets: ["missile", "air"],
     rcsM2: 0.1,
     symbol: "triangle",
     rangeM: 90 * NM,
     speedMps: 1050,
     cellCost: 1,
-    pk: 0.45,
+    pk: 0.64,
     salvo: 2,
     target: "missile",
-    defenseLayer: "area",
     preferredMinRangeM: 8 * NM,
     preferredMaxRangeM: 90 * NM,
     interceptorsPerThreat: 1,
@@ -54,15 +55,16 @@ export const MISSILES = {
     role: "point defense",
     category: "ship_sam",
     platforms: ["sea", "ground"],
+    launchers: ["sea", "ground"],
+    targets: ["missile", "air"],
     rcsM2: 0.05,
     symbol: "triangle",
     rangeM: 28 * NM,
     speedMps: 980,
     cellCost: 0.25,
-    pk: 0.35,
+    pk: 0.60,
     salvo: 2,
     target: "missile",
-    defenseLayer: "point",
     preferredMinRangeM: 0.8 * NM,
     preferredMaxRangeM: 28 * NM,
     interceptorsPerThreat: 1,
@@ -83,15 +85,16 @@ export const MISSILES = {
     role: "anti-surface cruise missile approx.",
     category: "anti_ship",
     platforms: ["sea", "ground"],
+    launchers: ["sea", "ground"],
+    targets: ["sea", "ground"],
     rcsM2: 0.3,
     symbol: "square",
     rangeM: 120 * NM,
     speedMps: 270,
     cellCost: 1,
-    pk: 0.42,
+    pk: 0.48,
     salvo: 4,
     target: "ship",
-    defenseLayer: "strike",
     preferredMinRangeM: 8 * NM,
     preferredMaxRangeM: 120 * NM,
     interceptorsPerThreat: 0,
@@ -112,15 +115,16 @@ export const MISSILES = {
     role: "long-range surface strike approx.",
     category: "anti_ship",
     platforms: ["sea", "ground"],
+    launchers: ["sea", "ground"],
+    targets: ["sea", "ground"],
     rcsM2: 0.5,
     symbol: "square",
     rangeM: 650 * NM,
     speedMps: 245,
     cellCost: 1,
-    pk: 0.34,
+    pk: 0.40,
     salvo: 4,
     target: "ship",
-    defenseLayer: "strike",
     preferredMinRangeM: 80 * NM,
     preferredMaxRangeM: 650 * NM,
     interceptorsPerThreat: 0,
@@ -134,6 +138,40 @@ export const MISSILES = {
     retargetable: false,
     selfDestructOnLoss: true
   },
+  "DarkEagle": {
+    name: "DarkEagle",
+    displayName: "Dark Eagle LRHW",
+    shortLabel: "LRHW",
+    role: "ground-launched hypersonic surface strike approx.",
+    category: "anti_ship",
+    platforms: ["ground"],
+    launchers: ["ground"],
+    targets: ["sea", "ground"],
+    rcsM2: 0.45,
+    symbol: "diamond",
+    rangeM: 1500 * NM,
+    speedMps: 1700,
+    cellCost: 1,
+    pk: 0.58,
+    salvo: 1,
+    target: "ship",
+    preferredMinRangeM: 80 * NM,
+    preferredMaxRangeM: 1500 * NM,
+    interceptorsPerThreat: 0,
+    magazineReserveRatio: 0.1,
+    launchIntervalS: 12,
+    salvoSpacingS: 12,
+    ringStyle: "solid",
+    maxTurnRateDps: 11,
+    seekerRangeM: 28 * NM,
+    cruiseAltitudeM: 30000,
+    terminalAltitudeM: 5000,
+    terminalSeaSkimming: false,
+    terminalProfile: "hypersonic_glide",
+    guidance: "inertial_active",
+    retargetable: false,
+    selfDestructOnLoss: true
+  },
   "AIM-120C": {
     name: "AIM-120C",
     displayName: "AIM-120C AMRAAM",
@@ -141,15 +179,16 @@ export const MISSILES = {
     role: "BVR active-radar air-to-air",
     category: "air_to_air",
     platforms: ["air"],
+    launchers: ["air"],
+    targets: ["air"],
     rcsM2: 0.03,
     symbol: "triangle",
     rangeM: 55 * NM,
     speedMps: 1200,
     cellCost: 1,
-    pk: 0.66,
+    pk: 0.72,
     salvo: 2,
     target: "air",
-    defenseLayer: "area",
     preferredMinRangeM: 3 * NM,
     preferredMaxRangeM: 50 * NM,
     interceptorsPerThreat: 1,
@@ -172,15 +211,16 @@ export const MISSILES = {
     role: "extended-envelope BVR active-radar air-to-air",
     category: "air_to_air",
     platforms: ["air"],
+    launchers: ["air"],
+    targets: ["air"],
     rcsM2: 0.03,
     symbol: "triangle",
     rangeM: 82 * NM,
     speedMps: 1220,
     cellCost: 1,
-    pk: 0.70,
+    pk: 0.76,
     salvo: 2,
     target: "air",
-    defenseLayer: "area",
     preferredMinRangeM: 3 * NM,
     preferredMaxRangeM: 74 * NM,
     interceptorsPerThreat: 1,
@@ -202,15 +242,16 @@ export const MISSILES = {
     role: "WVR infrared air-to-air",
     category: "air_to_air",
     platforms: ["air"],
+    launchers: ["air"],
+    targets: ["air"],
     rcsM2: 0.02,
     symbol: "triangle",
     rangeM: 18 * NM,
     speedMps: 900,
     cellCost: 1,
-    pk: 0.72,
+    pk: 0.78,
     salvo: 1,
     target: "air",
-    defenseLayer: "point",
     preferredMinRangeM: 0.5 * NM,
     preferredMaxRangeM: 16 * NM,
     interceptorsPerThreat: 1,
@@ -232,15 +273,16 @@ export const MISSILES = {
     role: "air-launched anti-ship",
     category: "anti_ship",
     platforms: ["air"],
+    launchers: ["air"],
+    targets: ["sea"],
     rcsM2: 0.25,
     symbol: "square",
     rangeM: 67 * NM,
     speedMps: 240,
     cellCost: 1,
-    pk: 0.45,
+    pk: 0.52,
     salvo: 2,
     target: "ship",
-    defenseLayer: "strike",
     preferredMinRangeM: 6 * NM,
     preferredMaxRangeM: 67 * NM,
     interceptorsPerThreat: 0,
@@ -259,22 +301,23 @@ export const MISSILES = {
     displayName: "AGM-154 JSOW",
     shortLabel: "JSOW",
     // Air-launched stand-off precision-guided glide weapon for prosecuting
-    // defended fixed ground sites (SAM/CDB/EWR) from outside their own
+    // defended fixed ground sites (SAM/CDB/DEB/EWR) from outside their own
     // engagement envelope rather than boring in on AGM-84's shorter reach.
     // Reuses the anti_ship pipeline: ground emplacements are already valid
     // "ship" targets for that category, so no new targeting path is needed.
     role: "air-launched stand-off anti-ground strike",
     category: "anti_ship",
     platforms: ["air"],
+    launchers: ["air"],
+    targets: ["ground"],
     rcsM2: 0.4,
     symbol: "square",
     rangeM: 70 * NM,
     speedMps: 220,
     cellCost: 1,
-    pk: 0.5,
+    pk: 0.58,
     salvo: 2,
     target: "ship",
-    defenseLayer: "strike",
     preferredMinRangeM: 10 * NM,
     preferredMaxRangeM: 70 * NM,
     interceptorsPerThreat: 0,
@@ -295,15 +338,16 @@ export const MISSILES = {
     role: "dual-role: fleet air defense / anti-surface",
     category: "dual_role",
     platforms: ["sea", "ground"],
+    launchers: ["sea", "ground"],
+    targets: ["missile", "air", "sea", "ground"],
     rcsM2: 0.15,
     symbol: "diamond",
     rangeM: 200 * NM,
     speedMps: 1190,
     cellCost: 1,
-    pk: 0.55,
+    pk: 0.74,
     salvo: 2,
     target: "dual",
-    defenseLayer: "area",
     preferredMinRangeM: 10 * NM,
     preferredMaxRangeM: 200 * NM,
     interceptorsPerThreat: 1,
@@ -350,16 +394,8 @@ export function missileSymbol(missileId) {
   return MISSILES[missileId]?.symbol ?? "unknown";
 }
 
-// Category taxonomy: "ship_sam" (ship/ground area+point air-defense, e.g.
-// SM-2MR/ESSM) and "air_to_air" (aircraft-carried AAM, e.g. AIM-120C/D/AIM-9X)
-// split what used to be one shared "anti_air" bucket. The two are launched by
-// different platform types and were never meant to be interchangeable, but
-// nothing enforced that: an aircraft's loadout accepted a ship point-defense
-// round with no platform check anywhere, so the Unit Workshop would happily
-// let a custom (or even edited) squadron carry ESSM as if it were an AAM. See
-// missileAllowedForDomain for the actual platform gate; these two helpers are
-// the display/behavior-classification side (unchanged combat/UI semantics —
-// every old `=== "anti_air"` check just needs to match both new values now).
+// Legacy category helpers remain for rendering/tests and old custom ammo. The
+// primary model is launchers[] + targets[] below.
 export function isAntiAirCategory(category) {
   return category === "ship_sam" || category === "air_to_air";
 }
@@ -369,6 +405,39 @@ export function isAirDefenseCategory(category) {
   return isAntiAirCategory(category) || category === "dual_role";
 }
 
+export function missileLaunchers(spec) {
+  if (!spec) return [];
+  if (Array.isArray(spec.launchers) && spec.launchers.length) return spec.launchers;
+  if (Array.isArray(spec.platforms) && spec.platforms.length) return spec.platforms;
+  return ["sea", "ground", "air"];
+}
+
+export function missileTargets(spec) {
+  if (!spec) return [];
+  if (Array.isArray(spec.targets) && spec.targets.length) return spec.targets;
+  if (spec.target === "missile") return ["missile"];
+  if (spec.target === "air") return ["air"];
+  if (spec.target === "dual") return ["missile", "air", "sea", "ground"];
+  if (spec.target === "ship" || spec.category === "anti_ship") return ["sea", "ground"];
+  return [];
+}
+
+export function missileCanTarget(spec, domain) {
+  if (!spec) return false;
+  const targetDomain = domain === "ship" ? "sea" : domain;
+  return missileTargets(spec).includes(targetDomain);
+}
+
+export function missileHasSurfaceTarget(spec) {
+  const targets = missileTargets(spec);
+  return targets.includes("sea") || targets.includes("ground");
+}
+
+export function missileHasAirDefenseTarget(spec) {
+  const targets = missileTargets(spec);
+  return targets.includes("missile") || targets.includes("air");
+}
+
 // Which platform domains ("sea", "ground", "air") may carry a given missile.
 // A spec with no `platforms` array is unrestricted -- legacy/custom ammo saved
 // before this field existed keeps working everywhere, so existing mods are
@@ -376,20 +445,19 @@ export function isAirDefenseCategory(category) {
 export function missileAllowedForDomain(missileId, domain) {
   const spec = MISSILES[missileId];
   if (!spec) return false;
-  if (!Array.isArray(spec.platforms) || !spec.platforms.length) return true;
-  return spec.platforms.includes(domain);
+  return missileLaunchers(spec).includes(domain);
 }
 
 export function missileDisplayRole(missile) {
   if (!missile?.alive) return null;
   const spec = MISSILES[missile.missileId];
   if (!spec) return null;
-  if (isAntiAirCategory(spec.category)) return "anti_air";
-  if (spec.category === "anti_ship") return "anti_ship";
   if (missile.launchRole === "anti_air" || missile.launchRole === "anti_ship") return missile.launchRole;
-  // Legacy saves did not persist the role; their non-retargetable target is the launch intent.
   const targetId = String(missile.targetId ?? "");
-  return targetId.startsWith("M-") ? "anti_air" : "anti_ship";
+  if (targetId.startsWith("M-")) return "anti_air";
+  if (targetId) return "anti_ship";
+  if (missileCanTarget(spec, "missile") || missileCanTarget(spec, "air")) return "anti_air";
+  return "anti_ship";
 }
 
 export function battleSummaryCounts(sim) {

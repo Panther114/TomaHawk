@@ -1,24 +1,18 @@
 # Map Data
 
-The East China Sea presentation layer is generated from the public-domain
-Natural Earth 1:10m land and coastline datasets. The checked-in subset is
+The coastline presentation layer is generated from the public-domain
+Natural Earth 1:50m land and coastline datasets. The checked-in bundle is
 pinned to Natural Earth vector revision
 `ca96624a56bd078437bca8184e78163e5039ad19`.
 
 ## Coverage and projection
 
 - Source CRS: WGS84 longitude/latitude (`EPSG:4326`).
-- Source crop: computed from the shared projected map bounds in
-  `src/world/map-spec.js`, so the coastline/land coverage automatically tracks
-  `CORE_MAP_WIDTH_M` and `CORE_MAP_HEIGHT_M` and still retains geometry beyond
-  the visible rectangle so coastlines clip cleanly at its edge.
-- Display projection: spherical azimuthal equidistant, centered at
-  `125 E, 28.2 N`.
-- Initial operational core: approximately `118.2-131.8 E`, `25.2-31.2 N`.
-  The projected map continues to the viewport edges without stretching or an
-  artificial clipping rectangle.
-- Land and coastlines are rendered separately, preserving small islands and
-  preventing data-crop edges from being mistaken for coastlines.
+- Source coverage: full globe (`-180..180` longitude, `-90..90` latitude).
+- Display projection: spherical equirectangular meters, centered at `0, 0`.
+- Map bounds: one full Earth circumference wide by half an Earth circumference
+  tall, so the coastline layer covers the complete globe.
+- Land and coastlines are rendered separately, preserving small islands.
 
 Run `npm run map:data` to regenerate
 `src/ui/data/east-china-sea-data.js`. The application loads the generated local
@@ -29,7 +23,7 @@ shared binary water/land queries used by both rendering and the simulation:
 setup placement checks, setup-only map resets, direct-path tests, coastal
 detours, and final swept-segment movement guards all use the same projected
 Natural Earth geometry. The same query is domain-aware for placement: sea units
-must sit on water, while fixed ground emplacements (SAM/CDB/EWR) must sit on land
+must sit on water, while fixed ground emplacements (SAM/CDB/DEB/EWR) must sit on land
 (`isLandPoint`). There is still no shallow/deep-water concept; the navigability
 rule is simply water vs not-water.
 
@@ -39,3 +33,7 @@ ring and edge grids narrow coastal queries to relevant geometry. The mask is
 conservative: uncertain cells always fall back to polygon containment and
 continuous segment/edge intersection checks, so the grid cannot classify an
 uncertain coastal cell as navigable water.
+
+The renderer also culls terrain features by viewport before drawing the cached
+terrain layer, so global coverage does not mean every coastline path is stroked
+on every camera movement.

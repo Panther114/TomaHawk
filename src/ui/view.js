@@ -5,7 +5,10 @@
 // HTML strings. This keeps the view logic unit-testable (see tests/ui.test.mjs)
 // and is the first step of separating rendering from `src/app.js`.
 
-import { SIDE, NM, MISSILES, SHIP_CLASSES, usedCells, vlsCapacity, battleSummaryCounts, aliveAircraftCount, squadronSize } from "../sim.js";
+import {
+  SIDE, NM, MISSILES, SHIP_CLASSES, usedCells, vlsCapacity, battleSummaryCounts,
+  aliveAircraftCount, squadronSize, missileHasSurfaceTarget
+} from "../sim.js";
 import { t, getLang } from "./lang.js";
 
 // A ground emplacement is a fixed, land-based unit; it gets its own inventory
@@ -327,7 +330,7 @@ export function aawAsuwAggregate(unit) {
     if (!spec) continue;
     const count = displayCount(unit, id);
     const base = Math.max(0, Math.round(snapshot[id] ?? 0));
-    if (spec.category === "anti_ship") { asuw += count; asuwBase += base; }
+    if (missileHasSurfaceTarget(spec)) { asuw += count; asuwBase += base; }
     else { aaw += count; aawBase += base; }
   }
   return { aaw, aawBase, asuw, asuwBase };

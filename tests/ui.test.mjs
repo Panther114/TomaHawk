@@ -229,14 +229,14 @@ test("shipDetailCardHtml dispatches naval/ground/air layouts by unit TYPE, not h
   assert.match(navalHtml, new RegExp(t("detail.vls")));
 
   // Armed ground (SAM): no propulsion (never moves), but fire control, a LOAD
-  // bar (it carries weapons), and an AAW count (it's an air-defence battery)
-  // all appear; ASUW does not (it carries no anti-ship weapons).
+  // bar (it carries weapons), and AAW/ASUW counts appear because SM-6 is now
+  // explicit dual-role missile/air/surface capable ammo.
   const samHtml = shipDetailCardHtml(sam, 120);
   assert.doesNotMatch(samHtml, new RegExp(t("detail.prop")));
   assert.match(samHtml, new RegExp(t("detail.fcs")));
   assert.match(samHtml, new RegExp(t("detail.load")));
   assert.match(samHtml, new RegExp(t("detail.aaw")));
-  assert.doesNotMatch(samHtml, new RegExp(t("detail.asuw")));
+  assert.match(samHtml, new RegExp(t("detail.asuw")));
 
   // Unarmed ground (EWR): no propulsion, no fire control, no LOAD bar, no
   // AAW/ASUW rows -- just radar and CIC (it's a sensor node, nothing else).

@@ -34,13 +34,14 @@ import {
   setScenarioMap,
   setLoadout,
   stepSim,
+  planEngagements,
   moveShips,
   usedCells,
   validateLoadout,
   weaponRangeEntries,
   wrapAngle
 } from "../src/sim.js";
-import { isWaterPoint, projectLonLat } from "../src/world/terrain.js";
+import { isWaterPoint, MAP_HEIGHT_M, MAP_WIDTH_M, projectLonLat } from "../src/world/terrain.js";
 
 function runningScenarioMode(seed = 1) {
   const sim = createScenario(seed);
@@ -90,8 +91,8 @@ test("default scenario creates one blue and one red destroyer", () => {
   assert.equal(sim.mode, SCENARIO_MODE.SETUP);
   assert.equal(Math.abs(sim.ships[0].x - sim.ships[1].x), 40 * NM);
   assert.equal(Math.abs(sim.ships[0].x - sim.ships[1].x) / NM, 40);
-  assert.equal(sim.widthM, 6480 * NM);
-  assert.equal(sim.heightM, 3456 * NM);
+  assert.equal(sim.widthM, MAP_WIDTH_M);
+  assert.equal(sim.heightM, MAP_HEIGHT_M);
 });
 
 test("default ship headings point blue left and red right before battle starts", () => {
@@ -430,8 +431,9 @@ test("map changes in setup reseat ships onto open water for the new terrain", ()
 test("missile definitions include tactical display metadata", () => {
   for (const [id, spec] of Object.entries(MISSILES)) {
     assert.ok(["anti_ship", "ship_sam", "air_to_air", "dual_role"].includes(spec.category), `${id} category`);
+    assert.ok(Array.isArray(spec.launchers) && spec.launchers.length > 0, `${id} launchers`);
+    assert.ok(Array.isArray(spec.targets) && spec.targets.length > 0, `${id} targets`);
     assert.ok(spec.shortLabel.length >= 3, `${id} short label`);
-    assert.ok(spec.defenseLayer, `${id} defense layer`);
     assert.ok(Number.isFinite(spec.magazineReserveRatio), `${id} reserve ratio`);
     assert.ok(spec.launchIntervalS > 0, `${id} launch interval`);
     assert.ok(spec.salvoSpacingS > 0, `${id} salvo spacing`);
@@ -654,8 +656,8 @@ test("scenario restore normalizes invalid dimensions and ship coordinates", () =
 
   const restored = restoreScenario(data);
   assert.equal(restored.seed, 0);
-  assert.equal(restored.widthM, 6480 * NM);
-  assert.equal(restored.heightM, 3456 * NM);
+  assert.equal(restored.widthM, MAP_WIDTH_M);
+  assert.equal(restored.heightM, MAP_HEIGHT_M);
   assert.equal(restored.ships[0].x, 0);
   assert.equal(restored.ships[0].y, 0);
 });
@@ -888,7 +890,7 @@ test("close saturated raids use ESSM instead of forcing every shot through SM-2"
   assert.ok(
     sim.missiles.some((m) => m.side === SIDE.BLUE && m.missileId === "ESSM")
       || blue.launchQueue.some((order) => order.missileId === "ESSM"),
-    "close raid is assigned to ESSM point-defense layer"
+    "close raid is assigned to ESSM"
   );
 });
 
@@ -1313,6 +1315,210 @@ test("terminal ESSM defense can shoot-shoot from one ship when a single failure 
   const secondShotQueued = blue.launchQueue.filter((order) => order.targetId === threat.id && order.missileId === "ESSM").length;
   const secondShotAirborne = sim.missiles.filter((m) => m.side === SIDE.BLUE && m.launcherId === blue.id && m.targetId === threat.id && m.missileId === "ESSM").length;
   assert.ok(secondShotQueued + secondShotAirborne >= 2, "ship commits an additional ESSM when one miss would mean a kill");
+});
+
+test("defensive channels cap simultaneous queued SAM engagements", () => {
+  const sim = runningScenarioMode(74);
+  clearSide(sim, SIDE.BLUE);
+  clearSide(sim, SIDE.RED);
+  const blue = placeShip(sim, SIDE.BLUE, 0, 0, "DDG");
+  blue.defenseChannels.sam = 1;
+  blue.loadout["SM-2MR"] = 8;
+  blue.loadout["SM-6"] = 0;
+  blue.loadout.ESSM = 0;
+  const red = placeShip(sim, SIDE.RED, 80 * NM, 0, "DDG");
+  red.roe.weaponState = WEAPON_STATE.HOLD;
+  for (const [id, x, y] of [
+    ["M-sam-channel-a", 45 * NM, 0],
+    ["M-sam-channel-b", 46 * NM, 1 * NM]
+  ]) {
+    const threat = strikeAt(sim, red, blue, { id, x, y, heading: Math.PI, speed: 270 });
+    blue.tracks.set(threat.id, {
+      id: threat.id,
+      side: threat.side,
+      classification: threat.missileId,
+      x: threat.x,
+      y: threat.y,
+      vx: Math.cos(threat.heading) * threat.speed,
+      vy: Math.sin(threat.heading) * threat.speed,
+      quality: 0.9,
+      uncertainty: 200,
+      source: blue.id,
+      age: 0,
+      lastSeen: sim.time
+    });
+  }
+  sim.missiles.push({
+    id: "M-blue-sam-channel-active",
+    side: SIDE.BLUE,
+    launcherId: blue.id,
+    targetId: "M-sam-channel-a",
+    missileId: "SM-2MR",
+    x: blue.x,
+    y: blue.y,
+    heading: 0,
+    speed: MISSILES["SM-2MR"].speedMps,
+    maxRangeM: MISSILES["SM-2MR"].rangeM,
+    flownM: 0,
+    targetX: 45 * NM,
+    targetY: 0,
+    controllerSide: SIDE.BLUE,
+    terminal: false,
+    alive: true
+  });
+  planEngagements(sim);
+  assert.equal(blue.launchQueue.filter((order) => order.missileId === "SM-2MR").length, 0);
+});
+
+test("midcourse raid pressure can receive shoot-shoot if channels allow it", () => {
+  const sim = runningScenarioMode(75);
+  clearSide(sim, SIDE.BLUE);
+  clearSide(sim, SIDE.RED);
+  const target = placeShip(sim, SIDE.BLUE, 0, 0, "DDG");
+  target.defenseChannels.sam = 4;
+  const escort = placeShip(sim, SIDE.BLUE, 0, 8 * NM, "CCG");
+  escort.defenseChannels.sam = 4;
+  const red = placeShip(sim, SIDE.RED, 80 * NM, 0, "DDG");
+  red.roe.weaponState = WEAPON_STATE.HOLD;
+  const threats = [
+    strikeAt(sim, red, target, { id: "M-midcourse-a", x: 50 * NM, y: 0, heading: Math.PI, speed: 270 }),
+    strikeAt(sim, red, target, { id: "M-midcourse-b", x: 52 * NM, y: 2 * NM, heading: Math.PI, speed: 270 })
+  ];
+  for (const defender of [target, escort]) {
+    defender.loadout["SM-2MR"] = 8;
+    defender.loadout["SM-6"] = 0;
+    defender.loadout.ESSM = 0;
+    for (const threat of threats) {
+      defender.tracks.set(threat.id, {
+        id: threat.id,
+        side: threat.side,
+        classification: threat.missileId,
+        x: threat.x,
+        y: threat.y,
+        vx: Math.cos(threat.heading) * threat.speed,
+        vy: Math.sin(threat.heading) * threat.speed,
+        quality: 0.9,
+        uncertainty: 200,
+        source: defender.id,
+        age: 0,
+        lastSeen: sim.time
+      });
+    }
+  }
+  planEngagements(sim);
+  for (const threat of threats) {
+    const assigned = [target, escort].reduce(
+      (sum, ship) => sum + ship.launchQueue.filter((order) => order.targetId === threat.id).length,
+      0
+    );
+    assert.ok(assigned >= 2, `${threat.id} should get shoot-shoot under raid pressure when channels allow it`);
+  }
+});
+
+test("defensive launch orders carry track quality into interceptor PK", () => {
+  const sim = runningScenarioMode(76);
+  clearSide(sim, SIDE.BLUE);
+  clearSide(sim, SIDE.RED);
+  const blue = placeShip(sim, SIDE.BLUE, 0, 0, "DDG");
+  blue.loadout["SM-2MR"] = 8;
+  blue.loadout["SM-6"] = 0;
+  blue.loadout.ESSM = 0;
+  const red = placeShip(sim, SIDE.RED, 80 * NM, 0, "DDG");
+  red.roe.weaponState = WEAPON_STATE.HOLD;
+  const threat = strikeAt(sim, red, blue, {
+    id: "M-track-quality-threat",
+    x: 45 * NM,
+    y: 0,
+    heading: Math.PI,
+    speed: 270
+  });
+  blue.tracks.set(threat.id, {
+    id: threat.id,
+    side: threat.side,
+    classification: threat.missileId,
+    x: threat.x,
+    y: threat.y,
+    vx: Math.cos(threat.heading) * threat.speed,
+    vy: Math.sin(threat.heading) * threat.speed,
+    quality: 0.35,
+    uncertainty: 2500,
+    source: blue.id,
+    age: 9,
+    lastSeen: sim.time - 9
+  });
+  planEngagements(sim);
+  const order = blue.launchQueue.find((queued) => queued.targetId === threat.id);
+  assert.equal(order?.targetTrackQuality, 0.35);
+  assert.equal(order?.targetTrackAgeS, 9);
+});
+
+test("offensive planner does not top up an unresolved first wave", () => {
+  const sim = runningScenarioMode(77);
+  clearSide(sim, SIDE.BLUE);
+  clearSide(sim, SIDE.RED);
+  const shooter = placeShip(sim, SIDE.BLUE, -70 * NM, 0, "DDG");
+  shooter.loadout.MaritimeStrike = 24;
+  shooter.loadout.TomahawkBlockV = 0;
+  shooter.loadout["SM-6"] = 0;
+  const target = placeShip(sim, SIDE.RED, 30 * NM, 0, "BBG");
+  target.roe.weaponState = WEAPON_STATE.HOLD;
+  const track = {
+    id: target.id,
+    side: target.side,
+    domain: target.domain,
+    classification: target.className,
+    x: target.x,
+    y: target.y,
+    vx: 0,
+    vy: 0,
+    quality: 0.95,
+    uncertainty: 100,
+    source: shooter.id,
+    age: 0,
+    lastSeen: sim.time
+  };
+  shooter.tracks.set(target.id, track);
+  sim.forcePicture = new Map([[SIDE.BLUE, new Map([[target.id, track]])], [SIDE.RED, new Map()]]);
+  sim.commandState = new Map([[SIDE.BLUE, {
+    aggression: 0.95,
+    advantage: 0.5,
+    ownOffense: 24,
+    mode: "saturate",
+    enemyOffenseEstimate: 0,
+    targetBreadth: 1,
+    raidDepth: 12
+  }]]);
+  planEngagements(sim);
+  const firstWave = shooter.launchQueue.filter((order) => order.targetId === target.id).length;
+  assert.ok(firstWave > 0 && firstWave < 16, `fixture should queue a partial first wave, got ${firstWave}`);
+  shooter.launchQueue = [];
+  for (let i = 0; i < firstWave; i++) {
+    sim.missiles.push({
+      id: `M-first-wave-${i}`,
+      side: SIDE.BLUE,
+      launcherId: shooter.id,
+      targetId: target.id,
+      missileId: "MaritimeStrike",
+      x: shooter.x + i * 10,
+      y: shooter.y,
+      heading: 0,
+      speed: MISSILES.MaritimeStrike.speedMps,
+      maxRangeM: MISSILES.MaritimeStrike.rangeM,
+      flownM: 0,
+      targetX: target.x,
+      targetY: target.y,
+      controllerSide: SIDE.BLUE,
+      terminal: false,
+      alive: true
+    });
+  }
+  sim._missileById = null;
+  sim._aliveMissiles = null;
+  sim._missilesByTarget = null;
+  sim.nextFirePlanAt = 0;
+  shooter.reactionAvailableAt = 0;
+  planEngagements(sim);
+  assert.equal(shooter.launchQueue.filter((order) => order.targetId === target.id).length, 0);
 });
 
 test("dead missile tracks are pruned from selected radar views", () => {

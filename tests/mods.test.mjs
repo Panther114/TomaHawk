@@ -26,8 +26,20 @@ test("validateUnit accepts defaults and rejects bad fields", () => {
   assert.equal(validateUnit(badAmmo).ok, false);
   const badNum = { ...DEFAULTS.naval(), radarRangeNm: -5 };
   assert.equal(validateUnit(badNum).ok, false);
-  const badEnum = { ...DEFAULTS.ammo(), category: "nonsense" };
+  const badEnum = { ...DEFAULTS.ammo(), launchers: ["space"] };
   assert.equal(validateUnit(badEnum).ok, false);
+});
+
+test("ammo workshop uses launcher and target capability lists", () => {
+  const ammo = DEFAULTS.ammo();
+  assert.deepEqual(ammo.launchers, ["sea", "ground"]);
+  assert.deepEqual(ammo.targets, ["missile", "air"]);
+  const keys = SCHEMAS.ammo.sections.flatMap((section) => section.fields.map((field) => field.key));
+  assert.ok(keys.includes("launchers"));
+  assert.ok(keys.includes("targets"));
+  assert.ok(!keys.includes("category"));
+  assert.ok(!keys.includes("target"));
+  assert.ok(!keys.includes("defenseLayer"));
 });
 
 test("validateUnit rejects a loadout that exceeds VLS capacity, counting cell cost", () => {
@@ -52,10 +64,31 @@ test("vanillaUnits cover every built-in catalogue entry and are locked", () => {
 
 test("ammo NM<->m conversion round-trips against the vanilla catalogue", () => {
   const sm2 = vanillaUnits().find((u) => u.kind === "ammo" && unitId(u) === "SM-2MR");
+  assert.deepEqual(sm2.launchers, ["sea", "ground"]);
+  assert.deepEqual(sm2.targets, ["missile", "air"]);
   assert.equal(sm2.rangeNm, MISSILES["SM-2MR"].rangeM / NM);
   const spec = toInternalSpec(sm2);
+  assert.deepEqual(spec.launchers, ["sea", "ground"]);
+  assert.deepEqual(spec.targets, ["missile", "air"]);
   assert.ok(Math.abs(spec.rangeM - MISSILES["SM-2MR"].rangeM) < 1e-6);
   assert.ok(Math.abs(spec.seekerRangeM - MISSILES["SM-2MR"].seekerRangeM) < 1e-6);
+});
+
+test("legacy ammo fields normalize into launcher and target capabilities", () => {
+  const legacy = {
+    ...DEFAULTS.ammo(),
+    name: "LEGACY-SURF",
+    launchers: undefined,
+    targets: undefined,
+    platforms: ["ground"],
+    category: "anti_ship",
+    target: "ship"
+  };
+  const spec = toInternalSpec(legacy);
+  assert.deepEqual(spec.launchers, ["ground"]);
+  assert.deepEqual(spec.targets, ["sea", "ground"]);
+  assert.equal(spec.category, "anti_ship");
+  assert.equal(spec.target, "ship");
 });
 
 test("vanilla ship round-trip reproduces core internal fields", () => {
@@ -181,8 +214,8 @@ test("force inventory adds a column for a deployed custom missile (vanilla first
   unregisterUnit(ammo);
 });
 
-test("ground inventory aggregates a custom anti-ship missile into ASUW by category", () => {
-  const ammo = { ...DEFAULTS.ammo(), name: "CB-99", category: "anti_ship" };
+test("ground inventory aggregates a custom surface missile into ASUW by target capability", () => {
+  const ammo = { ...DEFAULTS.ammo(), name: "CB-99", launchers: ["ground"], targets: ["sea", "ground"] };
   registerUnit(ammo);
   const ground = { side: "RED", hull: "CDB", domain: "ground", isFixed: true,
     loadout: { "CB-99": 6 }, radarRangeM: 100 * NM, damageResist: 2 };
@@ -192,7 +225,7 @@ test("ground inventory aggregates a custom anti-ship missile into ASUW by catego
 });
 
 test("a ship actually fires a custom anti-ship missile at the enemy", () => {
-  const ammo = { ...DEFAULTS.ammo(), name: "HARPOON-X", category: "anti_ship",
+  const ammo = { ...DEFAULTS.ammo(), name: "HARPOON-X", launchers: ["sea"], targets: ["sea", "ground"],
     rangeNm: 140, preferredMinRangeNm: 5, preferredMaxRangeNm: 140 };
   registerUnit(ammo);
   const hull = { ...DEFAULTS.naval(), name: "Striker", prefix: "STK", baseLoadout: { "HARPOON-X": 16 } };

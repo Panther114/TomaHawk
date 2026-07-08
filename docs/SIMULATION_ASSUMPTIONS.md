@@ -18,11 +18,12 @@ The first ship class is an Arleigh Burke Flight IIA-inspired destroyer approxima
 
 The current missile set is intentionally abstract:
 
-- `SM-2MR` / `SM2`: area air-defense interceptor.
+- `SM-2MR` / `SM2`: medium/long-range fleet interceptor.
 - `SM-6` / `SM6`: dual-role fleet air defense and anti-surface missile abstraction.
-- `ESSM`: point-defense interceptor.
+- `ESSM`: shorter-range fleet interceptor.
 - `MaritimeStrike` / `MSTK`: public-approximate maritime strike missile abstraction, fired in paced four-round salvos for the playable sandbox.
 - `TomahawkBlockV` / `TLAM`: long-range surface strike abstraction, fired in paced four-round salvos for the playable sandbox.
+- `DarkEagle` / `LRHW`: ground-launched LRHW / Dark Eagle hypersonic boost-glide abstraction. It is ground-only, uses a high-altitude profile, and attacks surface targets (ships and fixed ground units), not aircraft.
 
 Ranges, speeds, and kill probabilities are gameplay/simulation envelopes. They should be refined only with public sources and explicit uncertainty notes.
 
@@ -65,13 +66,17 @@ Strike-empty ships now shift from prosecution to survival. A ship with no dedica
 
 Default spawn loadouts are full for the hull class, so a fresh DDG does not begin the scenario with empty VLS cells. That keeps the tactical picture readable and avoids a misleading "already partly depleted" setup state.
 
-Defensive missile selection is layered:
+Fixed ground shooters do not rearm. Once a SAM, coastal battery, or Dark Eagle battery has no launchable weapons left, fire planning skips it as a shooter while leaving its radar, tracks, CEC sharing, damage state, and win-condition presence intact. Unarmed radar/airfield units were already passive sensors and remain so.
 
-- SM-2 is the area-defense layer for earlier, longer-range, saturated, or high-risk missile engagements.
-- ESSM is the preferred point-defense layer for closer inbound threats when it can reasonably cover the threat.
+Defensive missile selection uses one SAM engagement-channel pool plus weapon kinematics:
+
+- SM-2 is preferred for earlier, longer-range, saturated, or high-risk missile engagements.
+- ESSM is preferred for closer inbound threats when it can reasonably cover the threat.
 - Survival overrides magazine conservation: if ESSM is depleted or the raid is saturated, SM-2 can be used even when conservation would otherwise be preferred.
 - CIWS is the terminal last-ditch layer only.
-- The planner is not satisfied by the mere existence of one assigned interceptor. It estimates whether already-active or queued shots can actually arrive before the inbound missile hits, and it can order multiple concurrent interceptors onto one threat when a single late or single-shot engagement would be tactically unsound. Close-in, last-chance, or one-leak-kills cases bias that extra shot toward ESSM when the point-defense layer can cover.
+- Missile defense respects each unit's `defenseChannels.sam` count. SM-2MR, SM-6, and ESSM all consume the same SAM channel until intercept, miss, abort, or timeout. CIWS remains governed by mount count, ammunition, and cycle time.
+- Clean single midcourse tracks can receive one interceptor, but raid pressure, terminal threats, weak or stale tracks, late time-to-impact, a late first solution, or a leaker that would kill the target can drive shoot-shoot. Third shots are allowed for terminal or late high-pressure cases if magazines and channels allow it.
+- Defensive missile PK keeps the per-shot weapon values but applies modest penalties for stale or low-quality tracks in addition to the existing speed, sea-skimming, and local saturation penalties. Misses therefore come from bad cueing, late engagements, and saturation instead of a global interceptor nerf.
 
 CIWS is deliberately not modeled as an overpowered shield. It only engages terminal inbound missiles inside a very short envelope, consumes ammunition in bursts, has a cooldown between bursts, and takes a saturation penalty when multiple terminal missiles arrive together. This makes salvo timing and leakers possible while still giving the ship a last-ditch defensive layer.
 
@@ -194,7 +199,7 @@ hand-off to a replacement contact in the current simulation.
 
 Launches are paced through a queue. The queue is an abstraction for launch-system sequencing and tactical-map readability: a salvo is ordered as one decision, but missiles leave the launcher over several seconds instead of appearing at the same coordinate. Defensive launch orders have priority over offensive strike orders and use a separate defensive cadence gate; this prevents a ship from ignoring inbound missiles simply because it is already releasing a surface-strike salvo. When the force commits to an anti-ship raid, multiple ships can also be given the same release window against the same target so the salvo arrives as a coordinated wave rather than a random sequence of independent fires.
 
-Normal anti-ship doctrine orders four-round salvos from each ship that has a valid shot. Multi-ship sides can contribute multiple salvos against one hostile target until the force-level raid size is saturated. Counterfire can happen before the first salvo fully resolves if the defending force has usable hostile tracks and reaction delay has elapsed.
+Normal anti-ship doctrine orders four-round salvos from each ship that has a valid shot. Multi-ship sides can contribute multiple salvos against one hostile target until the force-level raid size is saturated. Once a meaningful non-terminal wave is already in flight, the planner pauses top-ups against that target until the wave resolves, becomes terminal, or proves too small. Counterfire can still happen before the first salvo fully resolves if the defending force has usable hostile tracks and reaction delay has elapsed.
 
 ## Scenario Setup
 
@@ -223,15 +228,16 @@ This is a plausible simulation abstraction, not a real-world tactical procedure.
 Four naval ship classes are now modelled (see DATA_MODEL.md for full table): DDG (Burke destroyer), CCG (Ticonderoga cruiser), BBG (Trump arsenal battleship), FFG (Constellation frigate). Each has per-class kinematics (max speed, acceleration, turn rate, turnRateFlank), sensor fit (radar range, scan interval), magazine capacity (a single VLS-cell pool shared by every missile via its cell cost), CIWS mounts/ammo/cycle parameters, defence channels, damage resilience, and damage degradation. The compact setup rail includes a class selector (Naval / Ground groups) for newly placed Blue and Red units.
 
 ### Ground Emplacements
-Three fixed land-based unit types extend the same ship model with `domain: "ground"`, `isFixed: true`, and zero speed: SAM (coastal surface-to-air battery), CDB (coastal anti-ship battery), and EWR (early-warning radar, no weapons). They are deliberately implemented as stationary ship-entities so they reuse the existing sensor, cooperative-engagement, fire-planning, damage, and win-condition logic rather than a parallel system:
+Four fixed land-based unit types extend the same ship model with `domain: "ground"`, `isFixed: true`, and zero speed: SAM (coastal surface-to-air battery), CDB (coastal anti-ship battery), DEB (Dark Eagle hypersonic strike battery), and EWR (early-warning radar, no weapons). They are deliberately implemented as stationary ship-entities so they reuse the existing sensor, cooperative-engagement, fire-planning, damage, and win-condition logic rather than a parallel system:
 
 - **Placement.** Ground units must be placed on land (and are rejected on water on terrain maps); they never move, are never assigned a formation station or the OTC role, and are never re-seated to water on restore or map change.
 - **Cross-domain behaviour.** A ground radar (especially the EWR) contributes to the side's cooperative force picture, so ships can engage on a ground unit's remote track and vice versa; naval anti-ship fire targets and destroys enemy ground units, and a coastal SAM can defend nearby friendly ships.
 - **CDB targeting radar.** The coastal anti-ship battery is given a long, over-the-horizon targeting radar (≈250 NM) so its long-range missiles are usable at standoff; a battery whose radar is shorter than its weapons would otherwise sit blind and passive. Beyond its own radar it still depends on external cueing (e.g. an EWR) through CEC.
+- **DEB remote cueing.** The Dark Eagle battery has a long-range surface-search abstraction so it can participate in the sandbox, but its 1,500 NM LRHW shots can also use shared tracks from EWR, aircraft, or ships. The missile flies high and fast, so it can be detected earlier than a sea-skimmer but gives defenders less engagement time.
 - **Win condition.** Unchanged — a side is eliminated when all of its units (sea and ground) are destroyed.
 
 ### SM-6 Dual-Role
-SM-6 (RIM-174 ERAM) fills the gap between area air defence and anti-surface strike. It has 200 NM range, Mach 3.5 speed, PK 0.55, and `target: "dual"`. Its launch order permanently assigns either the anti-surface profile and square icon or the interceptor profile and triangle icon. SM-6 is preferred for long-range/high-threat defensive engagements and can be used offensively when magazine depth permits (>12 rounds).
+SM-6 (RIM-174 ERAM) fills the gap between long-range fleet air defense and anti-surface strike. It has 200 NM range, Mach 3.5 speed, PK 0.74, and `targets: ["missile", "air", "sea", "ground"]`. Its launch order permanently assigns either the anti-surface profile and square icon or the interceptor profile and triangle icon. SM-6 is preferred for long-range/high-threat defensive engagements and can be used offensively when magazine depth permits (>12 rounds).
 
 ### Subsystem Damage
 Each anti-ship hit degrades 2-3 of six subsystems (radar, VLS, propulsion, fireControl, CIWS, CIC) by 15-45%. Combat effects: radar damage reduces track quality, propulsion damage reduces max speed, CIWS damage reduces PK. Subsystem state is visible in the ship detail popup with colour-coded health bars.
@@ -247,7 +253,7 @@ approximations of flight profile and detectability, not exact sensor
 performance claims.
 
 ### Interceptor PK Refinements
-Interceptor PK now includes supersonic penalty (-0.15 for Mach 2+ targets), sea-skimming penalty (-0.14), and defence saturation penalty (concurrent threats degrade each interceptor's PK). CIWS PK uses a base 0.45 × saturation ratio with penalties for sea-skimmer (-0.18), damage (-0.06), and supersonic speed (-0.12).
+Interceptor PK now includes a speed penalty (-0.15 for fast supersonic targets, -0.28 for hypersonic targets), sea-skimming penalty (-0.14), stale/low-quality track penalty, and defence saturation penalty (concurrent threats degrade each interceptor's PK). Hard-kill missile intercepts are capped at 0.90 after modifiers. CIWS PK uses a base 0.45 × saturation ratio with penalties for sea-skimmer (-0.18), damage (-0.06), and supersonic speed (-0.12).
 
 Saturation is now a **true local spatial density**, not a per-target proxy: both the interceptor penalty and the CIWS saturation ratio count the live threat missiles physically crowding the airspace around the interceptor / point-defence bubble (from any raid), via a pooled per-tick missile grid. This makes a dense, multi-axis raid degrade defences the way a single concentrated raid does, and is bounded to a handful of nearby grid cells rather than a naive scan of every missile.
 
@@ -402,6 +408,10 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
     into the ship's air-defence envelope; if it drifts too close it turns cold and
     **egresses** to re-open the range. (`standoffFrac`, `egressFrac`,
     `ingressStartFrac`, `cruiseAltitudeM`, `ingressAltitudeM`.)
+    F-35C anti-ship runs use a low-observable stand-in variant: they must descend
+    below `lowObservableReleaseAltitudeM` (500 m) and close to
+    `lowObservableStandInFrac` (0.65) of AGM-84 range before release. F-15N
+    Harpoon runs and F-35A/F-15E JSOW attacks keep the normal stand-off release.
   - *Defensive air-to-air.* A striker breaks off for an enemy flight only when it
     closes inside self-defence/merge range (`a2aSelfDefenseRangeM`) — it does not
     abandon its run to chase a distant fighter, so strike packages press their
@@ -466,8 +476,10 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   whichever it carries), or is low on fuel, then returns to the
   nearest friendly **airfield** to rearm/refuel (a flat timer) and relaunch. With
   no airfield reachable it limps toward friendly territory and splashes when fuel
-  runs out. A flight will not rearm on a destroyed airfield. Carriers, sortie
-  generation, and per-airframe fuel are out of scope for now.
+  runs out. Fighter endurance is tuned as combat radius with return reserve:
+  roughly 600 nm for the 5th-gen set and 680 nm for the 4.5-gen set. A flight
+  will not rearm on a destroyed airfield. Carriers, sortie generation, and
+  per-airframe fuel are out of scope for now.
 - **Airfields.** An airfield (`AFB`, or any ground unit with `isAirfield`) is a
   fixed unit placeable on land **or** water that rearms/refuels friendly flights.
 - **UI.** The force inventory has an air sub-table (flight strength / lifecycle
@@ -534,12 +546,13 @@ which POSTs them to the server (`POST /debug/save`) on every run.
 
 ## Current Weapons (updated)
 
-- `SM-2MR` / `SM2`: area air-defence interceptor (90 NM, Mach 3.1, PK 0.45)
-- `SM-6` / `SM6`: dual-role fleet AAW and anti-surface (200 NM, Mach 3.5, PK 0.55)
-- `ESSM`: point-defence interceptor, quad-packable (28 NM, Mach 2.9, PK 0.35)
-- `MaritimeStrike` / `MSTK`: subsonic anti-ship cruise missile (120 NM, Mach 0.8, PK 0.42)
-- `TomahawkBlockV` / `TLAM`: long-range surface strike (650 NM, Mach 0.7, PK 0.34)
-- `AIM-120C` / `120C`: BVR active-radar air-to-air missile for 4.5-gen aircraft (55 NM, PK 0.66, `target: "air"`)
-- `AIM-120D` / `120D`: extended-envelope BVR active-radar air-to-air missile for 5th-gen aircraft (82 NM, PK 0.70, `target: "air"`)
-- `AIM-9X` / `AIM9`: WVR infrared air-to-air missile (18 NM, PK 0.72, flare-decoyable)
-- `AGM-84` / `HPN`: air-launched anti-ship missile (67 NM, subsonic, PK 0.45)
+- `SM-2MR` / `SM2`: fleet interceptor (90 NM, Mach 3.1, PK 0.64)
+- `SM-6` / `SM6`: dual-role fleet AAW and anti-surface (200 NM, Mach 3.5, PK 0.74)
+- `ESSM`: short-range interceptor, quad-packable (28 NM, Mach 2.9, PK 0.60)
+- `MaritimeStrike` / `MSTK`: subsonic anti-ship cruise missile (120 NM, Mach 0.8, PK 0.48)
+- `TomahawkBlockV` / `TLAM`: long-range surface strike (650 NM, Mach 0.7, PK 0.40)
+- `DarkEagle` / `LRHW`: ground-launched hypersonic surface strike (1,500 NM, Mach 5+, PK 0.58)
+- `AIM-120C` / `120C`: BVR active-radar air-to-air missile for 4.5-gen aircraft (55 NM, PK 0.72, `targets: ["air"]`)
+- `AIM-120D` / `120D`: extended-envelope BVR active-radar air-to-air missile for 5th-gen aircraft (82 NM, PK 0.76, `targets: ["air"]`)
+- `AIM-9X` / `AIM9`: WVR infrared air-to-air missile (18 NM, PK 0.78, flare-decoyable)
+- `AGM-84` / `HPN`: air-launched anti-ship missile (67 NM, subsonic, PK 0.52)

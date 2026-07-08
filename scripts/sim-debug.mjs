@@ -32,7 +32,7 @@ const FRAME_S = Number(process.env.FRAME_S ?? 8);
 
 // A LARGE, ASYMMETRIC, mixed-domain fight exercising every current unit type on
 // both sides at once — air (all six fixed-identity squadrons plus the AWAC
-// command-hub asset), naval, and fixed ground (SAM/CDB/EWR/airfield) — so the
+// command-hub asset), naval, and fixed ground (SAM/CDB/DEB/EWR/airfield) — so the
 // debug log can be read as a systematic trace of every kind of unit
 // interaction: air-vs-air, air-vs-ship, air-vs-ground, ship-vs-ship,
 // ground-vs-ship, and layered SAM defence against a strike.

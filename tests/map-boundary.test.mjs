@@ -11,9 +11,9 @@ import {
 } from "../src/ui/maps.js";
 import { geographicExtentForProjectedBounds } from "../src/world/map-spec.js";
 
-test("East China Sea world and coastline extent match the expanded map bounds", () => {
-  assert.equal(MAP_WIDTH_M, CORE_MAP_WIDTH_M * 9);
-  assert.equal(MAP_HEIGHT_M, CORE_MAP_HEIGHT_M * 48 / 5);
+test("coastline world and extent cover the full globe", () => {
+  assert.ok(MAP_WIDTH_M > CORE_MAP_WIDTH_M * 25);
+  assert.ok(MAP_HEIGHT_M > CORE_MAP_HEIGHT_M * 25);
 
   const extent = TACTICAL_MAPS.eastChinaSea.geographicExtent;
   const expected = geographicExtentForProjectedBounds(MAP_WIDTH_M, MAP_HEIGHT_M);
@@ -79,6 +79,9 @@ test("terrain rendering reuses a cached offscreen layer when the camera is uncha
 
   assert.match(appSource, /const terrainLayer = document\.createElement\("canvas"\);/);
   assert.match(appSource, /if \(terrainLayerKey !== key\) \{/);
+  assert.match(appSource, /const TERRAIN_BUCKET_M = 4_000_000;/);
+  assert.match(appSource, /terrainItemsInView\(paths\.landBuckets, viewBounds\)/);
+  assert.match(appSource, /terrainItemsInView\(paths\.coastBuckets, viewBounds\)/);
   // The cached layer is blitted 1:1 in device space (identity transform) so a
   // fractional devicePixelRatio does not resample/soften the coastline.
   assert.match(appSource, /ctx\.drawImage\(terrainLayer, 0, 0\);/);

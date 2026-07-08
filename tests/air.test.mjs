@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  NM, MISSILES, SHIP_CLASSES, makeShip, createScenario, clearSide, placeShip, duplicateShip, stepSim,
+  NM, KNOT, MISSILES, SHIP_CLASSES, makeShip, createScenario, clearSide, placeShip, duplicateShip, stepSim,
   SIDE, SCENARIO_MODE, aliveAircraftCount, squadronSize, isAircraft, isAirfield,
-  serializeScenario, restoreScenario, missileDetectionEnvelope, shareTracks
+  serializeScenario, restoreScenario, missileDetectionEnvelope, shareTracks, planEngagements
 } from "../src/sim.js";
 import { DEFAULTS } from "../src/mods/schema.js";
 import { registerUnit, unregisterUnit, makeUniqueShipId, vanillaUnits, unitId } from "../src/mods/registry.js";
@@ -44,6 +44,15 @@ test("all six aircraft squadron hulls exist with the right shape and airfield (A
   }
   assert.equal(SHIP_CLASSES.AFB.isAirfield, true);
   assert.equal(SHIP_CLASSES.AFB.domain, "ground");
+});
+
+test("aircraft endurance supports realistic combat radius with return reserve", () => {
+  const radiusNm = (hull) => {
+    const cls = SHIP_CLASSES[hull];
+    return (cls.enduranceS * (1 - 0.18) * cls.cruiseSpeedKt * KNOT / 2) / NM;
+  };
+  for (const hull of FIFTH_GEN_HULLS) assert.ok(Math.abs(radiusNm(hull) - 600) < 2, `${hull} radius`);
+  for (const hull of FOURTH_HALF_GEN_HULLS) assert.ok(Math.abs(radiusNm(hull) - 680) < 2, `${hull} radius`);
 });
 
 test("each aircraft hull's vlsCells exactly fits its own default loadout (a genuinely rigid magazine)", () => {
@@ -99,15 +108,13 @@ test("5th-gen airframes have a meaningfully smaller radar cross-section than 4.5
   assert.ok(maxFifthGenRcs < minFourthHalfGenRcs / 5, "5th-gen RCS should be far smaller than 4.5-gen RCS");
 });
 
-// Polish pass: unit tags follow a Generation x Role scheme (G5/G4 x
-// AA/AG/AS), concise class names replace the old "F-22 Raptor Squadron
-// (5th-gen air-superiority) approx." style, and every hull within a
+// Unit tags now spell out the role instead of opaque GxRR abbreviations, and every hull within a
 // generation shares the same hardpoint count (5th-gen: 8, 4.5-gen: 14) so the
 // roster reads as two clean weight classes instead of six ad hoc numbers.
-test("aircraft tags/names follow the GxRR scheme and hardpoints are uniform per generation", () => {
+test("aircraft tags/names explain role and hardpoints are uniform per generation", () => {
   const expectedPrefix = {
-    F22: "G5AA", F35A: "G5AG", F35C: "G5AS",
-    F15C: "G4AA", F15E: "G4AG", F15N: "G4AS"
+    F22: "G5 Air Sup", F35A: "G5 Strike", F35C: "G5 Sea Strike",
+    F15C: "G4 Air Sup", F15E: "G4 Strike", F15N: "G4 Sea Strike"
   };
   for (const [hull, prefix] of Object.entries(expectedPrefix)) {
     assert.equal(SHIP_CLASSES[hull].prefix, prefix, `${hull} unit tag`);
@@ -504,9 +511,75 @@ test("a striker returns to base once its anti-ship load is spent", () => {
   assert.ok(rtb, "striker headed home with strike ammo spent");
 });
 
+test("5th-gen anti-ship strikers hold fire until the low ingress gate", () => {
+  const sim = running();
+  const f35c = placeShip(sim, SIDE.BLUE, -40 * NM, 0, "F35C");
+  const target = placeShip(sim, SIDE.RED, 0, 0, "BBG");
+  f35c.fuelS = 1e9;
+  f35c.altitudeM = 5000;
+  f35c.targetAltitudeM = 150;
+  const track = {
+    id: target.id,
+    side: target.side,
+    domain: target.domain,
+    classification: target.className,
+    x: target.x,
+    y: target.y,
+    vx: 0,
+    vy: 0,
+    quality: 0.95,
+    uncertainty: 100,
+    source: f35c.id,
+    age: 0,
+    lastSeen: sim.time
+  };
+  f35c.tracks.set(target.id, track);
+  sim.forcePicture = new Map([[SIDE.BLUE, new Map([[target.id, track]])], [SIDE.RED, new Map()]]);
+  planEngagements(sim);
+  assert.equal(f35c.launchQueue.length, 0, "F-35C should not release Harpoons while still high");
+  f35c.altitudeM = 450;
+  sim.nextFirePlanAt = 0;
+  planEngagements(sim);
+  assert.ok(f35c.launchQueue.some((order) => order.missileId === "AGM-84"), "F-35C releases after descending below the gate");
+});
+
+test("4.5-gen anti-ship and 5th-gen JSOW profiles keep stand-off release behavior", () => {
+  const releaseFromHighAltitude = (hull, targetHull) => {
+    const sim = running();
+    const striker = placeShip(sim, SIDE.BLUE, -40 * NM, 0, hull);
+    const target = placeShip(sim, SIDE.RED, 0, 0, targetHull);
+    striker.fuelS = 1e9;
+    striker.altitudeM = 5000;
+    const track = {
+      id: target.id,
+      side: target.side,
+      domain: target.domain,
+      classification: target.className,
+      x: target.x,
+      y: target.y,
+      vx: 0,
+      vy: 0,
+      quality: 0.95,
+      uncertainty: 100,
+      source: striker.id,
+      age: 0,
+      lastSeen: sim.time
+    };
+    striker.tracks.set(target.id, track);
+    sim.forcePicture = new Map([[SIDE.BLUE, new Map([[target.id, track]])], [SIDE.RED, new Map()]]);
+    planEngagements(sim);
+    return striker.launchQueue.map((order) => order.missileId);
+  };
+  assert.ok(releaseFromHighAltitude("F15N", "BBG").includes("AGM-84"));
+  assert.ok(releaseFromHighAltitude("F35A", "SAM").includes("AGM-154"));
+});
+
 test("a CAP fighter hard-kills an inbound ASCM but keeps an air-to-air reserve", () => {
   const sim = running(7);
-  placeShip(sim, SIDE.BLUE, -10 * NM, 0, "DDG");
+  const ddg = placeShip(sim, SIDE.BLUE, -10 * NM, 0, "DDG");
+  ddg.loadout["SM-2MR"] = 0;
+  ddg.loadout["SM-6"] = 0;
+  ddg.loadout.ESSM = 0;
   const cap = placeShip(sim, SIDE.BLUE, 5 * NM, 0, "F15C"); cap.fuelS = 1e9;
   placeShip(sim, SIDE.RED, 30 * NM, 0, "CDB"); // fires anti-ship missiles
   let firedAtMissile = false;

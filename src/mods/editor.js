@@ -8,7 +8,7 @@ import { getLang } from "../ui/lang.js";
 import { SCHEMAS, DEFAULTS, DEPLOYABLE_TYPES, validateUnit } from "./schema.js";
 import { loadMods, saveMod, deleteMod, recordKey } from "./store.js";
 import { unitId, isBuiltinUnit, makeUniqueShipId, availableAmmoIds, UNIT_KIND_DOMAIN } from "./registry.js";
-import { MISSILES, usedCells, isAirDefenseCategory } from "../sim.js";
+import { MISSILES, usedCells } from "../sim.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
   { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
@@ -76,13 +76,19 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     } else if (f.type === "select") {
       const opts = f.options.map((o) => `<option value="${esc(o.value)}"${o.value === v ? " selected" : ""}>${esc(L(o.label))}</option>`).join("");
       input = `<select data-field="${f.key}"${dis}>${opts}</select>`;
+    } else if (f.type === "multicheck") {
+      const values = new Set(Array.isArray(v) ? v : []);
+      input = `<div class="mods-checkgrid">${f.options.map((o) =>
+        `<label><input type="checkbox" data-multi-field="${esc(f.key)}" value="${esc(o.value)}"${values.has(o.value) ? " checked" : ""}${dis} />${esc(L(o.label))}</label>`
+      ).join("")}</div>`;
     } else if (f.type === "checkbox") {
       input = `<input type="checkbox" data-field="${f.key}"${v ? " checked" : ""}${dis} />`;
     } else {
       input = `<input type="text" data-field="${f.key}" value="${esc(v)}"${f.maxlength ? ` maxlength="${f.maxlength}"` : ""}${f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : ""}${dis} />`;
     }
     const hint = f.unit ? ` <span class="mods-uhint">${esc(f.unit)}</span>` : "";
-    return `<label class="mods-field"><span class="mods-flabel">${esc(L(f.label))}${hint}</span>${input}</label>`;
+    const help = f.help ? `<span class="mods-help">${esc(L(f.help))}</span>` : "";
+    return `<label class="mods-field"><span class="mods-flabel">${esc(L(f.label))}${hint}</span>${input}${help}</label>`;
   }
 
   function loadoutHtml(locked) {
@@ -113,15 +119,14 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     return `<fieldset class="mods-section mods-loadout"><legend>${esc(title)} ${cellTag}</legend>${rows || `<div class="mods-empty">—</div>`}${addSel}</fieldset>`;
   }
 
-  // Role-dependent fields on ammo: salvo (volley size) is an offensive concept,
-  // shown for anti-ship / dual; interceptors-per-threat is a defensive concept,
-  // shown for ship_sam / air_to_air / dual. Everything else is always visible.
+  // Role-dependent fields on ammo: salvo is for surface-strike weapons;
+  // interceptors/NEZ are for missile or aircraft targets.
   function fieldVisible(f) {
     if (form.kind !== "ammo") return true;
-    const cat = form.category;
-    if (f.key === "salvo") return cat === "anti_ship" || cat === "dual_role";
-    if (f.key === "interceptorsPerThreat") return isAirDefenseCategory(cat);
-    if (f.key === "nezFraction") return isAirDefenseCategory(cat);
+    const targets = new Set(form.targets || []);
+    if (f.key === "salvo") return targets.has("sea") || targets.has("ground");
+    if (f.key === "interceptorsPerThreat") return targets.has("missile") || targets.has("air");
+    if (f.key === "nezFraction") return targets.has("missile") || targets.has("air");
     return true;
   }
 
@@ -292,6 +297,13 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
       // Editing VLS capacity changes the cell-budget readout.
       if (t.dataset.field === "vlsCells") updateLoadoutCells();
       markDirty();
+    } else if (t.dataset.multiField) {
+      const key = t.dataset.multiField;
+      const values = new Set(Array.isArray(form[key]) ? form[key] : []);
+      if (t.checked) values.add(t.value); else values.delete(t.value);
+      form[key] = [...values];
+      markDirty();
+      if (key === "targets") renderDetail();
     } else if (t.dataset.loadoutId) {
       form.baseLoadout ||= {};
       form.baseLoadout[t.dataset.loadoutId] = Math.max(0, Math.round(Number(t.value) || 0));
@@ -312,12 +324,6 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     } else if (t.matches("[data-loadout-add]") && t.value) {
       form.baseLoadout ||= {};
       form.baseLoadout[t.value] = form.baseLoadout[t.value] || 1;
-      markDirty();
-      renderDetail();
-    } else if (form.kind === "ammo" && t.matches('[data-field="category"]')) {
-      // Category drives which role-specific fields show (salvo vs interceptors);
-      // re-render so they appear/disappear immediately.
-      form.category = t.value;
       markDirty();
       renderDetail();
     }

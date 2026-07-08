@@ -89,8 +89,10 @@ export function missileDetectionEnvelope(observer, missile) {
   // magic number with no relationship to any actual per-weapon RCS value;
   // it is now derived from spec.rcsM2 via missileRcsRangeFactor below, the
   // same physical concept already used for ship/aircraft detection.
-  let targetHeightM = 15;
-  let baseChance = 0.80;
+  let targetHeightM = missile.terminal
+    ? (spec.terminalAltitudeM ?? 15)
+    : (spec.cruiseAltitudeM ?? 15);
+  let baseChance = spec.cruiseAltitudeM ? 0.90 : 0.80;
   switch (missile.missileId) {
     case "TomahawkBlockV":
       targetHeightM = missile.terminal ? 12 : 30;
@@ -130,8 +132,10 @@ export function missileDetectionEnvelope(observer, missile) {
       baseChance = 0.7;
       break;
     default:
-      targetHeightM = missile.terminal ? 20 : 60;
-      baseChance = 0.78;
+      if (!spec.cruiseAltitudeM && !spec.terminalAltitudeM) {
+        targetHeightM = missile.terminal ? 20 : 60;
+        baseChance = 0.78;
+      }
       break;
   }
   const visibilityFactor = missileRcsRangeFactor(spec.rcsM2);
