@@ -151,6 +151,7 @@ const TACTICAL_SYMBOL_SCALE = 26;
 const CANVAS_FONT_FAMILY = '"Segoe UI", Arial, sans-serif';
 const canvasFont = (px) => `${px}px ${CANVAS_FONT_FAMILY}`;
 const terrainPathCache = new WeakMap();
+const TERRAIN_BUCKET_M = 4_000_000;
 const weaponRangeCache = new WeakMap();
 const terrainLayer = document.createElement("canvas");
 const terrainLayerCtx = terrainLayer.getContext("2d");
@@ -983,6 +984,58 @@ function populateSpawnDropdown() {
   if ([...shipClassSelect.options].some((o) => o.value === prev)) shipClassSelect.value = prev;
 }
 
+function pointsBounds(points) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of points) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+function boundsOverlap(a, b) {
+  return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY;
+}
+
+function addTerrainBucket(buckets, item) {
+  const minX = Math.floor(item.bbox.minX / TERRAIN_BUCKET_M);
+  const maxX = Math.floor(item.bbox.maxX / TERRAIN_BUCKET_M);
+  const minY = Math.floor(item.bbox.minY / TERRAIN_BUCKET_M);
+  const maxY = Math.floor(item.bbox.maxY / TERRAIN_BUCKET_M);
+  for (let x = minX; x <= maxX; x++) {
+    for (let y = minY; y <= maxY; y++) {
+      const key = `${x},${y}`;
+      const bucket = buckets.get(key) ?? [];
+      if (!bucket.length) buckets.set(key, bucket);
+      bucket.push(item);
+    }
+  }
+}
+
+function terrainItemsInView(buckets, viewBounds) {
+  const items = [];
+  const seen = new Set();
+  const minX = Math.floor(viewBounds.minX / TERRAIN_BUCKET_M);
+  const maxX = Math.floor(viewBounds.maxX / TERRAIN_BUCKET_M);
+  const minY = Math.floor(viewBounds.minY / TERRAIN_BUCKET_M);
+  const maxY = Math.floor(viewBounds.maxY / TERRAIN_BUCKET_M);
+  for (let x = minX; x <= maxX; x++) {
+    for (let y = minY; y <= maxY; y++) {
+      for (const item of buckets.get(`${x},${y}`) ?? []) {
+        if (seen.has(item)) continue;
+        seen.add(item);
+        if (boundsOverlap(item.bbox, viewBounds)) items.push(item);
+      }
+    }
+  }
+  return items;
+}
+
 function drawTerrain() {
   const map = tacticalMap(sim.mapId);
   const dpr = window.devicePixelRatio || 1;
@@ -994,18 +1047,25 @@ function drawTerrain() {
   }
   let paths = terrainPathCache.get(map);
   if (!paths) {
+    const landBuckets = new Map();
+    const coastBuckets = new Map();
     paths = {
       land: map.landRings.map((ring) => {
         const path = new Path2D();
         ring.forEach(([x, y], index) => index === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
         path.closePath();
-        return path;
+        return { path, bbox: pointsBounds(ring) };
       }),
-      coast: new Path2D()
+      coast: map.coastlines.map((coastline) => {
+        const path = new Path2D();
+        coastline.forEach(([x, y], index) => index === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
+        return { path, bbox: pointsBounds(coastline) };
+      }),
+      landBuckets,
+      coastBuckets
     };
-    for (const coastline of map.coastlines) {
-      coastline.forEach(([x, y], index) => index === 0 ? paths.coast.moveTo(x, y) : paths.coast.lineTo(x, y));
-    }
+    for (const item of paths.land) addTerrainBucket(landBuckets, item);
+    for (const item of paths.coast) addTerrainBucket(coastBuckets, item);
     terrainPathCache.set(map, paths);
   }
   if (terrainLayerKey !== key) {
@@ -1015,12 +1075,18 @@ function drawTerrain() {
     terrainLayerCtx.save();
     terrainLayerCtx.translate(innerWidth / 2 - camera.x * camera.scale, innerHeight / 2 - camera.y * camera.scale);
     terrainLayerCtx.scale(camera.scale, camera.scale);
+    const viewBounds = {
+      minX: camera.x - innerWidth / (2 * camera.scale),
+      maxX: camera.x + innerWidth / (2 * camera.scale),
+      minY: camera.y - innerHeight / (2 * camera.scale),
+      maxY: camera.y + innerHeight / (2 * camera.scale)
+    };
     terrainLayerCtx.fillStyle = "#111b1f";
     terrainLayerCtx.setLineDash([]);
-    for (const landPath of paths.land) terrainLayerCtx.fill(landPath);
+    for (const landPath of terrainItemsInView(paths.landBuckets, viewBounds)) terrainLayerCtx.fill(landPath.path);
     terrainLayerCtx.strokeStyle = "#ffffff";
     terrainLayerCtx.lineWidth = 1.8 / camera.scale;
-    terrainLayerCtx.stroke(paths.coast);
+    for (const coastPath of terrainItemsInView(paths.coastBuckets, viewBounds)) terrainLayerCtx.stroke(coastPath.path);
     terrainLayerCtx.strokeStyle = "rgba(255,255,255,.88)";
     terrainLayerCtx.lineWidth = 1.4 / camera.scale;
     terrainLayerCtx.strokeRect(-MAP_HALF_WIDTH_M, -MAP_HALF_HEIGHT_M, MAP_WIDTH_M, MAP_HEIGHT_M);

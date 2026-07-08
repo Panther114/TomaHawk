@@ -34,7 +34,7 @@ Scenarios move through three modes:
 The canvas renderer draws the tactical map in this order:
 
 - full-viewport 20 km ocean grid,
-- selected presentation terrain (Open Sea or projected Natural Earth 1:10m East China Sea coastlines),
+- selected presentation terrain (Open Sea or projected Natural Earth 1:50m global coastlines),
 - all-ship weapon engagement-zone rings from actual nonzero loadout,
 - radar rings when enabled,
 - selected-unit perceived tracks and uncertainty,
@@ -55,7 +55,7 @@ The lower-left footer shows a one-line side summary for ship counts, hitpoints, 
 - The top command deck separates brand, scenario tools, map layers, and inventory. The bottom deck separates simulation transport, tactical readout, and save/export actions.
 - The tactical feed is a distinct lower-left console with its copy action and retract toggle attached to the feed header.
 
-Shared map dimensions and the East China Sea crop helper live in `src/world/map-spec.js`; terrain definitions and binary water/land queries live in `src/world/terrain.js`; generated East China Sea geometry lives in `src/ui/data/`, and `src/ui/maps.js` now re-exports the presentation-facing map helpers. WGS84 Natural Earth land and coastline data is projected with a regional azimuthal-equidistant projection and rendered across the full viewport at meter-accurate scale without stretching or an artificial outer border. `docs/MAP_DATA.md` records provenance and regeneration. The simulation consumes the same binary water/land queries for setup validation, map resets, path checks, coastal detours, and final swept-segment collision guards. Terrain queries use a conservative 0.5 NM water mask plus ring/edge spatial grids as broad phases, then authoritative polygon and continuous segment intersection checks near land.
+Shared map dimensions live in `src/world/map-spec.js`; terrain definitions and binary water/land queries live in `src/world/terrain.js`; generated global coastline geometry lives in `src/ui/data/`, and `src/ui/maps.js` re-exports the presentation-facing map helpers. WGS84 Natural Earth land and coastline data is projected with a global equirectangular projection and rendered across the viewport without stretching or an artificial outer border. `docs/MAP_DATA.md` records provenance and regeneration. The simulation consumes the same binary water/land queries for setup validation, map resets, path checks, coastal detours, and final swept-segment collision guards. Terrain queries use a conservative 0.5 NM water mask plus ring/edge spatial grids as broad phases, then authoritative polygon and continuous segment intersection checks near land; rendering culls land/coast paths to the current viewport before drawing.
 
 ## DCS Map Reference
 

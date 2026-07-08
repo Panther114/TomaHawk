@@ -6,7 +6,9 @@ import {
   SIDE,
   SCENARIO_MODE,
   SHIP_CLASSES,
+  MISSILES,
   defaultLoadout,
+  missileAllowedForDomain,
   createScenario,
   clearSide,
   placeShip,
@@ -46,7 +48,7 @@ function emptyRunningScenario(seed, map = "openSea") {
 }
 
 test("ground classes are fixed, land-based, and speed-locked", () => {
-  for (const hull of ["SAM", "CDB", "EWR"]) {
+  for (const hull of ["SAM", "CDB", "EWR", "DEB"]) {
     const cls = SHIP_CLASSES[hull];
     assert.equal(cls.domain, "ground", hull);
     assert.equal(cls.isFixed, true, hull);
@@ -57,7 +59,18 @@ test("ground classes are fixed, land-based, and speed-locked", () => {
 test("ground default loadouts are explicit type-specific magazines", () => {
   assert.deepEqual(defaultLoadout("SAM"), { "SM-2MR": 32, "SM-6": 8, ESSM: 16 });
   assert.deepEqual(defaultLoadout("CDB"), { MaritimeStrike: 32, TomahawkBlockV: 8 });
+  assert.deepEqual(defaultLoadout("DEB"), { DarkEagle: 8 });
   assert.deepEqual(defaultLoadout("EWR"), {}); // radar carries no weapons
+});
+
+test("Dark Eagle is a ground-only surface strike weapon", () => {
+  const darkEagle = MISSILES.DarkEagle;
+  assert.ok(darkEagle);
+  assert.deepEqual(darkEagle.launchers, ["ground"]);
+  assert.deepEqual(darkEagle.targets, ["sea", "ground"]);
+  assert.equal(missileAllowedForDomain("DarkEagle", "ground"), true);
+  assert.equal(missileAllowedForDomain("DarkEagle", "sea"), false);
+  assert.equal(missileAllowedForDomain("DarkEagle", "air"), false);
 });
 
 test("ground emplacements never move and never re-seat to water", () => {
@@ -177,6 +190,81 @@ test("coastal battery engages a ship beyond its anti-ship missile range using lo
   }
   assert.ok(firedAtBlue, "the battery should launch at the ship 150 nm away");
   assert.ok(cdb.loadout.TomahawkBlockV < startTlam, "it should expend long-range missiles at that standoff");
+});
+
+test("Dark Eagle battery can strike ships and fixed ground targets, but not aircraft", () => {
+  const shipSim = emptyRunningScenario(31);
+  const debShip = placeShip(shipSim, SIDE.BLUE, -120 * NM, 0, "DEB");
+  placeShip(shipSim, SIDE.BLUE, 110 * NM, 0, "EWR");
+  const shipTarget = placeShip(shipSim, SIDE.RED, 120 * NM, 0, "DDG");
+  shipTarget.loadout = {};
+  shipSim.mode = SCENARIO_MODE.RUNNING;
+  shipSim.paused = false;
+  let firedAtShip = false;
+  for (let i = 0; i < 220 && !firedAtShip; i++) {
+    stepSim(shipSim, 0.25);
+    firedAtShip = shipSim.missiles.some((m) => m.launcherId === debShip.id && m.targetId === shipTarget.id && m.missileId === "DarkEagle");
+  }
+  assert.equal(firedAtShip, true);
+
+  const groundSim = emptyRunningScenario(32);
+  const debGround = placeShip(groundSim, SIDE.BLUE, -40 * NM, 0, "DEB");
+  const groundTarget = placeShip(groundSim, SIDE.RED, 40 * NM, 0, "EWR");
+  groundSim.mode = SCENARIO_MODE.RUNNING;
+  groundSim.paused = false;
+  let firedAtGround = false;
+  for (let i = 0; i < 220 && !firedAtGround; i++) {
+    stepSim(groundSim, 0.25);
+    firedAtGround = groundSim.missiles.some((m) => m.launcherId === debGround.id && m.targetId === groundTarget.id && m.missileId === "DarkEagle");
+  }
+  assert.equal(firedAtGround, true);
+
+  const airSim = emptyRunningScenario(33);
+  const debAir = placeShip(airSim, SIDE.BLUE, -120 * NM, 0, "DEB");
+  placeShip(airSim, SIDE.BLUE, 110 * NM, 0, "EWR");
+  const airTarget = placeShip(airSim, SIDE.RED, 120 * NM, 0, "F15C");
+  airTarget.loadout = {};
+  airSim.mode = SCENARIO_MODE.RUNNING;
+  airSim.paused = false;
+  for (let i = 0; i < 260; i++) stepSim(airSim, 0.25);
+  assert.equal(
+    airSim.missiles.some((m) => m.launcherId === debAir.id && m.targetId === airTarget.id && m.missileId === "DarkEagle"),
+    false
+  );
+});
+
+test("Dark Eagle keeps a high hypersonic terminal profile", () => {
+  const sim = emptyRunningScenario(34);
+  const deb = placeShip(sim, SIDE.BLUE, -8 * NM, 0, "DEB");
+  const target = placeShip(sim, SIDE.RED, 8 * NM, 0, "EWR");
+  sim.mode = SCENARIO_MODE.RUNNING;
+  sim.paused = false;
+  let darkEagle = null;
+  for (let i = 0; i < 240 && (!darkEagle || !darkEagle.terminal); i++) {
+    stepSim(sim, 0.25);
+    darkEagle ||= sim.missiles.find((m) => m.launcherId === deb.id && m.targetId === target.id && m.missileId === "DarkEagle");
+  }
+  assert.ok(darkEagle, "battery should fire a Dark Eagle round");
+  assert.equal(darkEagle.terminal, true);
+  assert.equal(darkEagle.seaSkimming, false);
+  assert.ok(darkEagle.altitudeM >= 1000, "Dark Eagle terminal attack should stay high, not sea skim");
+});
+
+test("depleted ground combat units stay passive radar contributors", () => {
+  const sim = emptyRunningScenario(35);
+  const depletedSam = placeShip(sim, SIDE.BLUE, -35 * NM, 0, "SAM");
+  depletedSam.loadout = { "SM-2MR": 0, "SM-6": 0, ESSM: 0 };
+  const blind = placeShip(sim, SIDE.BLUE, -45 * NM, 0, "DDG");
+  blind.radarActive = false;
+  blind.loadout = { "SM-2MR": 0, "SM-6": 0, ESSM: 0, MaritimeStrike: 0, TomahawkBlockV: 0 };
+  const red = placeShip(sim, SIDE.RED, 30 * NM, 0, "DDG");
+  sim.mode = SCENARIO_MODE.RUNNING;
+  sim.paused = false;
+  for (let i = 0; i < 120; i++) stepSim(sim, 0.25);
+  assert.equal(depletedSam.launchQueue.length, 0);
+  assert.equal(sim.missiles.some((m) => m.launcherId === depletedSam.id), false);
+  assert.ok(forceTrack(sim, SIDE.BLUE, red.id), "depleted SAM radar still contributes to the force picture");
+  assert.equal(blind.tracks.has(red.id), false, "the radar-off ship still has no organic track");
 });
 
 test("win condition still resolves when a side holds only ground assets", () => {

@@ -36,9 +36,9 @@ desired.
 - Rules of engagement (`free`, `tight`, `hold`) with self-defense always permitted.
 
 #### Terrain, maps, and ground forces
-- Selectable tactical maps: a border-less **Open Sea** and a projected **East China Sea** coastline layer (Natural Earth 1:10m).
+- Selectable tactical maps: a border-less **Open Sea** and a projected global coastline layer (Natural Earth 1:50m).
 - Binary water/land terrain shared by the renderer and the simulation: coastal detour navigation, swept-segment land-collision guards, and placement validation.
-- Three fixed land-based emplacement types — **SAM** (coastal air defence), **CDB** (coastal anti-ship battery with an over-the-horizon targeting radar), and **EWR** (long-range early-warning radar) — that sense, share, fire, and are targeted through the same pipeline as ships, but never move.
+- Four fixed land-based emplacement types — **SAM** (coastal air defence), **CDB** (coastal anti-ship battery with an over-the-horizon targeting radar), **DEB** (Dark Eagle hypersonic strike battery), and **EWR** (long-range early-warning radar) — that sense, share, fire, and are targeted through the same pipeline as ships, but never move.
 
 #### Sensors and information quality
 - Radar-generated tracks with quality, uncertainty, age, and source metadata.
@@ -47,7 +47,7 @@ desired.
 - Dead-track pruning and age-based track degradation.
 
 #### Weapons and combat resolution
-- Surface-strike weapons: `MaritimeStrike`, `TomahawkBlockV`.
+- Surface-strike weapons: `MaritimeStrike`, `TomahawkBlockV`, `DarkEagle`.
 - Air/missile defense weapons: `SM-2MR`, `ESSM`.
 - Dual-role weapon: `SM-6`.
 - Paced launch queues, salvo spacing, launch cooldowns, and defensive-priority scheduling.
@@ -71,10 +71,10 @@ desired.
 - The ruler supports multiple measurements; clicking `RULER` again clears all measurements and exits ruler mode.
 - The inventory uses the same effective 10px system UI typography as ship detail cards, with a narrower and shorter panel footprint.
 - Inventory and detail-panel DOM is retained between animation frames when its content has not changed, so controls remain clickable during continuous rendering.
-- The left setup controls are grouped under `SHIP SPAWNING`; map selection currently offers Open Sea and an East China Sea coastline layer.
+- The left setup controls are grouped under `SHIP SPAWNING`; map selection currently offers Open Sea and a global coastline layer.
 - Ship direction arrows stay hidden during setup and appear when the battle starts; initial blue headings face left and red headings face right.
 - Moving ships use short dashed heading arrows instead of waypoint lines and destination squares.
-- The East China Sea layer uses locally bundled Natural Earth 1:10m land/coastline data in an azimuthal-equidistant projection and fills the viewport without stretching. The tactical map and simulation bounds now share the same rigid world extent, with the width expanded to nine times the core map and the height expanded to 9.6 times the core map for extra play space, and the camera clamps to that border instead of zooming past it.
+- The coastline layer uses locally bundled Natural Earth 1:50m global land/coastline data in an equirectangular projection and fills the viewport without stretching. The tactical map and simulation bounds cover the full globe, and terrain drawing culls land/coast paths to the current viewport before rendering.
 - Map coordinates, the 20 km grid, dynamic scale bar, rulers, and visible weapon ranges use kilometers. Internal simulation distances remain meters.
 - Weapon and missile text is hidden at wide zoom while circles and symbols remain; ship names stay fully opaque.
 
@@ -111,6 +111,7 @@ Fixed ground emplacements (`domain: "ground"`, `isFixed: true`, speed 0):
 | --- | --- | ---: | --- |
 | `SAM` | coastal surface-to-air battery | 160 nm | `SM-2MR`, `SM-6`, `ESSM` |
 | `CDB` | coastal anti-ship battery | 250 nm (OTH) | `MaritimeStrike`, `TomahawkBlockV` |
+| `DEB` | Dark Eagle hypersonic strike battery | 500 nm | `DarkEagle` |
 | `EWR` | early-warning radar (no weapons) | 400 nm | — |
 
 Ground units must be placed on land, never move, never act as the formation
@@ -138,6 +139,8 @@ low-altitude stand-off strike (ingress → masked descent → release at the
 stand-off ring → egress), dogfights with radar BVR and infrared WVR missiles
 (evasive breaks + flares), and returns to a friendly airfield to rearm/refuel and
 relaunch. See `docs/SIMULATION_ASSUMPTIONS.md` for the full doctrine.
+Fighter fuel is modeled as combat radius with return reserve: about 600 nm for
+5th-gen fighters and 680 nm for 4.5-gen fighters.
 
 Each ship instance includes:
 - kinematics,
@@ -158,6 +161,7 @@ Defined in `src/sim/missiles.js`:
 | `ESSM` | `ESSM` | point defense | 52 km |
 | `MaritimeStrike` | `MSTK` | anti-surface cruise strike | 222 km |
 | `TomahawkBlockV` | `TLAM` | long-range anti-surface strike | 1,204 km |
+| `DarkEagle` | `LRHW` | ground-launched hypersonic surface strike | 2,778 km |
 | `SM-6` | `SM6` | dual-role anti-air / anti-surface | 370 km |
 | `AIM-120C` | `120C` | BVR active-radar air-to-air | 102 km |
 | `AIM-120D` | `120D` | extended-envelope BVR active-radar air-to-air | 152 km |
@@ -182,7 +186,7 @@ transition, guidance style, reserve behavior, and (for air-to-air) the no-escape
 
 #### Setup mode
 - Left-click with `BLUE` or `RED` tool selected to place units.
-- Select the unit type from the class dropdown — **Naval** (`DDG`, `CCG`, `BBG`, `FFG`) or **Ground** (`SAM`, `CDB`, `EWR`). Sea units must be placed on water and ground units on land.
+- Select the unit type from the class dropdown — **Naval** (`DDG`, `CCG`, `BBG`, `FFG`) or **Ground** (`SAM`, `CDB`, `DEB`, `EWR`). Sea units must be placed on water and ground units on land.
 - Left-drag units to reposition them during setup (sea units stay on water, ground units stay on land).
 - Right-click ship to select it.
 - Right-drag/right-click selection supports additive detail-card selection.
@@ -248,9 +252,9 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - 支持 `free`、`tight`、`hold` 三级交战规则，且始终允许自卫。
 
 #### 地形、地图与陆基力量
-- 可选战术地图：无边界的**开放海域**，以及投影后的**东海**海岸线图层（Natural Earth 1:10m）。
+- 可选战术地图：无边界的**开放海域**，以及投影后的全球海岸线图层（Natural Earth 1:50m）。
 - 渲染与仿真共享“水/陆”二元地形：沿岸绕行导航、连续扫掠的陆地碰撞防护，以及部署校验。
-- 三种固定式陆基阵地——**SAM**（岸基防空）、**CDB**（带超视距目标雷达的岸基反舰）、**EWR**（远程预警雷达）——与海上单位走同一套感知、共享、开火与被打击流程，但永不移动。
+- 四种固定式陆基阵地——**SAM**（岸基防空）、**CDB**（带超视距目标雷达的岸基反舰）、**DEB**（“暗鹰”高超声速打击）、**EWR**（远程预警雷达）——与海上单位走同一套感知、共享、开火与被打击流程，但永不移动。
 
 #### 传感器与信息质量
 - 雷达生成的航迹包含质量、误差、不确定性、时效与来源信息。
@@ -259,7 +263,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - 已失效目标会被清理，旧航迹会随时间退化。
 
 #### 武器与战斗结算
-- 对海武器：`MaritimeStrike`、`TomahawkBlockV`。
+- 对地/对海武器：`MaritimeStrike`、`TomahawkBlockV`、`DarkEagle`。
 - 防空/反导武器：`SM-2MR`、`ESSM`。
 - 双用途武器：`SM-6`。
 - 支持发射队列、齐射间隔、发射冷却、以及“防御优先”的调度逻辑。
@@ -312,6 +316,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 | --- | --- | ---: | --- |
 | `SAM` | 岸基防空阵地 | 160 海里 | `SM-2MR`、`SM-6`、`ESSM` |
 | `CDB` | 岸基反舰阵地 | 250 海里（超视距） | `MaritimeStrike`、`TomahawkBlockV` |
+| `DEB` | “暗鹰”高超声速打击阵地 | 500 海里 | `DarkEagle` |
 | `EWR` | 预警雷达（无武器） | 400 海里 | — |
 
 陆基单位必须部署在陆地，永不移动、不担任编队指挥、也不会被重置到水面；其余方面与
@@ -335,6 +340,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 战斗力随存活数量下降。它执行低空防区外打击（突防 → 下降规避 → 环绕发射 → 脱
 离），使用雷达超视距与红外近距导弹格斗（机动规避 + 红外诱饵），并返回友方机场
 再装挂、加油后重新出击。完整条令见 `docs/SIMULATION_ASSUMPTIONS.md`。
+战斗机燃油按带返航余量的作战半径建模：5 代机约 600 海里，4.5 代机约 680 海里。
 
 每个舰艇对象都包含：
 - 机动参数；
@@ -355,6 +361,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 | `ESSM` | `ESSM` | 点防御 | 52 公里 |
 | `MaritimeStrike` | `MSTK` | 对海巡航打击 | 222 公里 |
 | `TomahawkBlockV` | `TLAM` | 远程对海打击 | 1,204 公里 |
+| `DarkEagle` | `LRHW` | 陆基高超声速对地/对海打击 | 2,778 公里 |
 | `SM-6` | `SM6` | 防空/对海双用途 | 370 公里 |
 | `AIM-120C` | `120C` | 超视距主动雷达空空导弹 | 102 公里 |
 | `AIM-120D` | `120D` | 扩展包线超视距主动雷达空空导弹 | 152 公里 |
@@ -378,7 +385,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 
 #### 场景准备阶段
 - 选中 `BLUE` 或 `RED` 后左键点击地图放置单位。
-- 通过类别下拉框选择**海上**（`DDG`、`CCG`、`BBG`、`FFG`）或**陆基**（`SAM`、`CDB`、`EWR`）单位；海上单位必须放在水面，陆基单位必须放在陆地。
+- 通过类别下拉框选择**海上**（`DDG`、`CCG`、`BBG`、`FFG`）或**陆基**（`SAM`、`CDB`、`DEB`、`EWR`）单位；海上单位必须放在水面，陆基单位必须放在陆地。
 - 在 `setup` 模式下可左键拖动单位调整初始位置（海上单位保持在水面，陆基单位保持在陆地）。
 - 右键舰艇进行选择。
 - 右键拖动/右键选择可叠加详情卡选择。
@@ -392,7 +399,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - 左侧五项准备控件统一归入 `船只生成` 分组；地图可在开放海域与东海海岸线图层之间选择。
 - 舰艇方向箭头在部署阶段隐藏，开战时才出现；蓝方初始朝左，红方初始朝右。
 - 舰艇运动指示改为短虚线航向箭头，不再绘制通往目标点的虚线和目标方框。
-- 东海图层使用本地打包的 Natural Earth 1:10m 陆地与海岸线数据，并采用等距方位投影；地图铺满视口，不拉伸。战术地图与仿真边界现在共享同一个固定世界范围，其中宽度扩展到核心地图的九倍、高度扩展到核心地图的 9.6 倍，以增加可玩空间，相机不会越过该边界。
+- 海岸线图层使用本地打包的 Natural Earth 1:50m 全球陆地与海岸线数据，并采用等距圆柱投影；地图铺满视口，不拉伸。战术地图与仿真边界覆盖整个地球，渲染时只绘制当前视口内的陆地/海岸路径。
 - 地图坐标、20 公里网格、动态比例尺、标尺和可见武器射程统一使用公里；仿真内部仍以米为单位。
 - 广域缩放时隐藏武器与导弹文字但保留射程圈和符号；舰名始终保持完全不透明。
 - `Delete` / `Backspace` 可删除 `setup` 模式下的选中单位。

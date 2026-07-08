@@ -15,7 +15,9 @@ import {
   registerShipClass,
   unregisterShipClass,
   isBuiltinShipClass,
-  missileAllowedForDomain
+  missileAllowedForDomain,
+  missileLaunchers,
+  missileTargets
 } from "../sim.js";
 
 /** Registry key for a unit: ammo keys on its name/id, ships on their hull id. */
@@ -32,7 +34,7 @@ export const UNIT_KIND_DOMAIN = { naval: "sea", ground: "ground", aircraft: "air
 
 const BUILTIN_PREFIX_ZH = {
   DDG: "驱逐舰", CCG: "巡洋舰", BBG: "战列舰", FFG: "护卫舰",
-  SAM: "防空", CDB: "岸舰", EWR: "预警",
+  SAM: "防空", CDB: "岸舰", DEB: "鹰击", EWR: "预警",
   F22: "5代空优", F35A: "5代对地", F35C: "5代反舰",
   F15E: "4代对地", F15N: "4代反舰", F15C: "4代空优",
   AWAC: "预警机", AFB: "机场"
@@ -61,9 +63,52 @@ const numClean = (loadout) => {
   return out;
 };
 
+const normalizeLaunchers = (u) => {
+  const values = Array.isArray(u.launchers) ? u.launchers
+    : Array.isArray(u.platforms) ? u.platforms
+      : [
+        u.platformSea ? "sea" : null,
+        u.platformGround ? "ground" : null,
+        u.platformAir ? "air" : null
+      ];
+  return [...new Set(values.filter((v) => ["sea", "ground", "air"].includes(v)))];
+};
+
+const normalizeTargets = (u) => {
+  if (Array.isArray(u.targets) && u.targets.length) {
+    return [...new Set(u.targets.filter((v) => ["air", "missile", "sea", "ground"].includes(v)))];
+  }
+  if (u.target === "missile") return ["missile"];
+  if (u.target === "air") return ["air"];
+  if (u.target === "dual") return ["missile", "air", "sea", "ground"];
+  if (u.target === "ship" || u.category === "anti_ship") return ["sea", "ground"];
+  return [];
+};
+
+const legacyCategory = (targets) => {
+  const t = new Set(targets);
+  const airDefense = t.has("missile") || t.has("air");
+  const surface = t.has("sea") || t.has("ground");
+  if (airDefense && surface) return "dual_role";
+  if (airDefense) return t.has("air") && !t.has("missile") ? "air_to_air" : "ship_sam";
+  return "anti_ship";
+};
+
+const legacyTarget = (targets) => {
+  const t = new Set(targets);
+  const airDefense = t.has("missile") || t.has("air");
+  const surface = t.has("sea") || t.has("ground");
+  if (airDefense && surface) return "dual";
+  if (t.has("missile")) return "missile";
+  if (t.has("air")) return "air";
+  return "ship";
+};
+
 // --- editor JSON -> internal spec -----------------------------------------
 
 function toMissileSpec(u) {
+  const launchers = normalizeLaunchers(u);
+  const targets = normalizeTargets(u);
   return {
     name: u.name,
     // The ammo editor only exposes the ID, so a custom weapon labels itself with
@@ -73,21 +118,18 @@ function toMissileSpec(u) {
     displayName: u.displayName || u.name,
     shortLabel: u.name,
     role: u.role || "custom",
-    category: u.category,
+    category: u.category || legacyCategory(targets),
     rcsM2: Number(u.rcsM2),
-    platforms: [
-      u.platformSea ? "sea" : null,
-      u.platformGround ? "ground" : null,
-      u.platformAir ? "air" : null
-    ].filter(Boolean),
+    platforms: launchers,
+    launchers,
+    targets,
     symbol: u.symbol,
     rangeM: Number(u.rangeNm) * NM,
     speedMps: Number(u.speedMps),
     cellCost: Number(u.cellCost),
     pk: Number(u.pk),
     salvo: Math.round(Number(u.salvo)),
-    target: u.target,
-    defenseLayer: u.defenseLayer,
+    target: u.target || legacyTarget(targets),
     preferredMinRangeM: Number(u.preferredMinRangeNm) * NM,
     preferredMaxRangeM: Number(u.preferredMaxRangeNm) * NM,
     interceptorsPerThreat: Math.round(Number(u.interceptorsPerThreat)),
@@ -123,7 +165,10 @@ function toNavalClass(u) {
     ciwsCount: Number.isFinite(Number(u.ciwsCount)) ? Math.round(Number(u.ciwsCount)) : 1,
     ciwsAmmo: Number(u.ciwsAmmo) || 1550,
     ciwsBurstRounds: Number(u.ciwsBurstRounds) || 180, ciwsBurstS: Number(u.ciwsBurstS) || 1.4, ciwsCycleS: Number(u.ciwsCycleS) || 5.5,
-    defenseChannels: { area: Math.round(Number(u.defenseArea)), point: Math.round(Number(u.defensePoint)), ciws: Math.round(Number(u.defenseCiws)) },
+    defenseChannels: {
+      sam: Math.round(Number(u.defenseSam ?? ((u.defenseArea ?? 0) + (u.defensePoint ?? 0)))),
+      ciws: Math.round(Number(u.defenseCiws))
+    },
     damageResist: Number(u.damageResist), damageDegrade: Number(u.damageDegrade),
     baseLoadout: numClean(u.baseLoadout)
   };
@@ -142,7 +187,7 @@ function toGroundClass(u) {
     radarRangeNm: Number(u.radarRangeNm), radarIntervalS: Number(u.radarIntervalS),
     vlsCells: Math.round(Number(u.vlsCells)),
     ciwsCount: 0, ciwsAmmo: 0, ciwsBurstRounds: 0, ciwsBurstS: 0, ciwsCycleS: 5,
-    defenseChannels: { area: Math.round(Number(u.defenseArea)), point: Math.round(Number(u.defensePoint)), ciws: 0 },
+    defenseChannels: { sam: Math.round(Number(u.defenseSam ?? ((u.defenseArea ?? 0) + (u.defensePoint ?? 0)))), ciws: 0 },
     damageResist: Number(u.damageResist), damageDegrade: Number(u.damageDegrade),
     baseLoadout: numClean(u.baseLoadout)
   };
@@ -163,7 +208,7 @@ function toAircraftClass(u) {
     radarRangeNm: Number(u.radarRangeNm), radarIntervalS: Number(u.radarIntervalS),
     vlsCells: Math.round(Number(u.vlsCells)),
     ciwsCount: 0, ciwsAmmo: 0, ciwsBurstRounds: 0, ciwsBurstS: 0, ciwsCycleS: 5,
-    defenseChannels: { area: 0, point: 0, ciws: 0 },
+    defenseChannels: { sam: 0, ciws: 0 },
     damageResist: size, damageDegrade: Number(u.damageDegrade),
     enduranceS: Number(u.enduranceS) || 1800, rearmTimeS: Number(u.rearmTimeS) || 90,
     flares: Number.isFinite(Number(u.flares)) ? Math.round(Number(u.flares)) : 60,
@@ -183,9 +228,13 @@ export function toInternalSpec(unit) {
 // --- internal spec -> editor JSON (for seeding vanilla into the list) ------
 
 function fromMissileSpec(id, s) {
+  const launchers = missileLaunchers(s);
+  const targets = missileTargets(s);
   return {
     kind: "ammo", id, name: id, displayName: s.displayName, shortLabel: s.shortLabel, role: s.role,
-    category: s.category, symbol: s.symbol, target: s.target, defenseLayer: s.defenseLayer,
+    category: s.category, symbol: s.symbol, target: s.target,
+    launchers,
+    targets,
     // A legacy custom weapon saved before this field existed has no rcsM2 at
     // all; fall back to a plausible mid-size-munition default rather than
     // showing an empty/zero field.
@@ -193,9 +242,9 @@ function fromMissileSpec(id, s) {
     // A spec with no `platforms` predates this field and is unrestricted (see
     // missileAllowedForDomain), so it round-trips into the editor as "every
     // platform enabled" rather than silently losing all of them.
-    platformSea: !s.platforms || s.platforms.includes("sea"),
-    platformGround: !s.platforms || s.platforms.includes("ground"),
-    platformAir: !s.platforms || s.platforms.includes("air"),
+    platformSea: launchers.includes("sea"),
+    platformGround: launchers.includes("ground"),
+    platformAir: launchers.includes("air"),
     rangeNm: s.rangeM / NM, preferredMinRangeNm: s.preferredMinRangeM / NM, preferredMaxRangeNm: s.preferredMaxRangeM / NM,
     seekerRangeNm: s.seekerRangeM / NM, speedMps: s.speedMps, maxTurnRateDps: s.maxTurnRateDps,
     cellCost: s.cellCost, pk: s.pk, salvo: s.salvo, interceptorsPerThreat: s.interceptorsPerThreat,
@@ -216,7 +265,7 @@ function fromShipClass(hull, c) {
     // so the editor never shows a value the sim wouldn't actually use.
     rcsM2: defaultRcsM2(c),
     vlsCells: c.vlsCells, damageResist: c.damageResist, damageDegrade: c.damageDegrade,
-    defenseArea: c.defenseChannels?.area ?? 0, defensePoint: c.defenseChannels?.point ?? 0,
+    defenseSam: c.defenseChannels?.sam ?? ((c.defenseChannels?.area ?? 0) + (c.defenseChannels?.point ?? 0)),
     baseLoadout: { ...(c.baseLoadout ?? defaultLoadout(hull)) }
   };
   if (c.domain === "air") {

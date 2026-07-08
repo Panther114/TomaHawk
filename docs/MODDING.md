@@ -50,7 +50,7 @@ Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh
 Mobility (`cruise`, `max`, `accel`, `decel`,
 `turn`, `flank turn`); Sensors (`radar range`, `radar interval`); Magazine
 (`VLS cells`, `loadout`); Survivability (`hit points`, `degrade`);
-Defense channels (`area`, `point`, `ciws`).
+Defense channels (`SAM`, `ciws`).
 
 - **Mobility auto-derivation:** editing **cruise speed** recomputes max speed,
   acceleration, deceleration, and turn rates (higher cruise ⇒ faster and more
@@ -66,7 +66,7 @@ Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh
 **map glyph** = `sam`/`radar`/`bunker`);
 Footprint (`length`, `width`); Sensors (`radar range`, `radar interval`); Magazine
 (`cells`, `loadout` — leave empty for a pure radar site); Survivability (`hit points`,
-`degrade`); Defense channels (`area`, `point`). Speed and CIWS are forced to zero.
+`degrade`); Defense channel (`SAM`). Speed and CIWS are forced to zero.
 For an anti-ship coastal battery, set the radar range above the weapon's range so it
 can engage over the horizon.
 
@@ -96,11 +96,14 @@ Survivability (`speed loss per plane lost`, `flares`).
 
 ### Ammo
 Identity (`ID` only — the loadout key; it also serves as the weapon's map/inventory
-label); Classification (`category` anti_air/anti_ship/dual_role, `symbol`, `target`,
-`defense layer`); Ranges (`max range`, `pref. min`, `pref. max`, `seeker`);
+label); Classification (`launchers`, `targets`, `symbol`); Ranges (`max range`, `pref. min`, `pref. max`, `seeker`);
 Kinematics (`speed`, `max turn`); Effect (`cell cost`, `pk`, `salvo`,
 `per threat`, `reserve`); Timing (`launch interval`, `salvo spacing`); Behavior
 (`ring style`, `guidance`, `retargetable`, `self-destruct on loss`).
+
+`launchers` may include naval, ground, and air. `targets` may include missiles,
+aircraft, ships, and ground units. `pk` is the base per-shot success chance
+before track quality, geometry, speed, saturation, and countermeasure modifiers.
 
 ## For developers
 

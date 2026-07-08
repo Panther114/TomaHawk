@@ -52,14 +52,15 @@ Important fields:
 - `shortLabel`
 - `role`
 - `category`
+- `launchers`
+- `targets`
 - `symbol`
 - `rangeM`
 - `speedMps`
 - `cellCost`
 - `pk`
 - `salvo`
-- `target`
-- `defenseLayer`
+- `target` [legacy compatibility]
 - `preferredMinRangeM`, `preferredMaxRangeM`
 - `interceptorsPerThreat`
 - `magazineReserveRatio`
@@ -78,11 +79,11 @@ weapons such as `TomahawkBlockV` stay horizon-limited and appear at shorter rang
 
 `cellCost` supports quad-packed missiles. For example, ESSM uses `0.25` cells.
 
-`category` is currently `anti_ship`, `anti_air`, or `dual_role`. Each launched missile stores an immutable `launchRole`; anti-ship launches render as squares and anti-air launches as triangles. An SM-6 therefore receives its symbol from its launch role rather than a separate dual-role diamond. `shortLabel` is the tactical map label, such as `SM2`, `SM6`, `ESSM`, `MSTK`, or `TLAM`.
+`launchers` (`sea`, `ground`, `air`) and `targets` (`missile`, `air`, `sea`, `ground`) are the primary capability model. Legacy custom ammo using `category`, `platforms`, or `target` is still accepted and normalized into those arrays. Each launched missile stores an immutable `launchRole`; anti-surface launches render as squares and anti-air launches render as triangles. `shortLabel` is the tactical map label, such as `SM2`, `SM6`, `ESSM`, `MSTK`, or `TLAM`.
 
 `launchIntervalS` is the minimum interval between actual launches from a ship for that missile type. `salvoSpacingS` controls how a queued salvo is released over time so multiple missiles do not spawn at the same map coordinate.
 
-`defenseLayer` and the preferred range fields drive the public-source-informed fire planner: SM-2 and SM-6 are area-defense layers, ESSM is the point-defense layer, CIWS is represented by ship state, and strike weapons use reserve ratios to avoid emptying magazines too casually.
+Preferred ranges, launcher/target capabilities, magazine reserve, and threat timing drive the fire planner. SM-2/SM-6 remain longer-range choices and ESSM remains a closer-range choice through weapon stats, not through a separate area/point defense-layer field. CIWS is represented by ship state.
 
 ## Launch Order
 
@@ -93,11 +94,12 @@ Important fields:
 - `targetSide`
 - `targetClassification`
 - `targetX`, `targetY`
+- `targetTrackQuality`, `targetTrackAgeS`
 - `requestedAt`
 - `readyAt`
 - `launchSequence`
 
-Ships queue launch orders. Each order carries a `defensive` flag and `priority`; defensive missile orders are serviced ahead of offensive strike orders so an inbound raid is not trapped behind a pre-existing strike salvo. The launch scheduler releases one eligible order at a time, respecting missile-specific launch spacing plus separate offensive (`nextLaunchAt`) and defensive (`nextDefensiveLaunchAt`) ship cadence gates.
+Ships queue launch orders. Each order carries a `defensive` flag and `priority`; defensive missile orders are serviced ahead of offensive strike orders so an inbound raid is not trapped behind a pre-existing strike salvo. Defensive orders also retain the track quality and age used at assignment time, so interceptor PK can account for stale or weak cueing after launch. The launch scheduler releases one eligible order at a time, respecting missile-specific launch spacing plus separate offensive (`nextLaunchAt`) and defensive (`nextDefensiveLaunchAt`) ship cadence gates.
 
 Offensive orders may also share a side-wide coordinated `readyAt` when the force
 is conducting a raid. That lets multiple ships release as one tactical wave
@@ -128,10 +130,11 @@ Important fields:
 - `timeToImpactEstimate`
 - `assignedDefenders`
 - `threatScore`
+- `trackQualityAtLaunch`, `trackAgeAtLaunchS`
 - `launchSequence`
 - `laneOffset`
 
-`phase`, `terminal`, `terminalReason`, `seaSkimming`, and `timeToImpactEstimate` support layered defense decisions and UI explanation. `assignedDefenders` and `threatScore` support force-level defensive fire allocation. `launchSequence` and `laneOffset` make salvos visually distinguishable on the map.
+`phase`, `terminal`, `terminalReason`, `seaSkimming`, and `timeToImpactEstimate` support layered defense decisions and UI explanation. `assignedDefenders` and `threatScore` support force-level defensive fire allocation. `trackQualityAtLaunch` and `trackAgeAtLaunchS` let interceptor PK reflect cue quality. `launchSequence` and `laneOffset` make salvos visually distinguishable on the map.
 
 Guidance is a velocity-lead law, not pursuit of the bare target position. Each
 tick the weapon solves a closed-form intercept (`interceptPoint`) against the
@@ -282,13 +285,14 @@ Four naval hull classes are modelled, each with per-class physics, sensors, maga
 | BBG | Trump Arsenal Battleship | BBG | 288 | 24kn | 1.2°/s | 5 | 5× CIWS | 6/4/4 |
 | FFG | Constellation Frigate | FFG | 32 | 26kn | 3.2°/s | 1 | 1× SeaRAM | 1/1/1 |
 
-Three fixed ground emplacement classes share the same object shape but set `domain: "ground"`, `isFixed: true`, and zero speed. They are placed on land, never move, and carry an explicit type-specific magazine rather than a VLS-scaled loadout:
+Four fixed ground emplacement classes share the same object shape but set `domain: "ground"`, `isFixed: true`, and zero speed. They are placed on land, never move, and carry an explicit type-specific magazine rather than a VLS-scaled loadout:
 
 | Hull | Role | Prefix | Radar | Default loadout |
 |------|------|--------|------:|-----------------|
 | SAM | coastal surface-to-air battery | SAM | 160 nm | SM-2MR×32, SM-6×8, ESSM×16 |
-| CDB | coastal anti-ship battery (OTH radar) | CDB | 250 nm | MaritimeStrike×32, TomahawkBlockV×8 |
-| EWR | early-warning radar (no weapons) | EWR | 400 nm | — |
+| CDB | coastal strike battery (OTH radar) | Coast Strike | 250 nm | MaritimeStrike×32, TomahawkBlockV×8 |
+| DEB | Dark Eagle hypersonic strike battery | Dark Eagle | 500 nm | DarkEagle×8 |
+| EWR | early-warning radar (no weapons) | EW Radar | 400 nm | — |
 
 Seven air-unit classes set `domain: "air"`: a squadron is one entity whose
 `damageResist` (hit-point pool) **is** its aircraft count, so each hit downs one
@@ -305,17 +309,19 @@ on land or water that serves as the rearm/refuel node:
 
 | Hull | Role | Prefix | Radar | Default loadout |
 |------|------|--------|------:|-----------------|
-| F22 | 5th-gen air-superiority-only squadron (F-22 approx.) | F22 | 120 nm | AIM-120D×6, AIM-9X×2 |
-| F35A | 5th-gen anti-ground strike squadron (F-35A approx.) | F35A | 110 nm | AIM-120D×2, AIM-9X×2, AGM-154×4 |
-| F35C | 5th-gen anti-ship strike squadron (F-35C approx.) | F35C | 110 nm | AIM-120D×2, AIM-9X×2, AGM-84×4 |
-| F15E | 4.5-gen anti-ground strike squadron (F-15E approx.) | F15E | 90 nm | AIM-120C×4, AIM-9X×2, AGM-154×10 |
-| F15N | 4.5-gen anti-ship strike squadron (fictional) | F15N | 90 nm | AIM-120C×4, AIM-9X×2, AGM-84×10 |
-| F15C | 4.5-gen air-superiority-only squadron (F-15C approx.) | F15C | 95 nm | AIM-120C×10, AIM-9X×4 |
+| F22 | 5th-gen air-superiority-only squadron (F-22 approx.) | G5 Air Sup | 120 nm | AIM-120D×6, AIM-9X×2 |
+| F35A | 5th-gen anti-ground strike squadron (F-35A approx.) | G5 Strike | 110 nm | AIM-120D×2, AIM-9X×2, AGM-154×4 |
+| F35C | 5th-gen anti-ship strike squadron (F-35C approx.) | G5 Sea Strike | 110 nm | AIM-120D×2, AIM-9X×2, AGM-84×4 |
+| F15E | 4.5-gen anti-ground strike squadron (F-15E approx.) | G4 Strike | 90 nm | AIM-120C×4, AIM-9X×2, AGM-154×8 |
+| F15N | 4.5-gen anti-ship strike squadron (fictional) | G4 Sea Strike | 90 nm | AIM-120C×4, AIM-9X×2, AGM-84×8 |
+| F15C | 4.5-gen air-superiority-only squadron (F-15C approx.) | G4 Air Sup | 95 nm | AIM-120C×10, AIM-9X×4 |
 | AWAC | AEW&C — unarmed, command hub (E-2D approx.) | AWAC | 350 nm | — |
-| AFB | airfield / rearm-refuel node (land or water) | AFB | 180 nm | — |
+| AFB | airfield / rearm-refuel node (land or water) | Airfield | 180 nm | — |
+
+Fighter endurance is tuned as combat radius with return reserve, not ferry range: the 5th-gen set has about 600 nm radius, and the 4.5-gen set has about 680 nm radius.
 
 Key per-class fields on every ship object:
-- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"EWR"`, `"F22"`, `"F35A"`, `"F35C"`, `"F15E"`, `"F15N"`, `"F15C"`, `"AWAC"`, `"AFB"`)
+- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"DEB"`, `"EWR"`, `"F22"`, `"F35A"`, `"F35C"`, `"F15E"`, `"F15N"`, `"F15C"`, `"AWAC"`, `"AFB"`)
 - `domain` / `isFixed` — `"ground"` + `true` for stationary land emplacements; `"air"` for aircraft squadrons
 - `vlsCells` — total VLS capacity; every missile draws from this one pool by its `cellCost`
 - `damageResist` — whole-hit damage points before mission-kill
@@ -327,12 +333,14 @@ Key per-class fields on every ship object:
 
 Ships spawn with a full default magazine for their hull class, with the loadout filling the available VLS cells at setup time.
 
+Surface-strike ammo declares `targets: ["sea", "ground"]`. Legacy custom ammo using `category: "anti_ship"` / `target: "ship"` is interpreted the same way. `DarkEagle` is ground-launched and explicitly targets sea and ground units, not aircraft or in-flight missiles.
+
 ## SM-6 Dual-Role Missile
 
 `SM-6` (Standard Missile 6 ERAM) is a dual-role weapon:
-- `category: "dual_role"`, `symbol: "diamond"`, `target: "dual"`
-- 200 NM range, Mach 3.5 (1190 m/s), PK 0.55
-- Can engage both missiles (area defence) and ships (anti-surface strike)
+- `launchers: ["sea", "ground"]`, `targets: ["missile", "air", "sea", "ground"]`
+- 200 NM range, Mach 3.5 (1190 m/s), PK 0.74
+- Can engage missiles, aircraft, ships, and fixed ground units
 - At launch, `launchRole` is fixed to `anti_ship` or `anti_air`; guidance, hit resolution, summaries, and the square/triangle icon use that role for the missile's lifetime
 - Used offensively only when magazine depth exceeds 12 rounds (reserve for AAW)
 

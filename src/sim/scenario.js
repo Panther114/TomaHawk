@@ -311,10 +311,14 @@ export function restoreScenario(data) {
         damageDegrade: ship.damageDegrade ?? cls.damageDegrade,
         reactionAvailableAt: Number(ship.reactionAvailableAt) || 0,
         defenseReactionAvailableAt: Number(ship.defenseReactionAvailableAt) || 0,
-        defenseChannels: {
-          ...cls.defenseChannels,
-          ...(ship.defenseChannels || {})
-        },
+        defenseChannels: (() => {
+          const oldSam = (ship.defenseChannels?.area ?? 0) + (ship.defenseChannels?.point ?? 0);
+          const clsOldSam = (cls.defenseChannels?.area ?? 0) + (cls.defenseChannels?.point ?? 0);
+          return {
+            sam: ship.defenseChannels?.sam ?? (oldSam > 0 ? oldSam : cls.defenseChannels?.sam ?? clsOldSam),
+            ciws: ship.defenseChannels?.ciws ?? cls.defenseChannels?.ciws ?? 0
+          };
+        })(),
         engagementAssignments: ship.engagementAssignments || {},
         lastFirePlanAt: Number.isFinite(ship.lastFirePlanAt) ? ship.lastFirePlanAt : -Infinity,
         launchQueue: Array.isArray(ship.launchQueue) ? ship.launchQueue : [],

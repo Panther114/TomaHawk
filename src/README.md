@@ -6,7 +6,7 @@ as-is and run as native ES modules in the browser and in Node.
 ## Files
 
 - `app.js` — browser entry: canvas rendering, input, panels, sim controls.
-- `world/map-spec.js` — shared map dimensions, projection center, and crop helpers used by terrain and data generation.
+- `world/map-spec.js` — shared map dimensions and projection helpers used by terrain and data generation.
 - `world/terrain.js` — shared tactical-map geometry and binary water/land
   queries, accelerated by conservative water-mask and ring/edge spatial grids.
 - `ui/view.js` — **pure** presentation helpers (coordinate transforms, panel
@@ -27,7 +27,7 @@ as-is and run as native ES modules in the browser and in Node.
 | `math.js` | geometry, kinematics, `interceptPoint`, `Rng` |
 | `events.js` | event-log append, severity, time formatting |
 | `missiles.js` | `MISSILES` catalogue, display helpers, `battleSummaryCounts` |
-| `ships.js` | `SHIP_CLASSES` (four naval hulls + three fixed ground emplacements SAM/CDB/EWR via `domain`/`isFixed`), ship factory, loadout/ROE, hull-id counter |
+| `ships.js` | `SHIP_CLASSES` (four naval hulls + four fixed ground emplacements SAM/CDB/DEB/EWR via `domain`/`isFixed`), ship factory, loadout/ROE, hull-id counter |
 | `sensors.js` | hostile radar detection, lazy track ageing/pruning, centralized CEC sharing, adaptive spatial scan index |
 | `command.js` | fused force picture + fleet command posture (OTC/AAWC, modes) |
 | `movement.js` | ship motion integration, terrain-aware detours, per-unit movement decisions |

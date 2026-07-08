@@ -13,20 +13,26 @@ import {
   tacticalMap
 } from "../src/ui/maps.js";
 
-test("East China Sea map uses projected Natural Earth land and coastline data", () => {
+test("coastline map uses global Natural Earth land and coastline data", () => {
   const map = TACTICAL_MAPS.eastChinaSea;
-  assert.equal(map.projection.type, "azimuthal-equidistant");
-  assert.ok(map.landRings.length > 200);
-  assert.ok(map.coastlines.length > 80);
+  assert.equal(map.projection.type, "equirectangular");
+  assert.ok(map.geographicExtent.west <= -180);
+  assert.ok(map.geographicExtent.east >= 180);
+  assert.ok(map.geographicExtent.south <= -90);
+  assert.ok(map.geographicExtent.north >= 90);
+  assert.ok(map.landRings.length > 1000);
+  assert.ok(map.coastlines.length > 300);
   assert.equal(TACTICAL_MAPS.openSea.landRings.length, 0);
   assert.equal(tacticalMap("unknown"), TACTICAL_MAPS.openSea);
 });
 
-test("azimuthal-equidistant projection keeps the map center and regional scale", () => {
-  const center = projectLonLat(125, 28.2);
-  const north = projectLonLat(125, 29.2);
+test("global projection keeps longitude and latitude scale stable", () => {
+  const center = projectLonLat(0, 0);
+  const north = projectLonLat(0, 1);
+  const east = projectLonLat(1, 0);
   assert.ok(Math.abs(center.x) < 1e-6 && Math.abs(center.y) < 1e-6);
   assert.ok(Math.abs(Math.abs(north.y) - 111195) < 300);
+  assert.ok(Math.abs(Math.abs(east.x) - 111195) < 300);
 });
 
 test("terrain query recognizes mainland coast and open East China Sea", () => {

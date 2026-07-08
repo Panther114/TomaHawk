@@ -35,7 +35,7 @@
 - Event log and compact fleet inventory panel.
 - CCG, BBG, and FFG ship classes alongside DDG.
 - Three fixed land emplacements — SAM (coastal air defence), CDB (coastal anti-ship with over-the-horizon radar), and EWR (early-warning radar) — that sense, share, fire, and are targeted through the ship pipeline but never move.
-- Selectable tactical maps (Open Sea, projected East China Sea coastline) with kilometre coordinates, a 20 km grid, and a dynamic scale bar.
+- Selectable tactical maps (Open Sea, projected global coastline) with kilometre coordinates, a 20 km grid, and a dynamic scale bar.
 - Terrain-aware navigation: coastal detours and swept-segment land-collision guards; domain-aware placement (sea units on water, ground units on land).
 - Force Inventory split into per-faction naval and ground sub-tables with unique unit tags and distinct map glyphs.
 - Overlapping same-type, same-faction weapon-range rings merged into a single coverage outline.
