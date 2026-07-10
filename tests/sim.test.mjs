@@ -101,13 +101,15 @@ test("default ship headings point blue left and red right before battle starts",
   assert.equal(sim.ships[1].heading, 0);
 });
 
-test("default app scenario loads the supplied 4v4 east china sea template", () => {
+test("default app scenario starts as an empty East China Sea setup", () => {
   const sim = createDefaultScenario(1);
-  assert.equal(sim.ships.length, 8);
-  assert.equal(sim.ships.filter((s) => s.side === SIDE.BLUE).length, 4);
-  assert.equal(sim.ships.filter((s) => s.side === SIDE.RED).length, 4);
+  assert.deepEqual(sim.ships, []);
+  assert.deepEqual(sim.missiles, []);
+  assert.deepEqual(sim.events, []);
+  assert.equal(sim.selectedId, null);
   assert.equal(sim.mapId, "eastChinaSea");
   assert.equal(sim.mode, SCENARIO_MODE.SETUP);
+  assert.equal(sim.paused, true);
 });
 
 test("loadout validation enforces 96-cell VLS capacity", () => {

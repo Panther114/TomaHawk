@@ -74,12 +74,12 @@ npm test                # run the deterministic test suite (node --test)
 >
 > Windows 用户也可双击 **`quickrun.bat`**：释放 `4172` 端口、启动服务并自动打开浏览器。
 
-Once the page loads you'll see a default 4-vs-4 East China Sea scenario (three
-destroyers and one cruiser per side) sitting in **setup** mode — press `▶` or
-`Space` to start the clock.
+Once the page loads you'll see an empty East China Sea scenario in **setup**
+mode. Add at least one Blue and one Red unit, then press `▶` or `Space` to
+start the clock.
 
-页面加载后会看到默认的东海 4 对 4 想定（每方 3 艘驱逐舰 + 1 艘巡洋舰），处于 **setup（部署）**
-阶段——按 `▶` 或 `Space` 开始推演。
+页面加载后会看到一个空的东海想定，处于 **setup（部署）** 阶段。为蓝方和红方各添加至少一个单位后，
+按 `▶` 或 `Space` 开始推演。
 
 <div align="center">
 <img src="docs/screenshots/air-combat.png" alt="Two fighter squadrons closing to merge range under their AMRAAM no-escape-zone rings, with a missile exchange visible between the surface groups behind them" width="720">

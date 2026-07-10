@@ -89,7 +89,7 @@ const filters = {
 
 let sim = createDefaultScenario(undefined, mapSelect?.value);
 let tool = "select";
-let camera = { x: 0, y: 0, scale: 0.00125 };
+let camera = { x: 13900, y: -3600, scale: 0.00125 };
 let drag = null;
 let activeRuler = null;
 let rulers = [];

@@ -34,6 +34,12 @@ test("camera clamping uses the viewport-derived map scale", () => {
   assert.doesNotMatch(appSource, /\bMIN_CAMERA_SCALE\b/);
 });
 
+test("the initial tactical viewport focuses the requested East China Sea coordinate", () => {
+  const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+
+  assert.match(appSource, /let camera = \{ x: 13900, y: -3600, scale: 0\.00125 \};/);
+});
+
 test("frame rendering preserves interactive panel DOM when content is unchanged", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
 
