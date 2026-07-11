@@ -1,6 +1,10 @@
 # Dependencies (none are committed; the project is dependency-light)
 node_modules/
 
+# Isolated local video build workspace and untracked trailer source/output
+.worktrees/
+demo_video/
+
 # Local scenario / after-action exports produced at runtime
 *.save.json
 *.aar.json

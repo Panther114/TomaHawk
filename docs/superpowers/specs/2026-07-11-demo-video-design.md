@@ -11,7 +11,8 @@ futuristic, but grounded entirely in its actual simulation model and interface.
 - A 42-second, 1920×1080, 30 fps H.264 MP4 rendered from a standalone
   `demo_video/` Remotion project.
 - `demo_video/` and its rendered output stay local and are ignored by Git.
-- The trailer uses product-derived vector/HTML/SVG motion graphics and an
+- The trailer uses recorded live simulation footage as its central product-evidence
+  layer, enhanced by product-derived vector/HTML/SVG motion graphics and an
   original synthesized sound bed. It deliberately does not use stock footage,
   third-party music, logos, or unverified military imagery.
 - No simulator source, behavior, data model, or runtime UI is changed.
@@ -65,9 +66,11 @@ precision engineering, not cyberpunk.
 `demo_video/` is isolated from the app and exposes one registered composition:
 `TomaHawkTrailer`. A small scene component owns each chapter, while a shared
 visual layer owns camera interpolation, vector terrain/grid, particles, force
-symbols, tactical rings, and typography. Each scene consumes static data that
-mirrors documented product capabilities rather than reading browser application
-state. This keeps rendering deterministic and avoids mutating the simulator.
+symbols, tactical rings, and typography. The composition embeds a recorded MP4
+of a live, high-density simulator battle for the track, command, missile, and
+defence sections. Product-native overlays frame and annotate that evidence;
+they never substitute it. The capture is made from a fresh local app run and
+does not mutate the simulator source or behavior.
 
 Motion will be derived from `useCurrentFrame()`, `interpolate()`, and static
 SVG/CSS primitives supported by Remotion. No CSS animation or runtime transition
@@ -82,6 +85,9 @@ hit—no spoken voiceover.
 ## Error handling and verification
 
 - Rendering is performed after a Remotion Studio pass on port 3333.
+- The capture is inspected to confirm it visibly contains ships, force inventory,
+  tactical tracks, launched weapons, and live event-log activity before it is
+  embedded in the trailer.
 - Representative motion checkpoints are inspected through the studio rather than
   only using stills: title, force deployment, track fusion, strike peak, and end
   card.
