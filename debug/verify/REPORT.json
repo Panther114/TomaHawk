@@ -1,0 +1,682 @@
+[
+  {
+    "ticks": 13244,
+    "simTimeS": 3311,
+    "outcome": "draw",
+    "wallMs": 1052.6,
+    "avgMsTick": 0.079,
+    "perf": {
+      "p50": 0.031,
+      "p95": 0.286,
+      "max": 11.525,
+      "peakEntities": 41,
+      "peakMissiles": 37
+    },
+    "blue": {
+      "alive": 1,
+      "ships": 1,
+      "ground": 0,
+      "air": 0,
+      "planes": 0,
+      "carriers": 0,
+      "airfields": 0,
+      "offense": 0,
+      "rearming": [],
+      "rtb": [],
+      "hulls": [
+        "DDG"
+      ]
+    },
+    "red": {
+      "alive": 1,
+      "ships": 1,
+      "ground": 0,
+      "air": 0,
+      "planes": 0,
+      "carriers": 0,
+      "airfields": 0,
+      "offense": 0,
+      "rearming": [],
+      "rtb": [],
+      "hulls": [
+        "DDG"
+      ]
+    },
+    "launches": {
+      "SM-6": 1,
+      "MaritimeStrike": 2,
+      "ESSM": 1
+    },
+    "counts": {
+      "intercepts": 42,
+      "misses": 63,
+      "decoys": 0,
+      "splashes": 0,
+      "rearmPhases": 0,
+      "deckWait": 0,
+      "rtbPhases": 0,
+      "darkEagle": 0,
+      "jsow": 0,
+      "harpoon": 0,
+      "aam": 0
+    },
+    "eventTotal": 500,
+    "flags": [],
+    "lastEvents": [
+      {
+        "t": 831.25,
+        "side": "Blue",
+        "text": "Blue FFG 4 launched SM2 at MaritimeStrike."
+      },
+      {
+        "t": 831.25,
+        "side": "Blue",
+        "text": "Blue FFG 4 queued 1x SM2 salvo at MaritimeStrike."
+      },
+      {
+        "t": 830.75,
+        "side": "Blue",
+        "text": "Blue DDG 3 launched MSTK at surface combatant."
+      },
+      {
+        "t": 830.5,
+        "side": "Blue",
+        "text": "SM-2MR failed to intercept MaritimeStrike."
+      },
+      {
+        "t": 830.25,
+        "side": "Blue",
+        "text": "Blue DDG 3 queued 1x SM2 salvo at MaritimeStrike."
+      },
+      {
+        "t": 830.25,
+        "side": "Blue",
+        "text": "Blue DDG 3 queued 1x SM2 salvo at MaritimeStrike."
+      },
+      {
+        "t": 829.5,
+        "side": "Blue",
+        "text": "SM-2MR intercepted incoming MaritimeStrike."
+      },
+      {
+        "t": 829.5,
+        "side": "Blue",
+        "text": "SM-2MR failed to intercept MaritimeStrike."
+      },
+      {
+        "t": 829.5,
+        "side": "Blue",
+        "text": "Blue DDG 3 launched SM2 at MaritimeStrike."
+      },
+      {
+        "t": 828.75,
+        "side": "Red",
+        "text": "Red DDG 5 launched MSTK at surface combatant."
+      },
+      {
+        "t": 827.75,
+        "side": "Red",
+        "text": "Red DDG 5 launched SM2 at MaritimeStrike."
+      },
+      {
+        "t": 827.5,
+        "side": "Blue",
+        "text": "Blue FFG 4 launched SM2 at MaritimeStrike."
+      }
+    ],
+    "name": "small-naval-peer",
+    "seed": 101,
+    "id": "1"
+  },
+  {
+    "ticks": 3710,
+    "simTimeS": 927.5,
+    "outcome": "Red",
+    "wallMs": 599.4,
+    "avgMsTick": 0.162,
+    "perf": {
+      "p50": 0.076,
+      "p95": 0.594,
+      "max": 4.291,
+      "peakEntities": 69,
+      "peakMissiles": 62
+    },
+    "blue": {
+      "alive": 0,
+      "ships": 0,
+      "ground": 0,
+      "air": 0,
+      "planes": 0,
+      "carriers": 0,
+      "airfields": 0,
+      "offense": 0,
+      "rearming": [],
+      "rtb": [],
+      "hulls": []
+    },
+    "red": {
+      "alive": 4,
+      "ships": 2,
+      "ground": 2,
+      "air": 0,
+      "planes": 0,
+      "carriers": 0,
+      "airfields": 0,
+      "offense": 54,
+      "rearming": [],
+      "rtb": [],
+      "hulls": [
+        "DDG",
+        "CCG",
+        "SAM",
+        "EWR"
+      ]
+    },
+    "launches": {
+      "MaritimeStrike": 5,
+      "TomahawkBlockV": 3,
+      "SM-6": 2
+    },
+    "counts": {
+      "intercepts": 16,
+      "misses": 21,
+      "decoys": 0,
+      "splashes": 0,
+      "rearmPhases": 0,
+      "deckWait": 0,
+      "rtbPhases": 0,
+      "darkEagle": 0,
+      "jsow": 0,
+      "harpoon": 0,
+      "aam": 0
+    },
+    "eventTotal": 314,
+    "flags": [],
+    "lastEvents": [
+      {
+        "t": 0.25,
+        "side": "Red",
+        "text": "Red CG 7 queued 4x MSTK salvo at ground contact."
+      },
+      {
+        "t": 0.25,
+        "side": "Blue",
+        "text": "Blue FFG 3 queued 4x MSTK salvo at ground contact."
+      },
+      {
+        "t": 0.25,
+        "side": "Blue",
+        "text": "Blue F15C 4 phase -> cap."
+      },
+      {
+        "t": 0,
+        "side": "Red",
+        "text": "Red EWR placed."
+      },
+      {
+        "t": 0,
+        "side": "Red",
+        "text": "Red SAM placed."
+      },
+      {
+        "t": 0,
+        "side": "Red",
+        "text": "Red CCG placed."
+      },
+      {
+        "t": 0,
+        "side": "Red",
+        "text": "Red DDG placed."
+      },
+      {
+        "t": 0,
+        "side": "Blue",
+        "text": "Blue AFB placed."
+      },
+      {
+        "t": 0,
+        "side": "Blue",
+        "text": "Blue F15C placed."
+      },
+      {
+        "t": 0,
+        "side": "Blue",
+        "text": "Blue FFG placed."
+      },
+      {
+        "t": 0,
+        "side": "Red",
+        "text": "Red side cleared from scenario."
+      },
+      {
+        "t": 0,
+        "side": "Blue",
+        "text": "Blue side cleared from scenario."
+      }
+    ],
+    "name": "small-unequal",
+    "seed": 202,
+    "id": "2"
+  },
+  {
+    "ticks": 24000,
+    "simTimeS": 6000,
+    "outcome": "ongoing",
+    "wallMs": 5464.2,
+    "avgMsTick": 0.228,
+    "perf": {
+      "p50": 0.05,
+      "p95": 1.069,
+      "max": 7.548,
+      "peakEntities": 139,
+      "peakMissiles": 123
+    },
+    "blue": {
+      "alive": 7,
+      "ships": 3,
+      "ground": 0,
+      "air": 3,
+      "planes": 6,
+      "carriers": 1,
+      "airfields": 1,
+      "offense": 12,
+      "rearming": [],
+      "rtb": [],
+      "hulls": [
+        "CVN",
+        "DDG",
+        "DDG",
+        "FFG",
+        "F35C",
+        "F35C",
+        "AWAC"
+      ]
+    },
+    "red": {
+      "alive": 1,
+      "ships": 0,
+      "ground": 1,
+      "air": 0,
+      "planes": 0,
+      "carriers": 0,
+      "airfields": 0,
+      "offense": 0,
+      "rearming": [],
+      "rtb": [],
+      "hulls": [
+        "SAM"
+      ]
+    },
+    "launches": {
+      "TomahawkBlockV": 36,
+      "MaritimeStrike": 19
+    },
+    "counts": {
+      "intercepts": 31,
+      "misses": 94,
+      "decoys": 0,
+      "splashes": 0,
+      "rearmPhases": 1,
+      "deckWait": 0,
+      "rtbPhases": 1,
+      "darkEagle": 0,
+      "jsow": 0,
+      "harpoon": 0,
+      "aam": 0
+    },
+    "eventTotal": 500,
+    "flags": [],
+    "lastEvents": [
+      {
+        "t": 860.5,
+        "side": "Blue",
+        "text": "SM-6 failed to intercept DarkEagle."
+      },
+      {
+        "t": 860.25,
+        "side": "Red",
+        "text": "SM-2MR failed to intercept MaritimeStrike."
+      },
+      {
+        "t": 860.25,
+        "side": "Red",
+        "text": "Red DDG 16 launched ESSM at MaritimeStrike."
+      },
+      {
+        "t": 860.25,
+        "side": "Red",
+        "text": "Red SAM 12 launched ESSM at MaritimeStrike."
+      },
+      {
+        "t": 860.25,
+        "side": "Red",
+        "text": "Red SAM 12 queued 1x ESSM salvo at MaritimeStrike."
+      },
+      {
+        "t": 860.25,
+        "side": "Red",
+        "text": "Red DDG 16 queued 1x ESSM salvo at MaritimeStrike."
+      },
+      {
+        "t": 859.5,
+        "side": "Red",
+        "text": "SM-2MR failed to intercept MaritimeStrike."
+      },
+      {
+        "t": 859.25,
+        "side": "Red",
+        "text": "ESSM failed to intercept MaritimeStrike."
+      },
+      {
+        "t": 858.25,
+        "side": "Red",
+        "text": "Red Coast Strike 13 launched MSTK at surface combatant."
+      },
+      {
+        "t": 856.75,
+        "side": "Blue",
+        "text": "Blue CVN 3 launched ESSM at MaritimeStrike."
+      },
+      {
+        "t": 855.25,
+        "side": "Blue",
+        "text": "Blue CVN 3 launched ESSM at MaritimeStrike."
+      },
+      {
+        "t": 855.25,
+        "side": "Blue",
+        "text": "Blue CVN 3 queued 1x ESSM salvo at MaritimeStrike."
+      }
+    ],
+    "name": "carrier-vs-coastal",
+    "seed": 303,
+    "id": "3"
+  },
+  {
+    "ticks": 24000,
+    "simTimeS": 6000,
+    "outcome": "ongoing",
+    "wallMs": 13285.5,
+    "avgMsTick": 0.554,
+    "perf": {
+      "p50": 0.132,
+      "p95": 2.174,
+      "max": 15.986,
+      "peakEntities": 200,
+      "peakMissiles": 174
+    },
+    "blue": {
+      "alive": 12,
+      "ships": 3,
+      "ground": 3,
+      "air": 5,
+      "planes": 15,
+      "carriers": 1,
+      "airfields": 2,
+      "offense": 88,
+      "rearming": [],
+      "rtb": [],
+      "hulls": [
+        "CVN",
+        "DDG",
+        "DDG",
+        "CCG",
+        "SAM",
+        "CDB",
+        "AFB",
+        "F22",
+        "F35C",
+        "F15N",
+        "F15C",
+        "AWAC"
+      ]
+    },
+    "red": {
+      "alive": 7,
+      "ships": 2,
+      "ground": 3,
+      "air": 1,
+      "planes": 1,
+      "carriers": 1,
+      "airfields": 2,
+      "offense": 25,
+      "rearming": [],
+      "rtb": [],
+      "hulls": [
+        "CVN",
+        "CCG",
+        "FFG",
+        "SAM",
+        "DEB",
+        "AFB",
+        "AWAC"
+      ]
+    },
+    "launches": {
+      "AGM-84": 2,
+      "MaritimeStrike": 4,
+      "TomahawkBlockV": 25,
+      "SM-6": 3,
+      "SM-2MR": 4,
+      "AIM-9X": 3
+    },
+    "counts": {
+      "intercepts": 53,
+      "misses": 43,
+      "decoys": 0,
+      "splashes": 0,
+      "rearmPhases": 8,
+      "deckWait": 0,
+      "rtbPhases": 8,
+      "darkEagle": 0,
+      "jsow": 0,
+      "harpoon": 2,
+      "aam": 3
+    },
+    "eventTotal": 500,
+    "flags": [],
+    "lastEvents": [
+      {
+        "t": 1191.25,
+        "side": "Red",
+        "text": "Red CG 19 queued 1x ESSM salvo at TomahawkBlockV."
+      },
+      {
+        "t": 1191.25,
+        "side": "Blue",
+        "text": "Blue CG 6 queued 1x ESSM salvo at TomahawkBlockV."
+      },
+      {
+        "t": 1190.5,
+        "side": "Blue",
+        "text": "ESSM failed to intercept TomahawkBlockV."
+      },
+      {
+        "t": 1189.5,
+        "side": "Blue",
+        "text": "Blue F35C 12 launched HPN at surface combatant."
+      },
+      {
+        "t": 1189,
+        "side": "Red",
+        "text": "ESSM intercepted incoming TomahawkBlockV."
+      },
+      {
+        "t": 1188.75,
+        "side": "Blue",
+        "text": "Blue F35C 12 launched HPN at surface combatant."
+      },
+      {
+        "t": 1187.75,
+        "side": "Blue",
+        "text": "Blue DDG 4 launched ESSM at TomahawkBlockV."
+      },
+      {
+        "t": 1187.25,
+        "side": "Blue",
+        "text": "Blue F35C 12 queued 2x HPN salvo at surface combatant."
+      },
+      {
+        "t": 1186.25,
+        "side": "Blue",
+        "text": "Blue DDG 4 launched ESSM at TomahawkBlockV."
+      },
+      {
+        "t": 1186.25,
+        "side": "Blue",
+        "text": "Blue DDG 4 queued 1x ESSM salvo at TomahawkBlockV."
+      },
+      {
+        "t": 1186.25,
+        "side": "Blue",
+        "text": "Blue DDG 4 queued 1x ESSM salvo at TomahawkBlockV."
+      },
+      {
+        "t": 1186,
+        "side": "Blue",
+        "text": "ESSM received a midcourse abort and self-destructed after its target was destroyed."
+      }
+    ],
+    "name": "large-peer-complex",
+    "seed": 404,
+    "id": "4"
+  },
+  {
+    "ticks": 24000,
+    "simTimeS": 6000,
+    "outcome": "ongoing",
+    "wallMs": 2154.3,
+    "avgMsTick": 0.09,
+    "perf": {
+      "p50": 0.021,
+      "p95": 0.287,
+      "max": 5.669,
+      "peakEntities": 109,
+      "peakMissiles": 91
+    },
+    "blue": {
+      "alive": 1,
+      "ships": 0,
+      "ground": 0,
+      "air": 1,
+      "planes": 1,
+      "carriers": 0,
+      "airfields": 0,
+      "offense": 0,
+      "rearming": [],
+      "rtb": [
+        "AWAC-10"
+      ],
+      "hulls": [
+        "AWAC"
+      ]
+    },
+    "red": {
+      "alive": 9,
+      "ships": 1,
+      "ground": 7,
+      "air": 1,
+      "planes": 4,
+      "carriers": 0,
+      "airfields": 1,
+      "offense": 61,
+      "rearming": [],
+      "rtb": [],
+      "hulls": [
+        "SAM",
+        "SAM",
+        "SAM",
+        "EWR",
+        "DEB",
+        "CDB",
+        "DDG",
+        "AFB",
+        "F15C"
+      ]
+    },
+    "launches": {
+      "MaritimeStrike": 80,
+      "SM-6": 4
+    },
+    "counts": {
+      "intercepts": 19,
+      "misses": 51,
+      "decoys": 2,
+      "splashes": 0,
+      "rearmPhases": 1,
+      "deckWait": 0,
+      "rtbPhases": 2,
+      "darkEagle": 0,
+      "jsow": 0,
+      "harpoon": 0,
+      "aam": 0
+    },
+    "eventTotal": 500,
+    "flags": [],
+    "lastEvents": [
+      {
+        "t": 110.75,
+        "side": "Red",
+        "text": "SM-6 missed Blue F15E 5."
+      },
+      {
+        "t": 110.5,
+        "side": "Blue",
+        "text": "SM-2MR received a midcourse abort and self-destructed after its target was destroyed."
+      },
+      {
+        "t": 110.5,
+        "side": "Blue",
+        "text": "SM-2MR received a midcourse abort and self-destructed after its target was destroyed."
+      },
+      {
+        "t": 110.5,
+        "side": "Red",
+        "text": "Blue F15N 7 lost an aircraft to SM-6 (3 of 4 remaining)."
+      },
+      {
+        "t": 110.25,
+        "side": "Blue",
+        "text": "SM-6 failed to intercept DarkEagle."
+      },
+      {
+        "t": 107.5,
+        "side": "Red",
+        "text": "Red SAM 13 launched SM2 at MaritimeStrike."
+      },
+      {
+        "t": 106.25,
+        "side": "Blue",
+        "text": "Blue DDG 11 launched SM2 at SM-6."
+      },
+      {
+        "t": 106.25,
+        "side": "Red",
+        "text": "Red SAM 13 queued 1x SM2 salvo at MaritimeStrike."
+      },
+      {
+        "t": 106.25,
+        "side": "Blue",
+        "text": "Blue DDG 11 queued 1x SM2 salvo at SM-6."
+      },
+      {
+        "t": 105.25,
+        "side": "Blue",
+        "text": "SM-6 intercepted incoming DarkEagle."
+      },
+      {
+        "t": 105.25,
+        "side": "Red",
+        "text": "Red SAM 13 launched SM2 at MaritimeStrike."
+      },
+      {
+        "t": 105.25,
+        "side": "Red",
+        "text": "Red SAM 13 queued 1x SM2 salvo at MaritimeStrike."
+      }
+    ],
+    "name": "air-raid-unequal",
+    "seed": 505,
+    "id": "5"
+  }
+]

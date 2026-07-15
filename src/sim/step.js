@@ -10,8 +10,16 @@ import { buildForcePicture } from "./command.js";
 import { moveShips, decideShip } from "./movement.js";
 import { decideAircraft, updateAircraft } from "./aircraft.js";
 import { planEngagements, processLaunchQueues, updateMissiles, pointDefense } from "./combat.js";
+import { offensiveMissileCount } from "./ships.js";
+import { missileHasSurfaceTarget, missileCanTarget, MISSILES } from "./missiles.js";
 
 const FORCE_PICTURE_INTERVAL_S = 0.5;
+// Mutual magazine exhaustion: both sides spent dedicated strike + air-surface
+// stores and no ASCMs remain in flight. Without this, long peer fights idle for
+// thousands of sim-seconds with WINCHESTER hulls circling (verified in
+// scripts/verify-battles.mjs small-naval / large-peer runs).
+// Pure air-to-air fights are NOT a stalemate — AAM magazines still count.
+const STALEMATE_HOLD_S = 90;
 
 // Full rebuild of pure lookup structures. Never draws RNG — only the cost of
 // resolving entities by id. Combat maintains these incrementally on launch/
@@ -127,6 +135,55 @@ export function stepSim(sim, dt = 0.25) {
     sim.paused = true;
     sim.mode = SCENARIO_MODE.ENDED;
     addEvent(sim, `${sim.ended} side controls the battlespace. Simulation ended.`);
+    return sim;
+  }
+  // Stalemate / mutual exhaustion (draw): neither side retains an *offensive*
+  // prosecution path. Ship SAMs alone (self-defence) do not keep a fight open —
+  // long peer logs left two WINCHESTER DDGs circling for 6000s. Aircraft with
+  // any remaining AAM/ASUW and live strike/AAM weapons still count.
+  if (!sim.ended && aliveSideCount === 2) {
+    const stillDangerous = (side) => {
+      let hasAir = false;
+      let hasBase = false;
+      for (const ship of sim._shipsBySide?.get(side) || sim.ships) {
+        if (!ship.alive || ship.side !== side) continue;
+        // Dedicated surface-strike magazines (not dual-role SAMs).
+        if (offensiveMissileCount(ship, false) > 0) return true;
+        if (ship.domain === "air") {
+          hasAir = true;
+          // Aircraft that still carry anything can still fight (A2A or A2G).
+          const lo = ship.loadout;
+          if (lo) for (const id of Object.keys(lo)) if (lo[id] > 0) return true;
+        }
+        // Living airfield/CVN can rearm squadrons — combat power regenerates.
+        if (ship.isAirfield) hasBase = true;
+      }
+      // Air + base regenerates combat power. Solo airborne units without a base
+      // and without munitions will splash on fuel — leave that path open rather
+      // than declaring a premature draw (airfield-destroyed divert tests).
+      if (hasAir && hasBase) return true;
+      // Still-airborne aircraft (even empty) are not a settled stalemate until
+      // they splash or recover — only pure surface WINCHESTER pairs draw.
+      if (hasAir) return true;
+      for (const m of sim._aliveMissiles || sim.missiles) {
+        if (!m.alive || m.side !== side) continue;
+        // In-flight strike weapons, or AAMs engaging a unit (not SAM-vs-missile).
+        if (m.launchRole === "anti_ship") return true;
+        if (m.launchRole === "anti_air" && !String(m.targetId || "").startsWith("M-")) return true;
+      }
+      return false;
+    };
+    if (!stillDangerous(SIDE.BLUE) && !stillDangerous(SIDE.RED)) {
+      sim._stalemateSince = sim._stalemateSince ?? sim.time;
+      if (sim.time - sim._stalemateSince >= STALEMATE_HOLD_S) {
+        sim.ended = "draw";
+        sim.paused = true;
+        sim.mode = SCENARIO_MODE.ENDED;
+        addEvent(sim, "Mutual exhaustion — neither side retains offensive munitions. Draw.");
+      }
+    } else {
+      sim._stalemateSince = null;
+    }
   }
   return sim;
 }

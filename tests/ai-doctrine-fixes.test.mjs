@@ -46,6 +46,59 @@ function seedTrack(observer, target, quality = 0.9) {
   });
 }
 
+test("fighters do not expend AAMs against high-energy Dark Eagle threats", () => {
+  const sim = emptyRunning(911);
+  const f22 = placeShip(sim, SIDE.BLUE, 0, 0, "F22");
+  f22.loadout = { "AIM-120D": 6, "AIM-9X": 2 };
+  // Synthetic hypersonic threat aimed at a friendly ship.
+  const ddg = placeShip(sim, SIDE.BLUE, 5 * NM, 0, "DDG");
+  const threat = {
+    id: "M-deb-1",
+    alive: true,
+    side: SIDE.RED,
+    missileId: "DarkEagle",
+    targetId: ddg.id,
+    x: 10 * NM,
+    y: 0,
+    speed: 1700,
+    heading: Math.PI,
+    terminal: false,
+    altitudeM: 25000
+  };
+  sim.missiles.push(threat);
+  sim._entityIndexesDirty = true;
+  const before = f22.loadout["AIM-120D"];
+  // Seed a track so planners can see the inbound.
+  f22.tracks.set(threat.id, {
+    id: threat.id, side: SIDE.RED, classification: "DarkEagle",
+    x: threat.x, y: threat.y, vx: -1700, vy: 0, quality: 0.9, uncertainty: 100,
+    source: f22.id, age: 0, lastSeen: 0
+  });
+  for (let i = 0; i < 40; i++) stepSim(sim, 0.25);
+  const aamAtThreat = sim.missiles.some(
+    (m) => m.alive && m.side === SIDE.BLUE && m.launcherId === f22.id && m.targetId === threat.id
+  );
+  assert.equal(aamAtThreat, false, "F-22 must not fire AMRAAM at Dark Eagle");
+  assert.equal(f22.loadout["AIM-120D"], before);
+});
+
+test("mutual strike exhaustion ends the fight as a draw", () => {
+  const sim = emptyRunning(912);
+  const b = placeShip(sim, SIDE.BLUE, -10 * NM, 0, "DDG");
+  const r = placeShip(sim, SIDE.RED, 10 * NM, 0, "DDG");
+  // Empty dedicated strike; leave SAMs only.
+  for (const s of [b, r]) {
+    s.loadout = { "SM-2MR": 20, "SM-6": 0, ESSM: 16, MaritimeStrike: 0, TomahawkBlockV: 0 };
+  }
+  let ended = false;
+  for (let i = 0; i < 500 && !ended; i++) {
+    stepSim(sim, 0.25);
+    ended = sim.mode === SCENARIO_MODE.ENDED;
+  }
+  assert.equal(sim.ended, "draw");
+  assert.ok(sim.events.some((e) => /Mutual exhaustion|Draw/i.test(e.text || "")));
+});
+
 test("offensiveMissileCount counts Dark Eagle and air surface munitions", () => {
   const sim = emptyRunning(901);
   const deb = placeShip(sim, SIDE.BLUE, -10 * NM, 0, "DEB");

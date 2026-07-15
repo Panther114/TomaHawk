@@ -22,6 +22,7 @@ import { distance } from "./math.js";
 import { MISSILES, isAirDefenseCategory } from "./missiles.js";
 import { isAircraft, isAirfield, aliveAircraftCount, squadronSize, AIR_STATE } from "./aircraft.js";
 import { offensiveMissileCount } from "./ships.js";
+import { missileCanTarget, missileHasSurfaceTarget } from "./missiles.js";
 
 const MPS_TO_KT = 1 / (KNOT * SHIP_SPEED_MULTIPLIER);
 
@@ -82,15 +83,52 @@ function nearestPictureContact(sim, ship, wantAir) {
 // One-line translation of a squadron's current behaviour and reason — derived
 // from the same fused picture the AI uses, so a "searching" flight is one that
 // genuinely holds no track (not one whose target is merely far away).
+function loadoutCanEngageDomainDebug(ship, domain) {
+  const lo = ship.loadout;
+  if (!lo) return false;
+  for (const id of Object.keys(lo)) {
+    if (!(lo[id] > 0)) continue;
+    if (missileCanTarget(MISSILES[id], domain)) return true;
+  }
+  return false;
+}
+
+// Prefer the AI's locked surface target (domain-filtered), not the nearest
+// picture contact of any surface domain — otherwise a JSOW flight is narrated
+// as "releasing vs CG" when its real lock is a SAM 20NM farther out.
 function describeAircraftIntent(sim, ship) {
-  if (ship.airState === AIR_STATE.REARMING) return "REARM/refuel at base";
+  if (ship.airState === AIR_STATE.REARMING) {
+    return ship.homeBaseId ? `REARM/refuel at ${ship.homeBaseId}` : "REARM/refuel at base";
+  }
   if (ship.evading) return "EVADING — breaking against inbound missile";
   if (ship.airState === AIR_STATE.RTB) {
     return ship.homeBaseId ? `RTB → ${ship.homeBaseId}` : "RTB → friendly territory (no base)";
   }
   const { asuw, aaw } = storeSummary(ship);
   const air = nearestPictureContact(sim, ship, true);
-  const surf = nearestPictureContact(sim, ship, false);
+  // Locked surface id from decideAircraft, when present and still fireable.
+  const lockedId = ship._surfTargetId;
+  const pic = sim.forcePicture?.get(ship.side);
+  let surf = null;
+  if (lockedId && pic?.has(lockedId)) {
+    const t = pic.get(lockedId);
+    const dom = t.domain ?? "sea";
+    if (t.side !== ship.side && loadoutCanEngageDomainDebug(ship, dom)) {
+      surf = { id: t.id, rangeM: distance(ship, t), domain: dom };
+    }
+  }
+  if (!surf && asuw > 0 && pic) {
+    let best = null; let bestD = Infinity;
+    for (const t of pic.values()) {
+      if (t.side === ship.side || String(t.id).startsWith("M-")) continue;
+      if ((t.domain ?? "sea") === "air") continue;
+      if ((t.quality ?? 0) <= 0.12) continue;
+      if (!loadoutCanEngageDomainDebug(ship, t.domain ?? "sea")) continue;
+      const d = distance(ship, t);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    if (best) surf = { id: best.id, rangeM: bestD, domain: best.domain ?? "sea" };
+  }
   if (air && aaw > 0 && air.rangeM <= 60 * NM && (!surf || air.rangeM <= surf.rangeM || asuw <= 0)) {
     return `A2A vs ${air.id} @ ${nm(air.rangeM).toFixed(0)}NM (alt ${Math.round(ship.altitudeM ?? 0)}m)`;
   }
@@ -104,6 +142,7 @@ function describeAircraftIntent(sim, ship) {
     return `strike ${phase} vs ${surf.id} @ ${r.toFixed(0)}NM (alt ${Math.round(ship.altitudeM ?? 0)}m)`;
   }
   if (air && aaw > 0) return `A2A sweep vs ${air.id} @ ${nm(air.rangeM).toFixed(0)}NM`;
+  if (asuw > 0 && !surf) return "hold (surface munitions, no fireable track)";
   // An unarmed flight (aaw and asuw both 0 — a support/sensor asset like the
   // AWAC AEW&C squadron) never screens forward; it orbits behind the guide
   // instead (see the unarmed branch in decideAircraft).

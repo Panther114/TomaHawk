@@ -1,0 +1,149 @@
+{
+  "ticks": 24000,
+  "simTimeS": 6000,
+  "outcome": "ongoing",
+  "wallMs": 13285.5,
+  "avgMsTick": 0.554,
+  "perf": {
+    "p50": 0.132,
+    "p95": 2.174,
+    "max": 15.986,
+    "peakEntities": 200,
+    "peakMissiles": 174
+  },
+  "blue": {
+    "alive": 12,
+    "ships": 3,
+    "ground": 3,
+    "air": 5,
+    "planes": 15,
+    "carriers": 1,
+    "airfields": 2,
+    "offense": 88,
+    "rearming": [],
+    "rtb": [],
+    "hulls": [
+      "CVN",
+      "DDG",
+      "DDG",
+      "CCG",
+      "SAM",
+      "CDB",
+      "AFB",
+      "F22",
+      "F35C",
+      "F15N",
+      "F15C",
+      "AWAC"
+    ]
+  },
+  "red": {
+    "alive": 7,
+    "ships": 2,
+    "ground": 3,
+    "air": 1,
+    "planes": 1,
+    "carriers": 1,
+    "airfields": 2,
+    "offense": 25,
+    "rearming": [],
+    "rtb": [],
+    "hulls": [
+      "CVN",
+      "CCG",
+      "FFG",
+      "SAM",
+      "DEB",
+      "AFB",
+      "AWAC"
+    ]
+  },
+  "launches": {
+    "AGM-84": 2,
+    "MaritimeStrike": 4,
+    "TomahawkBlockV": 25,
+    "SM-6": 3,
+    "SM-2MR": 4,
+    "AIM-9X": 3
+  },
+  "counts": {
+    "intercepts": 53,
+    "misses": 43,
+    "decoys": 0,
+    "splashes": 0,
+    "rearmPhases": 8,
+    "deckWait": 0,
+    "rtbPhases": 8,
+    "darkEagle": 0,
+    "jsow": 0,
+    "harpoon": 2,
+    "aam": 3
+  },
+  "eventTotal": 500,
+  "flags": [],
+  "lastEvents": [
+    {
+      "t": 1191.25,
+      "side": "Red",
+      "text": "Red CG 19 queued 1x ESSM salvo at TomahawkBlockV."
+    },
+    {
+      "t": 1191.25,
+      "side": "Blue",
+      "text": "Blue CG 6 queued 1x ESSM salvo at TomahawkBlockV."
+    },
+    {
+      "t": 1190.5,
+      "side": "Blue",
+      "text": "ESSM failed to intercept TomahawkBlockV."
+    },
+    {
+      "t": 1189.5,
+      "side": "Blue",
+      "text": "Blue F35C 12 launched HPN at surface combatant."
+    },
+    {
+      "t": 1189,
+      "side": "Red",
+      "text": "ESSM intercepted incoming TomahawkBlockV."
+    },
+    {
+      "t": 1188.75,
+      "side": "Blue",
+      "text": "Blue F35C 12 launched HPN at surface combatant."
+    },
+    {
+      "t": 1187.75,
+      "side": "Blue",
+      "text": "Blue DDG 4 launched ESSM at TomahawkBlockV."
+    },
+    {
+      "t": 1187.25,
+      "side": "Blue",
+      "text": "Blue F35C 12 queued 2x HPN salvo at surface combatant."
+    },
+    {
+      "t": 1186.25,
+      "side": "Blue",
+      "text": "Blue DDG 4 launched ESSM at TomahawkBlockV."
+    },
+    {
+      "t": 1186.25,
+      "side": "Blue",
+      "text": "Blue DDG 4 queued 1x ESSM salvo at TomahawkBlockV."
+    },
+    {
+      "t": 1186.25,
+      "side": "Blue",
+      "text": "Blue DDG 4 queued 1x ESSM salvo at TomahawkBlockV."
+    },
+    {
+      "t": 1186,
+      "side": "Blue",
+      "text": "ESSM received a midcourse abort and self-destructed after its target was destroyed."
+    }
+  ],
+  "name": "large-peer-complex",
+  "seed": 404,
+  "id": "4"
+}

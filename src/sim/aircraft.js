@@ -305,13 +305,40 @@ function baseHasDeckSlot(sim, aircraft, base) {
 function nearestFriendlyAirfield(sim, ship, { requireSlot = false } = {}) {
   let best = null;
   let bestD = Infinity;
+  let bestCarrier = null;
+  let bestCarrierD = Infinity;
   for (const other of airfieldsForSide(sim, ship.side)) {
     if (!other.alive || !canRecoverAtBase(ship, other)) continue;
     if (requireSlot && !baseHasDeckSlot(sim, ship, other)) continue;
     const d = distance(ship, other);
     if (d < bestD) { bestD = d; best = other; }
+    // Carrier-capable airframes prefer their natural deck when it is not far
+    // worse than the nearest land field (long battle logs: F-35C RTB'd to a
+    // distant AFB while a healthy CVN was in the same task group).
+    if (ship.carrierCapable && isCarrier(other) && d < bestCarrierD) {
+      bestCarrierD = d;
+      bestCarrier = other;
+    }
   }
-  return best;
+  if (bestCarrier && best) {
+    if (bestCarrier.id === best.id) return bestCarrier;
+    if (bestCarrierD <= bestD * 1.45) return bestCarrier;
+  }
+  return bestCarrier && !best ? bestCarrier : best;
+}
+
+/** True if the fused picture holds any non-missile track this loadout can arm. */
+function hasEmployableSurfaceTrack(sim, ship) {
+  const picture = sim.forcePicture?.get(ship.side);
+  const tracks = picture ? picture.values() : iterateTracksForShip(sim, ship);
+  for (const track of tracks) {
+    if (!track || track.side === ship.side) continue;
+    if (String(track.id).startsWith("M-")) continue;
+    if ((track.domain ?? "sea") === "air") continue;
+    if ((track.quality ?? 0) <= AIRCRAFT_TEMP_CONFIG.acquireTrackQuality) continue;
+    if (loadoutCanEngageDomain(ship, track.domain ?? "sea")) return true;
+  }
+  return false;
 }
 
 /** Lead intercept point for a moving deck; fixed AFBs return current position. */
@@ -645,7 +672,14 @@ export function decideAircraft(sim, ship) {
   // A striker returns once its stand-off (anti-ship) load is spent, even if it
   // still has air-to-air missiles for self-escort.
   const strikeDepleted = carriedStrike(ship) && strikeAmmo(ship) <= 0;
-  if ((lowFuel || winchester || strikeDepleted) && ship.airState !== AIR_STATE.RTB) {
+  // Harpoon-only (or similar) after every ship is gone: still "armed" but no
+  // fireable track — CAP forever with unusable munitions. Seen in long CVN
+  // fights where F-35Cs kept ASUW=4 while only SAMs remained. RTB instead.
+  const unemployableStrike = everCarriesWeapons(ship)
+    && !hasAirToAir(ship)
+    && strikeAmmo(ship) > 0
+    && !hasEmployableSurfaceTrack(sim, ship);
+  if ((lowFuel || winchester || strikeDepleted || unemployableStrike) && ship.airState !== AIR_STATE.RTB) {
     ship.airState = AIR_STATE.RTB;
   }
 

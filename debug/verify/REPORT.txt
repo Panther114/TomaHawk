@@ -1,0 +1,141 @@
+TomaHawk multi-scenario battle verification
+generated 2026-07-15T15:10:49.493Z
+
+========================================================================
+#1 small-naval-peer  seed=101
+  outcome=draw  simTime=3311s  ticks=13244  wall=1.1s
+  perf avg=0.079ms  p50=0.031  p95=0.286  max=11.525  peakEnt=41 msl=37
+  BLUE alive=1 ships=1 ground=0 air=0 planes=0 offense=0
+       hulls=[DDG] rearming=0 rtb=0
+  RED  alive=1 ships=1 ground=0 air=0 planes=0 offense=0
+       hulls=[DDG] rearming=0 rtb=0
+  launches  MaritimeStrike:2 SM-6:1 ESSM:1
+  events    total=500 intercepts=42 miss=63 decoy=0 splash=0
+            rearmPhases=0 deckWait=0 rtbPhases=0
+            DEB=0 JSOW=0 HPN=0 AAM=0
+  FLAGS: (none)
+  last events:
+    t=831.25 [Blue] Blue FFG 4 launched SM2 at MaritimeStrike.
+    t=831.25 [Blue] Blue FFG 4 queued 1x SM2 salvo at MaritimeStrike.
+    t=830.75 [Blue] Blue DDG 3 launched MSTK at surface combatant.
+    t=830.5 [Blue] SM-2MR failed to intercept MaritimeStrike.
+    t=830.25 [Blue] Blue DDG 3 queued 1x SM2 salvo at MaritimeStrike.
+    t=830.25 [Blue] Blue DDG 3 queued 1x SM2 salvo at MaritimeStrike.
+    t=829.5 [Blue] SM-2MR intercepted incoming MaritimeStrike.
+    t=829.5 [Blue] SM-2MR failed to intercept MaritimeStrike.
+    t=829.5 [Blue] Blue DDG 3 launched SM2 at MaritimeStrike.
+    t=828.75 [Red] Red DDG 5 launched MSTK at surface combatant.
+    t=827.75 [Red] Red DDG 5 launched SM2 at MaritimeStrike.
+    t=827.5 [Blue] Blue FFG 4 launched SM2 at MaritimeStrike.
+
+========================================================================
+#2 small-unequal  seed=202
+  outcome=Red  simTime=927.5s  ticks=3710  wall=0.6s
+  perf avg=0.162ms  p50=0.076  p95=0.594  max=4.291  peakEnt=69 msl=62
+  BLUE alive=0 ships=0 ground=0 air=0 planes=0 offense=0
+       hulls=[] rearming=0 rtb=0
+  RED  alive=4 ships=2 ground=2 air=0 planes=0 offense=54
+       hulls=[DDG,CCG,SAM,EWR] rearming=0 rtb=0
+  launches  MaritimeStrike:5 TomahawkBlockV:3 SM-6:2
+  events    total=314 intercepts=16 miss=21 decoy=0 splash=0
+            rearmPhases=0 deckWait=0 rtbPhases=0
+            DEB=0 JSOW=0 HPN=0 AAM=0
+  FLAGS: (none)
+  last events:
+    t=0.25 [Red] Red CG 7 queued 4x MSTK salvo at ground contact.
+    t=0.25 [Blue] Blue FFG 3 queued 4x MSTK salvo at ground contact.
+    t=0.25 [Blue] Blue F15C 4 phase -> cap.
+    t=0 [Red] Red EWR placed.
+    t=0 [Red] Red SAM placed.
+    t=0 [Red] Red CCG placed.
+    t=0 [Red] Red DDG placed.
+    t=0 [Blue] Blue AFB placed.
+    t=0 [Blue] Blue F15C placed.
+    t=0 [Blue] Blue FFG placed.
+    t=0 [Red] Red side cleared from scenario.
+    t=0 [Blue] Blue side cleared from scenario.
+
+========================================================================
+#3 carrier-vs-coastal  seed=303
+  outcome=ongoing  simTime=6000s  ticks=24000  wall=5.5s
+  perf avg=0.228ms  p50=0.05  p95=1.069  max=7.548  peakEnt=139 msl=123
+  BLUE alive=7 ships=3 ground=0 air=3 planes=6 offense=12
+       hulls=[CVN,DDG,DDG,FFG,F35C,F35C,AWAC] rearming=0 rtb=0
+  RED  alive=1 ships=0 ground=1 air=0 planes=0 offense=0
+       hulls=[SAM] rearming=0 rtb=0
+  launches  TomahawkBlockV:36 MaritimeStrike:19
+  events    total=500 intercepts=31 miss=94 decoy=0 splash=0
+            rearmPhases=1 deckWait=0 rtbPhases=1
+            DEB=0 JSOW=0 HPN=0 AAM=0
+  FLAGS: (none)
+  last events:
+    t=860.5 [Blue] SM-6 failed to intercept DarkEagle.
+    t=860.25 [Red] SM-2MR failed to intercept MaritimeStrike.
+    t=860.25 [Red] Red DDG 16 launched ESSM at MaritimeStrike.
+    t=860.25 [Red] Red SAM 12 launched ESSM at MaritimeStrike.
+    t=860.25 [Red] Red SAM 12 queued 1x ESSM salvo at MaritimeStrike.
+    t=860.25 [Red] Red DDG 16 queued 1x ESSM salvo at MaritimeStrike.
+    t=859.5 [Red] SM-2MR failed to intercept MaritimeStrike.
+    t=859.25 [Red] ESSM failed to intercept MaritimeStrike.
+    t=858.25 [Red] Red Coast Strike 13 launched MSTK at surface combatant.
+    t=856.75 [Blue] Blue CVN 3 launched ESSM at MaritimeStrike.
+    t=855.25 [Blue] Blue CVN 3 launched ESSM at MaritimeStrike.
+    t=855.25 [Blue] Blue CVN 3 queued 1x ESSM salvo at MaritimeStrike.
+
+========================================================================
+#4 large-peer-complex  seed=404
+  outcome=ongoing  simTime=6000s  ticks=24000  wall=13.3s
+  perf avg=0.554ms  p50=0.132  p95=2.174  max=15.986  peakEnt=200 msl=174
+  BLUE alive=12 ships=3 ground=3 air=5 planes=15 offense=88
+       hulls=[CVN,DDG,DDG,CCG,SAM,CDB,AFB,F22,F35C,F15N,F15C,AWAC] rearming=0 rtb=0
+  RED  alive=7 ships=2 ground=3 air=1 planes=1 offense=25
+       hulls=[CVN,CCG,FFG,SAM,DEB,AFB,AWAC] rearming=0 rtb=0
+  launches  TomahawkBlockV:25 MaritimeStrike:4 SM-2MR:4 SM-6:3 AIM-9X:3 AGM-84:2
+  events    total=500 intercepts=53 miss=43 decoy=0 splash=0
+            rearmPhases=8 deckWait=0 rtbPhases=8
+            DEB=0 JSOW=0 HPN=2 AAM=3
+  FLAGS: (none)
+  last events:
+    t=1191.25 [Red] Red CG 19 queued 1x ESSM salvo at TomahawkBlockV.
+    t=1191.25 [Blue] Blue CG 6 queued 1x ESSM salvo at TomahawkBlockV.
+    t=1190.5 [Blue] ESSM failed to intercept TomahawkBlockV.
+    t=1189.5 [Blue] Blue F35C 12 launched HPN at surface combatant.
+    t=1189 [Red] ESSM intercepted incoming TomahawkBlockV.
+    t=1188.75 [Blue] Blue F35C 12 launched HPN at surface combatant.
+    t=1187.75 [Blue] Blue DDG 4 launched ESSM at TomahawkBlockV.
+    t=1187.25 [Blue] Blue F35C 12 queued 2x HPN salvo at surface combatant.
+    t=1186.25 [Blue] Blue DDG 4 launched ESSM at TomahawkBlockV.
+    t=1186.25 [Blue] Blue DDG 4 queued 1x ESSM salvo at TomahawkBlockV.
+    t=1186.25 [Blue] Blue DDG 4 queued 1x ESSM salvo at TomahawkBlockV.
+    t=1186 [Blue] ESSM received a midcourse abort and self-destructed after its target was destroyed.
+
+========================================================================
+#5 air-raid-unequal  seed=505
+  outcome=ongoing  simTime=6000s  ticks=24000  wall=2.2s
+  perf avg=0.09ms  p50=0.021  p95=0.287  max=5.669  peakEnt=109 msl=91
+  BLUE alive=1 ships=0 ground=0 air=1 planes=1 offense=0
+       hulls=[AWAC] rearming=0 rtb=1
+  RED  alive=9 ships=1 ground=7 air=1 planes=4 offense=61
+       hulls=[SAM,SAM,SAM,EWR,DEB,CDB,DDG,AFB,F15C] rearming=0 rtb=0
+  launches  MaritimeStrike:80 SM-6:4
+  events    total=500 intercepts=19 miss=51 decoy=2 splash=0
+            rearmPhases=1 deckWait=0 rtbPhases=2
+            DEB=0 JSOW=0 HPN=0 AAM=0
+  FLAGS: (none)
+  last events:
+    t=110.75 [Red] SM-6 missed Blue F15E 5.
+    t=110.5 [Blue] SM-2MR received a midcourse abort and self-destructed after its target was destroyed.
+    t=110.5 [Blue] SM-2MR received a midcourse abort and self-destructed after its target was destroyed.
+    t=110.5 [Red] Blue F15N 7 lost an aircraft to SM-6 (3 of 4 remaining).
+    t=110.25 [Blue] SM-6 failed to intercept DarkEagle.
+    t=107.5 [Red] Red SAM 13 launched SM2 at MaritimeStrike.
+    t=106.25 [Blue] Blue DDG 11 launched SM2 at SM-6.
+    t=106.25 [Red] Red SAM 13 queued 1x SM2 salvo at MaritimeStrike.
+    t=106.25 [Blue] Blue DDG 11 queued 1x SM2 salvo at SM-6.
+    t=105.25 [Blue] SM-6 intercepted incoming DarkEagle.
+    t=105.25 [Red] Red SAM 13 launched SM2 at MaritimeStrike.
+    t=105.25 [Red] Red SAM 13 queued 1x SM2 salvo at MaritimeStrike.
+
+========================================================================
+TOTAL scenarios=5  flagged=0
+mean p95 ms/tick across scenarios: 0.882

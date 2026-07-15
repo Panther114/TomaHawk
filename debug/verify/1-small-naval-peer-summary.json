@@ -1,0 +1,129 @@
+{
+  "ticks": 13244,
+  "simTimeS": 3311,
+  "outcome": "draw",
+  "wallMs": 1052.6,
+  "avgMsTick": 0.079,
+  "perf": {
+    "p50": 0.031,
+    "p95": 0.286,
+    "max": 11.525,
+    "peakEntities": 41,
+    "peakMissiles": 37
+  },
+  "blue": {
+    "alive": 1,
+    "ships": 1,
+    "ground": 0,
+    "air": 0,
+    "planes": 0,
+    "carriers": 0,
+    "airfields": 0,
+    "offense": 0,
+    "rearming": [],
+    "rtb": [],
+    "hulls": [
+      "DDG"
+    ]
+  },
+  "red": {
+    "alive": 1,
+    "ships": 1,
+    "ground": 0,
+    "air": 0,
+    "planes": 0,
+    "carriers": 0,
+    "airfields": 0,
+    "offense": 0,
+    "rearming": [],
+    "rtb": [],
+    "hulls": [
+      "DDG"
+    ]
+  },
+  "launches": {
+    "SM-6": 1,
+    "MaritimeStrike": 2,
+    "ESSM": 1
+  },
+  "counts": {
+    "intercepts": 42,
+    "misses": 63,
+    "decoys": 0,
+    "splashes": 0,
+    "rearmPhases": 0,
+    "deckWait": 0,
+    "rtbPhases": 0,
+    "darkEagle": 0,
+    "jsow": 0,
+    "harpoon": 0,
+    "aam": 0
+  },
+  "eventTotal": 500,
+  "flags": [],
+  "lastEvents": [
+    {
+      "t": 831.25,
+      "side": "Blue",
+      "text": "Blue FFG 4 launched SM2 at MaritimeStrike."
+    },
+    {
+      "t": 831.25,
+      "side": "Blue",
+      "text": "Blue FFG 4 queued 1x SM2 salvo at MaritimeStrike."
+    },
+    {
+      "t": 830.75,
+      "side": "Blue",
+      "text": "Blue DDG 3 launched MSTK at surface combatant."
+    },
+    {
+      "t": 830.5,
+      "side": "Blue",
+      "text": "SM-2MR failed to intercept MaritimeStrike."
+    },
+    {
+      "t": 830.25,
+      "side": "Blue",
+      "text": "Blue DDG 3 queued 1x SM2 salvo at MaritimeStrike."
+    },
+    {
+      "t": 830.25,
+      "side": "Blue",
+      "text": "Blue DDG 3 queued 1x SM2 salvo at MaritimeStrike."
+    },
+    {
+      "t": 829.5,
+      "side": "Blue",
+      "text": "SM-2MR intercepted incoming MaritimeStrike."
+    },
+    {
+      "t": 829.5,
+      "side": "Blue",
+      "text": "SM-2MR failed to intercept MaritimeStrike."
+    },
+    {
+      "t": 829.5,
+      "side": "Blue",
+      "text": "Blue DDG 3 launched SM2 at MaritimeStrike."
+    },
+    {
+      "t": 828.75,
+      "side": "Red",
+      "text": "Red DDG 5 launched MSTK at surface combatant."
+    },
+    {
+      "t": 827.75,
+      "side": "Red",
+      "text": "Red DDG 5 launched SM2 at MaritimeStrike."
+    },
+    {
+      "t": 827.5,
+      "side": "Blue",
+      "text": "Blue FFG 4 launched SM2 at MaritimeStrike."
+    }
+  ],
+  "name": "small-naval-peer",
+  "seed": 101,
+  "id": "1"
+}

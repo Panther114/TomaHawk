@@ -951,6 +951,11 @@ function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5
 // reserve of that round remains for the dogfight. Returns null otherwise.
 function chooseAirInterceptWeapon(ship, threat) {
   if (!missileHasSurfaceTarget(MISSILES[threat.missileId])) return null;
+  // Do not waste AAMs on hypersonic / strategic boost-glide threats (Dark Eagle
+  // class). Real fighters do not employ AMRAAMs against LRHW profiles; ship
+  // SAMs (SM-6) own that problem. Verified in long battle logs: F-22s emptied
+  // magazines at DarkEagle tracks with zero realistic PK.
+  if (isHighEnergyThreat(threat)) return null;
   const rangeM = distance(ship, threat);
   const baseLoad = defaultLoadout(ship.hull || "F15C");
   let best = null;
