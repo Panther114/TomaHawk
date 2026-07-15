@@ -268,3 +268,117 @@ test("loadMods returns the vanilla set in Node (no IndexedDB) and built-ins resi
   const ddg = list.find((u) => unitId(u) === "DDG");
   assert.equal(await deleteMod(ddg), false);
 });
+
+test("Unit Workshop exposes strategic ammo and strike-specialist unit fields", () => {
+  const ammoKeys = SCHEMAS.ammo.sections.flatMap((s) => s.fields.map((f) => f.key));
+  assert.ok(ammoKeys.includes("strategic"));
+  assert.ok(ammoKeys.includes("terminalProfile"));
+  assert.ok(ammoKeys.includes("cruiseAltitudeM"));
+  for (const kind of ["naval", "ground", "aircraft"]) {
+    const keys = SCHEMAS[kind].sections.flatMap((s) => s.fields.map((f) => f.key));
+    assert.ok(keys.includes("strikeSpecialist"), `${kind} exposes strikeSpecialist`);
+  }
+  const de = vanillaUnits().find((u) => u.kind === "ammo" && unitId(u) === "DarkEagle");
+  assert.equal(de.strategic, true);
+  assert.equal(de.terminalProfile, "hypersonic_glide");
+  const deb = vanillaUnits().find((u) => u.kind === "ground" && unitId(u) === "DEB");
+  assert.equal(deb.strikeSpecialist, true);
+});
+
+test("custom strategic hypersonic ammo and specialist naval hull register into live catalogues", () => {
+  const ammo = {
+    ...DEFAULTS.ammo(),
+    name: "LRHW-X",
+    launchers: ["ground", "sea"],
+    targets: ["sea", "ground"],
+    rangeNm: 400,
+    preferredMinRangeNm: 50,
+    preferredMaxRangeNm: 400,
+    seekerRangeNm: 20,
+    speedMps: 1600,
+    category: "anti_ship",
+    symbol: "diamond",
+    terminalProfile: "hypersonic_glide",
+    cruiseAltitudeM: 28000,
+    terminalAltitudeM: 4000,
+    strategic: true
+  };
+  assert.equal(validateUnit(ammo).ok, true);
+  const mSpec = toInternalSpec(ammo);
+  assert.equal(mSpec.strategic, true);
+  assert.equal(mSpec.terminalProfile, "hypersonic_glide");
+  assert.equal(mSpec.cruiseAltitudeM, 28000);
+  registerUnit(ammo);
+  assert.equal(MISSILES["LRHW-X"].strategic, true);
+
+  const hull = {
+    ...DEFAULTS.naval(),
+    name: "Arsenal Ship",
+    prefix: "ARS",
+    strikeSpecialist: true,
+    baseLoadout: { "LRHW-X": 8, "SM-2MR": 16 }
+  };
+  hull.id = makeUniqueShipId(hull.prefix);
+  assert.equal(validateUnit(hull).ok, true);
+  registerUnit(hull);
+  assert.equal(SHIP_CLASSES[hull.id].strikeSpecialist, true);
+  const ship = makeShip(SIDE.BLUE, 0, 0, hull.id);
+  assert.equal(ship.strikeSpecialist, true);
+  assert.equal(ship.loadout["LRHW-X"], 8);
+
+  unregisterUnit(hull);
+  unregisterUnit(ammo);
+});
+
+test("custom specialist ground battery fires dedicated surface munitions under multi-ship pressure", () => {
+  const ammo = {
+    ...DEFAULTS.ammo(),
+    name: "COAST-ASM",
+    launchers: ["ground"],
+    targets: ["sea", "ground"],
+    rangeNm: 200,
+    preferredMinRangeNm: 10,
+    preferredMaxRangeNm: 200,
+    seekerRangeNm: 12,
+    strategic: false,
+    terminalProfile: ""
+  };
+  registerUnit(ammo);
+  const site = {
+    ...DEFAULTS.ground(),
+    name: "Custom Coast Strike",
+    prefix: "CCS",
+    glyph: "bunker",
+    strikeSpecialist: true,
+    defenseSam: 0,
+    baseLoadout: { "COAST-ASM": 12 }
+  };
+  site.id = makeUniqueShipId(site.prefix);
+  registerUnit(site);
+
+  const sim = createScenario(44, "openSea");
+  clearSide(sim, SIDE.BLUE);
+  clearSide(sim, SIDE.RED);
+  const battery = placeShip(sim, SIDE.BLUE, -40 * NM, 0, site.id);
+  const ddg = placeShip(sim, SIDE.BLUE, -35 * NM, 2 * NM, "DDG");
+  const target = placeShip(sim, SIDE.RED, 40 * NM, 0, "DDG");
+  target.loadout = { "SM-2MR": 0, "SM-6": 0, ESSM: 0, MaritimeStrike: 0, TomahawkBlockV: 0 };
+  for (const s of [battery, ddg]) {
+    s.tracks.set(target.id, {
+      id: target.id, side: target.side, domain: "sea", classification: target.className,
+      x: target.x, y: target.y, vx: 0, vy: 0, quality: 0.92, uncertainty: 200,
+      source: s.id, age: 0, lastSeen: 0
+    });
+  }
+  sim.mode = SCENARIO_MODE.RUNNING;
+  sim.paused = false;
+  let fired = false;
+  for (let i = 0; i < 400 && !fired; i++) {
+    stepSim(sim, 0.25);
+    fired = sim.missiles.some((m) => m.launcherId === battery.id && m.missileId === "COAST-ASM")
+      || (battery.launchQueue || []).some((o) => o.missileId === "COAST-ASM");
+  }
+  assert.ok(fired, "custom strike-specialist ground site should fire its munition alongside DDGs");
+  unregisterUnit(site);
+  unregisterUnit(ammo);
+});

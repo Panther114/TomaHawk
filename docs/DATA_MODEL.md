@@ -161,7 +161,7 @@ Important fields:
 - `nextFirePlanAt`
 - `nextForcePictureAt`
 
-New scenarios begin in `setup`. The app's default scenario is an empty East China Sea setup, while the lower-level `createScenario` helper remains available for compact 1v1 setup tests and custom starts. The simulation-core default map is `openSea`; the app selects the UI's current tactical map when creating or resetting a scenario. Setup mode allows adding units, dragging starting positions, right-click selection, box selection, and keyboard deletion. Placement is domain-aware: **sea units require water and fixed ground emplacements require land** (the terrain-less open-sea map accepts ground units anywhere). Dragging keeps the last valid position for the unit's domain, sea-unit duplication/restores normalize into open water while ground units stay on land, and setup-only map changes reseat the **sea** forces onto deterministic water starts while leaving fixed emplacements in place. The simulation can run only when at least one alive Blue and one alive Red unit exist.
+New scenarios begin in `setup`. The app's default scenario is an empty East China Sea setup, centred on the tactical-map coordinate 13,900 km east and 3,600 km south. The lower-level `createScenario` helper remains available for compact 1v1 setup tests and custom starts. The simulation-core default map is `openSea`; the app selects the UI's current tactical map when creating or resetting a scenario. Setup mode allows adding units, dragging starting positions, right-click selection, box selection, and keyboard deletion. Placement is domain-aware: **sea units require water and fixed ground emplacements require land** (the terrain-less open-sea map accepts ground units anywhere). Dragging keeps the last valid position for the unit's domain, sea-unit duplication/restores normalize into open water while ground units stay on land, and setup-only map changes reseat the **sea** forces onto deterministic water starts while leaving fixed emplacements in place. The simulation can run only when at least one alive Blue and one alive Red unit exist. Imported scenarios are capped at 200 ships, 5,000 missiles, and 500 events; browser-file imports are limited to 5 MB.
 
 ## Visual Config
 
@@ -246,12 +246,17 @@ The same planner now also stores a side-wide `commandState` with `aggression`,
 `enemyOffenseEstimate`, `enemyVlsEstimate`, `enemyPower`, `missilePressure`,
 `observedTargets`, `mode`, `targetBreadth`, and `raidDepth`. Those values are
 derived from the side’s own inventory plus only its observed enemy force
-picture; hidden enemy loadouts are not read directly. `mode` is a persistent
-fleet strike state (`survive`, `focus`, `pressure`, `saturate`) selected with
-hysteresis so the force does not oscillate unrealistically every planning tick.
-Offensive fire planning then uses that posture to decide whether to run a broad
-saturation attack or a narrow concentrated raid against the best-value observed
-targets.
+picture; hidden enemy loadouts are not read directly. `ownOffense` is
+`offensiveMissileCount` over every alive unit — all surface-capable munitions
+still aboard (MSTK, TLAM, Dark Eagle, AGM-84/154, and dual-role SM-6 when
+included), not only naval ASCMs. Peer fights open near half-aggression; an
+empty force picture pulls advantage toward neutral rather than inventing a
+panic. `mode` is a persistent fleet strike state (`survive`, `focus`,
+`pressure`, `saturate`) selected with hysteresis so the force does not
+oscillate unrealistically every planning tick. Offensive fire planning then
+uses that posture for two-pass allocation (strike specialists first, then
+general shooters), optional dual target breadth at healthy focus, and a small
+strategic overflow for hypersonic / very-long-range weapons.
 
 Defensive planning is related but separate: it chooses the best currently
 available local or shared track for each hostile missile, so an inbound threat

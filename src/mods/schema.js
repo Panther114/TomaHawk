@@ -48,12 +48,27 @@ const GUIDANCE_OPTIONS = [
   { value: "inertial_active", label: { en: "Inertial + active", zh: "惯性+主动" } },
   { value: "infrared", label: { en: "Infrared (flare-decoyable)", zh: "红外（可被照明弹诱骗）" } }
 ];
+const TERMINAL_PROFILE_OPTIONS = [
+  { value: "", label: { en: "Default (cruise / sea-skim)", zh: "默认（巡航/掠海）" } },
+  { value: "hypersonic_glide", label: { en: "Hypersonic glide (high altitude)", zh: "高超声速滑翔（高空）" } }
+];
 const GLYPH_OPTIONS = [
   { value: "sam", label: { en: "SAM (triangle)", zh: "防空 (三角)" } },
   { value: "radar", label: { en: "Radar (diamond)", zh: "雷达 (菱形)" } },
   { value: "bunker", label: { en: "Bunker (square)", zh: "工事 (方块)" } },
   { value: "airfield", label: { en: "Airfield (runway)", zh: "机场 (跑道)" } }
 ];
+
+// Shared doctrine checkbox: first-pass allocation when the unit holds dedicated
+// surface-strike munitions (see isStrikeSpecialist in combat.js).
+const STRIKE_SPECIALIST_FIELD = {
+  key: "strikeSpecialist",
+  type: "checkbox",
+  label: {
+    en: "Strike specialist (priority offensive allocation when surface munitions remain)",
+    zh: "打击专员（仍有对海/对地弹药时优先获得进攻火力配额）"
+  }
+};
 
 const NAVAL_SCHEMA = {
   type: "naval",
@@ -89,6 +104,9 @@ const NAVAL_SCHEMA = {
     { title: { en: "Defense channels", zh: "防御通道" }, fields: [
       num("defenseSam", { en: "SAM", zh: "防空导弹" }, { min: 0, max: 32, step: 1 }),
       num("defenseCiws", { en: "CIWS", zh: "近防" }, { min: 0, max: 16, step: 1 })
+    ] },
+    { title: { en: "Doctrine", zh: "条令" }, fields: [
+      STRIKE_SPECIALIST_FIELD
     ] }
   ]
 };
@@ -104,7 +122,8 @@ const GROUND_SCHEMA = {
       { key: "glyph", type: "select", label: { en: "Map glyph", zh: "地图符号" }, options: GLYPH_OPTIONS },
       // An airfield may be placed anywhere (land or water) and rearms friendly
       // squadrons. Otherwise it behaves like any fixed ground emplacement.
-      { key: "isAirfield", type: "checkbox", label: { en: "Airfield (rearms aircraft, any terrain)", zh: "机场（为飞机补给，可置于任意地形）" } }
+      { key: "isAirfield", type: "checkbox", label: { en: "Airfield (rearms aircraft, any terrain)", zh: "机场（为飞机补给，可置于任意地形）" } },
+      STRIKE_SPECIALIST_FIELD
     ] },
     { title: { en: "Footprint", zh: "占地" }, fields: [
       num("lengthM", { en: "Length", zh: "长" }, { unit: "m", min: 10, max: 400, step: 1 }),
@@ -142,7 +161,8 @@ const AIRCRAFT_SCHEMA = {
       // alive and airborne on mission (see shareTracks in sensors.js) -- a
       // moving-radar/AEW&C role, not a combat one. Any aircraft can opt in;
       // it's not tied to a specific hull.
-      { key: "commandHub", type: "checkbox", label: { en: "Command hub (tightens fleet CEC latency while airborne)", zh: "指挥节点（在空时缩短全队协同交战延迟）" } }
+      { key: "commandHub", type: "checkbox", label: { en: "Command hub (tightens fleet CEC latency while airborne)", zh: "指挥节点（在空时缩短全队协同交战延迟）" } },
+      STRIKE_SPECIALIST_FIELD
     ] },
     { title: { en: "Squadron", zh: "中队" }, fields: [
       // The flight's hit-point pool: each hit downs one aircraft (attrition).
@@ -224,6 +244,25 @@ const AMMO_SCHEMA = {
     { title: { en: "Behavior", zh: "行为" }, fields: [
       { key: "ringStyle", type: "select", label: { en: "Ring style", zh: "射程圈样式" }, options: RING_OPTIONS },
       { key: "guidance", type: "select", label: { en: "Guidance", zh: "制导" }, options: GUIDANCE_OPTIONS },
+      { key: "terminalProfile", type: "select", label: { en: "Flight profile", zh: "飞行剖面" }, options: TERMINAL_PROFILE_OPTIONS },
+      num("cruiseAltitudeM", { en: "Cruise altitude", zh: "巡航高度" }, {
+        unit: "m", min: 0, max: 80000, step: 50,
+        help: {
+          en: "Mid-course altitude for lofted / hypersonic profiles. Leave 0 for the default sea-skim or SAM loft.",
+          zh: "高抛/高超声速剖面的中段高度。0 表示使用默认掠海或防空弹高抛。"
+        }
+      }),
+      num("terminalAltitudeM", { en: "Terminal altitude", zh: "末端高度" }, {
+        unit: "m", min: 0, max: 40000, step: 10,
+        help: {
+          en: "Altitude at terminal dive (e.g. hypersonic glide remains high). 0 = default.",
+          zh: "末端俯冲高度（如高超声速滑翔保持高空）。0 表示默认。"
+        }
+      }),
+      { key: "strategic", type: "checkbox", label: {
+        en: "Strategic / deep-strike (reserved raid quota after general ASCMs fill)",
+        zh: "战略/纵深打击（通用反舰弹配额用尽后仍可占用战略配额）"
+      } },
       { key: "retargetable", type: "checkbox", label: { en: "Retargetable", zh: "可重新瞄准" } },
       { key: "selfDestructOnLoss", type: "checkbox", label: { en: "Self-destruct on loss", zh: "失标自毁" } }
     ] }
@@ -246,19 +285,19 @@ export const DEFAULTS = {
     turnRateDps: 2.6, turnRateFlankDps: 1.8, radarRangeNm: 180, radarIntervalS: 4,
     vlsCells: 96, damageResist: 2, damageDegrade: 0.3,
     ciwsCount: 1, ciwsAmmo: 1550, ciwsBurstRounds: 180, ciwsBurstS: 1.4, ciwsCycleS: 5.5,
-    defenseSam: 4, defenseCiws: 1,
+    defenseSam: 4, defenseCiws: 1, strikeSpecialist: false,
     baseLoadout: { "SM-2MR": 36, ESSM: 32, MaritimeStrike: 16 }
   }),
   ground: () => ({
     kind: "ground", name: "New Emplacement", prefix: "GND", prefixZh: "", glyph: "bunker", isAirfield: false,
     lengthM: 50, beamM: 50, radarRangeNm: 160, radarIntervalS: 4, rcsM2: 9000,
     vlsCells: 48, damageResist: 2, damageDegrade: 0.3,
-    defenseSam: 5,
+    defenseSam: 5, strikeSpecialist: false,
     baseLoadout: { "SM-2MR": 24 }
   }),
   aircraft: () => ({
     kind: "aircraft", name: "New Squadron", prefix: "VFX", prefixZh: "",
-    squadronSize: 4, commandHub: false, rcsM2: 25,
+    squadronSize: 4, commandHub: false, strikeSpecialist: false, rcsM2: 25,
     cruiseSpeedKt: 420, maxSpeedKt: 540, accelMps2: 3.0, decelMps2: 3.0,
     turnRateDps: 6, turnRateFlankDps: 4, radarRangeNm: 90, radarIntervalS: 3,
     vlsCells: 20, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1, flares: 60,
@@ -271,7 +310,8 @@ export const DEFAULTS = {
     rangeNm: 90, preferredMinRangeNm: 8, preferredMaxRangeNm: 90, seekerRangeNm: 14,
     speedMps: 1000, maxTurnRateDps: 30, cellCost: 1, pk: 0.45, salvo: 2,
     interceptorsPerThreat: 1, nezFraction: 0.5, magazineReserveRatio: 0.18, launchIntervalS: 2.2, salvoSpacingS: 2.8,
-    ringStyle: "dotted", guidance: "command_inertial", retargetable: false, selfDestructOnLoss: true
+    ringStyle: "dotted", guidance: "command_inertial", terminalProfile: "", cruiseAltitudeM: 0, terminalAltitudeM: 0,
+    strategic: false, retargetable: false, selfDestructOnLoss: true
   })
 };
 
@@ -317,12 +357,15 @@ export function validateUnit(unit) {
         : kind === "ammo" && f.key === "targets" ? ammoTargets
           : unit[f.key];
       if (f.type === "number") {
+        // Optional altitude fields may be absent on pre-profile ammo records.
+        if ((v == null || v === "") && (f.key === "cruiseAltitudeM" || f.key === "terminalAltitudeM")) continue;
         const n = Number(v);
         if (!Number.isFinite(n)) { fail(f.key, "must be a number"); continue; }
         if (f.min != null && n < f.min) fail(f.key, `must be ≥ ${f.min}`);
         if (f.max != null && n > f.max) fail(f.key, `must be ≤ ${f.max}`);
       } else if (f.type === "select") {
-        const ok = f.options.some((o) => o.value === v);
+        // Empty string is a valid "default profile" option for terminalProfile.
+        const ok = f.options.some((o) => o.value === v) || (v == null && f.options.some((o) => o.value === ""));
         if (!ok) fail(f.key, "invalid option");
       } else if (f.type === "multicheck") {
         const values = Array.isArray(v) ? v : [];

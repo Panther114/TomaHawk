@@ -23,6 +23,12 @@ export function isAirUnit(unit) {
   return unit?.domain === "air";
 }
 
+export function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[char]);
+}
+
 // Canonical naval weapon columns, kept in this order when in use. Custom
 // (modded) missiles are appended after these so a new weapon adds a column.
 const VANILLA_COLUMNS = ["SM-2MR", "SM-6", "ESSM", "MaritimeStrike", "TomahawkBlockV"];
@@ -270,7 +276,7 @@ export function inventoryHeadHtml(domain = "sea", columns = VANILLA_COLUMNS) {
   // Weapon headers use the missile short label directly (military nomenclature,
   // not translated); the full id is on the title for hover/identification.
   const weaponHeads = columns
-    .map((id) => `<span class="inv-wpn" title="${id}">${MISSILES[id]?.shortLabel ?? id}</span>`)
+    .map((id) => `<span class="inv-wpn" title="${escapeHtml(id)}">${escapeHtml(MISSILES[id]?.shortLabel ?? id)}</span>`)
     .join("");
   return `<div class="inventory-head" style="${navalGridStyle(columns.length)}">`
     + `<span data-i18n="inv.ship">SHIP</span><span data-i18n="inv.hp">HP</span><span data-i18n="inv.vls">VLS</span>`
@@ -304,8 +310,8 @@ export function inventoryRowHtml(ship, selected = false, columns = VANILLA_COLUM
     .map((id) => `<b style="color:${inventoryMissileColor(ship, id)}">${displayCount(ship, id)}</b>`)
     .join("");
   return `
-      <button class="inventory-row ${ship.side.toLowerCase()} ${ship.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${ship.id}" style="${navalGridStyle(columns.length)}">
-        <span>${shipDisplayName(ship, "-")}</span>
+      <button class="inventory-row ${ship.side === SIDE.BLUE ? "blue" : "red"} ${ship.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${escapeHtml(ship.id)}" style="${navalGridStyle(columns.length)}">
+        <span>${escapeHtml(shipDisplayName(ship, "-"))}</span>
         <b style="color:${inventoryHpColor(ship)}">${hp.currentHp}/${hp.maxHp}</b>
         <b style="color:${inventoryVlsColor(ship)}">${Math.round(usedCells(ship.loadout))}/${ship.vlsCells ?? 96}</b>
         ${weaponCells}
@@ -345,8 +351,8 @@ export function groundRowHtml(unit, selected = false) {
   const rdr = Math.round((unit.radarRangeM ?? 0) / NM);
   const cell = (value, base) => `<b style="color:${remainingStockColor(value, base)}">${value > 0 ? value : "·"}</b>`;
   return `
-      <button class="inventory-row ground ${unit.side.toLowerCase()} ${unit.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${unit.id}">
-        <span>${shipDisplayName(unit, "-")}</span>
+      <button class="inventory-row ground ${unit.side === SIDE.BLUE ? "blue" : "red"} ${unit.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${escapeHtml(unit.id)}">
+        <span>${escapeHtml(shipDisplayName(unit, "-"))}</span>
         <b style="color:${inventoryHpColor(unit)}">${hp.currentHp}/${hp.maxHp}</b>
         <b>${rdr}</b>
         ${cell(aaw, aawBase)}
@@ -365,8 +371,8 @@ export function airRowHtml(unit, selected = false) {
   const state = AIR_STATE_ABBR[unit.airState] ?? "MSN";
   const cell = (value, base) => `<b style="color:${remainingStockColor(value, base)}">${value > 0 ? value : "·"}</b>`;
   return `
-      <button class="inventory-row ground air ${unit.side.toLowerCase()} ${unit.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${unit.id}">
-        <span>${shipDisplayName(unit, "-")}</span>
+      <button class="inventory-row ground air ${unit.side === SIDE.BLUE ? "blue" : "red"} ${unit.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${escapeHtml(unit.id)}">
+        <span>${escapeHtml(shipDisplayName(unit, "-"))}</span>
         <b style="color:${inventoryHpColor(unit)}">${hp.currentHp}/${hp.maxHp}</b>
         <b>${state}</b>
         ${cell(aaw, aawBase)}
@@ -456,7 +462,7 @@ function aircraftDetailCardHtml(s, cardWidth) {
   const state = ({ mission: "MSN", rtb: "RTB", rearming: "RRM" })[s.airState] ?? "MSN";
   return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
     <div class="ship-detail-heading">
-      <b>${shipDisplayName(s, "")}</b>
+      <b>${escapeHtml(shipDisplayName(s, ""))}</b>
       <span style="color:${ac < size ? "#f7b955" : ""}">${t("detail.ac")} ${ac}/${size}</span>
     </div>
     <div class="ship-detail-grid">
@@ -490,7 +496,7 @@ function groundDetailCardHtml(s, cardWidth) {
   const { aaw, aawBase, asuw, asuwBase } = aawAsuwAggregate(s);
   return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
     <div class="ship-detail-heading">
-      <b>${shipDisplayName(s, "")}</b>
+      <b>${escapeHtml(shipDisplayName(s, ""))}</b>
       <span style="color:${hp.currentHp < hp.maxHp ? "#f7b955" : ""}">HP ${hp.currentHp}/${hp.maxHp}</span>
     </div>
     <div class="ship-detail-grid">
@@ -518,7 +524,7 @@ function navalDetailCardHtml(s, cardWidth) {
   const color = sideColor(s.side);
   return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
     <div class="ship-detail-heading">
-      <b>${shipDisplayName(s, "")}</b>
+      <b>${escapeHtml(shipDisplayName(s, ""))}</b>
       <span style="color:${hp.currentHp < hp.maxHp ? "#f7b955" : ""}">HP ${hp.currentHp}/${hp.maxHp}</span>
     </div>
     <div class="ship-detail-grid">

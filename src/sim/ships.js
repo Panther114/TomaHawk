@@ -3,7 +3,7 @@
 // with scenario setup/restore.
 
 import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE, WEAPON_STATE, FLEET_ROLE } from "./constants.js";
-import { MISSILES } from "./missiles.js";
+import { MISSILES, missileCanTarget, missileHasSurfaceTarget } from "./missiles.js";
 import { clamp } from "./math.js";
 import { initialAircraftState } from "./aircraft.js";
 
@@ -141,8 +141,8 @@ const SHIP_CLASSES = {
   // Coastal battery carries an over-the-horizon targeting radar so its long
   // anti-ship missiles are usable at range rather than blind beyond a short
   // radar (its own radar must out-reach its primary MaritimeStrike envelope).
-  CDB: { hull:"CDB",className:"Coastal Strike Battery approx.",prefix:"Coast Strike",domain:"ground",isFixed:true,glyph:"bunker",lengthM:50,beamM:50,draftM:10,displacementT:5000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:250,radarIntervalS:4,vlsCells:48,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},damageResist:2,damageDegrade:0.34,baseLoadout:{ MaritimeStrike:32,TomahawkBlockV:8 } },
-  DEB: { hull:"DEB",className:"Dark Eagle Battery approx.",prefix:"Dark Eagle",domain:"ground",isFixed:true,glyph:"bunker",lengthM:70,beamM:55,draftM:10,displacementT:6500,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:500,radarIntervalS:4.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},damageResist:2,damageDegrade:0.34,baseLoadout:{ DarkEagle:8 } },
+  CDB: { hull:"CDB",className:"Coastal Strike Battery approx.",prefix:"Coast Strike",domain:"ground",isFixed:true,glyph:"bunker",strikeSpecialist:true,lengthM:50,beamM:50,draftM:10,displacementT:5000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:250,radarIntervalS:4,vlsCells:48,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},damageResist:2,damageDegrade:0.34,baseLoadout:{ MaritimeStrike:32,TomahawkBlockV:8 } },
+  DEB: { hull:"DEB",className:"Dark Eagle Battery approx.",prefix:"Dark Eagle",domain:"ground",isFixed:true,glyph:"bunker",strikeSpecialist:true,lengthM:70,beamM:55,draftM:10,displacementT:6500,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:500,radarIntervalS:4.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},damageResist:2,damageDegrade:0.34,baseLoadout:{ DarkEagle:8 } },
   EWR: { hull:"EWR",className:"Early-Warning Radar approx.",prefix:"EW Radar",domain:"ground",isFixed:true,glyph:"radar",lengthM:40,beamM:40,draftM:14,displacementT:2500,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:400,radarIntervalS:5,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},damageResist:1,damageDegrade:0.5,baseLoadout:{} },
 
   // --- Air units (domain:"air") --------------------------------------------
@@ -301,6 +301,13 @@ export function makeShip(side, x, y, hull = "DDG") {
     // specific in the schema, though only a mobile, sensor-heavy platform
     // like an AWACS makes realistic sense as one.
     commandHub: cls.commandHub === true,
+    // Unit Workshop / class flag: priority first-pass in offensive fire
+    // planning when the unit still holds dedicated surface-strike munitions.
+    // Undefined means "use domain heuristic" (ground/air strikers yes; naval no
+    // unless the class sets this true, e.g. an arsenal ship mod).
+    strikeSpecialist: cls.strikeSpecialist === true ? true
+      : cls.strikeSpecialist === false ? false
+        : undefined,
     lengthM: cls.lengthM, beamM: cls.beamM, draftM: cls.draftM, displacementT: cls.displacementT,
     // Signature + altitude drive RCS/horizon-based detection (see sensors.js).
     rcsM2: defaultRcsM2(cls),
@@ -341,9 +348,24 @@ export function makeBurke(side, x, y) {
   return makeShip(side, x, y, "DDG");
 }
 
+// Count surface-strike rounds still aboard. Dedicated anti-surface weapons
+// (MSTK, TLAM, Dark Eagle, AGM-84, AGM-154, and any modded surface munition)
+// always count; dual-role rounds (SM-6) count only when includeDualRole is
+// true so a ship that has burned its dedicated strike load still reads as
+// "winchester" for retreat/posture even if SAMs remain.
 export function offensiveMissileCount(ship, includeDualRole = true) {
-  const strike = (ship.loadout.MaritimeStrike ?? 0) + (ship.loadout.TomahawkBlockV ?? 0);
-  return strike + (includeDualRole ? (ship.loadout["SM-6"] ?? 0) : 0);
+  let sum = 0;
+  const lo = ship?.loadout;
+  if (!lo) return 0;
+  for (const id of Object.keys(lo)) {
+    const n = lo[id];
+    if (!(n > 0)) continue;
+    const spec = MISSILES[id];
+    if (!spec || !missileHasSurfaceTarget(spec)) continue;
+    if (missileCanTarget(spec, "missile") && !includeDualRole) continue;
+    sum += n;
+  }
+  return sum;
 }
 
 export function sideOffensiveMissileCount(sim, side, includeDualRole = true) {

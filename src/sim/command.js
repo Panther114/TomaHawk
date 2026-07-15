@@ -201,7 +201,8 @@ export function strategicBearingEstimate(sim, side, from) {
 function offensivePriorForHull(hull) {
   if (offensivePriorCache.has(hull)) return offensivePriorCache.get(hull);
   const loadout = defaultLoadout(hull);
-  const prior = (loadout.MaritimeStrike ?? 0) + (loadout.TomahawkBlockV ?? 0) + (loadout["SM-6"] ?? 0) * 0.35;
+  const prior = (loadout.MaritimeStrike ?? 0) + (loadout.TomahawkBlockV ?? 0)
+    + (loadout.DarkEagle ?? 0) * 2 + (loadout["SM-6"] ?? 0) * 0.35;
   offensivePriorCache.set(hull, prior);
   return prior;
 }
@@ -212,6 +213,7 @@ function trackHullEstimate(track) {
   // "coastal") that would otherwise mis-match naval patterns.
   if (/\bsam\b|coastal sam/.test(text)) return "SAM";
   if (/early.?warn|\bewr\b|radar/.test(text)) return "EWR";
+  if (/dark eagle|\bdeb\b/.test(text)) return "DEB";
   if (/coastal defense|coastal defence|defense battery|defence battery|\bcdb\b/.test(text)) return "CDB";
   if (/battleship|trump|bbg/.test(text)) return "BBG";
   if (/cruiser|ticonderoga|ccg|cg/.test(text)) return "CCG";
@@ -240,7 +242,7 @@ export function offensiveTargetValue(track) {
   // blinds the coast, killing the SAM opens the strike lane, the battery is a
   // direct anti-ship threat.
   const hullBase = hull === "BBG" ? 110 : hull === "CCG" ? 82 : hull === "DDG" ? 52 : hull === "FFG" ? 34
-    : hull === "EWR" ? 95 : hull === "SAM" ? 88 : hull === "CDB" ? 70 : 44;
+    : hull === "EWR" ? 95 : hull === "DEB" ? 92 : hull === "SAM" ? 88 : hull === "CDB" ? 70 : 44;
   const offense = offensivePriorForHull(hull || "DDG");
   const quality = clamp(track?.quality ?? 0.35, 0.05, 0.99);
   const certainty = quality * 30;
@@ -309,10 +311,15 @@ function selectCommandMode(prevMode, aggression, advantage, ownOffense, enemyEst
   if (aggression > 0.74 && advantage > 0.16 && ownOffense > Math.max(8, enemyEstimate * 0.85) && pressurePerTrack < 2.8) {
     return "saturate";
   }
-  if (aggression > 0.52 && advantage > 0.02 && ownOffense > Math.max(4, enemyEstimate * 0.55)) {
+  // Peer fights with full magazines may sit near advantage ≈ 0; still allow
+  // "pressure" when aggression is healthy so the force is not stuck on a single
+  // focus track for the whole engagement.
+  if (aggression > 0.52 && advantage > -0.02 && ownOffense > Math.max(4, enemyEstimate * 0.5)) {
     return "pressure";
   }
-  if (aggression < 0.24 || (advantage < -0.22 && pressurePerTrack > 1.2)) return "survive";
+  // Survive is for genuine disadvantage or crushing leaker density — not for
+  // "we see a lot of missiles while still holding strike depth."
+  if (aggression < 0.22 || (advantage < -0.28 && pressurePerTrack > 1.6)) return "survive";
   return "focus";
 }
 
@@ -349,14 +356,22 @@ export function computeFleetCommand(sim) {
     const fused = sim.forcePicture?.get(side);
     let axis = strategicBearingEstimate(sim, side, otc);
     if (fused && fused.size) {
+      // Threat axis is a force-layout cue (CAP stations, AAW sectors), not a
+      // raid-density meter. Inbound missiles must NOT pull the mean bearing —
+      // a large raid would otherwise thrash the axis every picture rebuild and
+      // make CAP/formation stations wobble even when the enemy force is fixed.
       let sx = 0;
       let sy = 0;
+      let nAxis = 0;
       for (const track of fused.values()) {
+        if (String(track.id).startsWith("M-")) continue;
+        if ((track.quality ?? 0) < 0.08) continue;
         const ang = Math.atan2(track.y - otc.y, track.x - otc.x);
         sx += Math.cos(ang);
         sy += Math.sin(ang);
+        nAxis += 1;
       }
-      if (sx !== 0 || sy !== 0) axis = Math.atan2(sy, sx);
+      if (nAxis > 0 && (sx !== 0 || sy !== 0)) axis = Math.atan2(sy, sx);
     }
 
     // Split AAW sectors around the threat axis among the air-defence units.
@@ -420,29 +435,51 @@ export function computeFleetCommand(sim) {
       -1,
       1
     );
-    const prevAdvantage = prevState?.advantage ?? rawAdvantage;
+    // Fog of war: a *zero-contact* picture is unknown — do not invent a huge
+    // enemy from silence. A single firm unit track is still a usable estimate
+    // (three destroyers vs one observed destroyer is a real advantage), so
+    // confidence ramps quickly once anything is held.
+    const pictureConfidence = observedTargets >= 3 ? 1
+      : observedTargets === 2 ? 0.9
+        : observedTargets === 1 ? 0.78
+          : 0.12;
+    const fogAdvantage = rawAdvantage * pictureConfidence;
+    const prevAdvantage = prevState?.advantage ?? fogAdvantage;
     const advantage = clamp(
-      prevAdvantage + clamp(rawAdvantage - prevAdvantage, -0.15, 0.15),
+      prevAdvantage + clamp(fogAdvantage - prevAdvantage, -0.15, 0.15),
       -1,
       1
     );
+    // Peer fights should open near half-aggression (willing to prosecute), not
+    // the old 0.28 floor that read as permanent caution. Inbound missile
+    // pressure mainly drives defensive posture (SAM reserve / mode hysteresis);
+    // it only lightly reins offensive will so a full magazine does not freeze
+    // the moment the first ASCMs appear on the picture.
+    const pressureFrac = missilePressure / Math.max(1, ships.length);
+    const pressurePenalty = clamp(pressureFrac * 0.035, 0, 0.12);
     const rawAggression = clamp(
-      0.28 + advantage * 0.74 - (missilePressure / Math.max(1, ships.length)) * 0.1,
-      0.08,
+      0.50 + advantage * 0.55 - pressurePenalty,
+      0.12,
       0.98
     );
+    // Cold-start at parity: if we have never computed posture, seed from the
+    // (fog-adjusted) raw value so the first tick is not locked to a panic read.
     const prevAggression = prevState?.aggression ?? rawAggression;
     const aggression = clamp(
       prevAggression + clamp(rawAggression - prevAggression, -0.05, 0.09),
-      0.08,
+      0.12,
       0.98
     );
     const mode = selectCommandMode(prevState?.mode ?? "focus", aggression, advantage, ownOffense, enemyOffenseEstimate, missilePressure, observedTargets);
+    // At parity / focus, allow two concurrent surface targets so specialists
+    // (DEB, air-to-ground) are not permanently starved by the single top track.
     const targetBreadth = mode === "saturate"
       ? Math.max(1, Math.min(3, observedTargets >= 4 ? 3 : observedTargets >= 2 ? 2 : 1))
       : mode === "pressure"
-        ? Math.max(1, Math.min(2, observedTargets >= 3 ? 2 : 1))
-        : 1;
+        ? Math.max(1, Math.min(2, observedTargets >= 2 ? 2 : 1))
+        : mode === "focus" && aggression >= 0.42 && observedTargets >= 2
+          ? 2
+          : 1;
     const raidDepth = mode === "saturate"
       ? Math.max(6, Math.min(12, Math.round(4 + ships.length * 1.5)))
       : mode === "pressure"

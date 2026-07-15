@@ -50,7 +50,7 @@ Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh
 Mobility (`cruise`, `max`, `accel`, `decel`,
 `turn`, `flank turn`); Sensors (`radar range`, `radar interval`); Magazine
 (`VLS cells`, `loadout`); Survivability (`hit points`, `degrade`);
-Defense channels (`SAM`, `ciws`).
+Defense channels (`SAM`, `ciws`); Doctrine (**strike specialist**).
 
 - **Mobility auto-derivation:** editing **cruise speed** recomputes max speed,
   acceleration, deceleration, and turn rates (higher cruise ⇒ faster and more
@@ -60,24 +60,35 @@ Defense channels (`SAM`, `ciws`).
 - **CIWS hardware** is not editable — a single default mount is used. The
   **CIWS** field under *Defense channels* controls how many incoming missiles
   the close-in layer can engage at once.
+- **Strike specialist.** Check this for arsenal ships / dedicated long-range
+  strikers so force fire planning allocates them in the specialist first pass
+  (same priority as coastal batteries and strike aircraft). Ordinary multi-role
+  destroyers leave it unchecked.
 
 ### Ground
 Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`,
-**map glyph** = `sam`/`radar`/`bunker`);
+**map glyph** = `sam`/`radar`/`bunker`/`airfield`, optional **airfield** and
+**strike specialist** checkboxes);
 Footprint (`length`, `width`); Sensors (`radar range`, `radar interval`); Magazine
 (`cells`, `loadout` — leave empty for a pure radar site); Survivability (`hit points`,
 `degrade`); Defense channel (`SAM`). Speed and CIWS are forced to zero.
 For an anti-ship coastal battery, set the radar range above the weapon's range so it
-can engage over the horizon.
+can engage over the horizon. Tick **Strike specialist** for purpose-built strike
+sites (like the vanilla CDB/DEB) so they receive a first-pass offensive allocation
+and are not starved by nearby destroyers; fixed ground units with dedicated
+surface munitions also get that pass by default even if the box is left unchecked.
 
 ### Aircraft
 Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`,
-**command hub** checkbox); Squadron
+**command hub** and **strike specialist** checkboxes); Squadron
 (`aircraft in flight` — the hit-point pool: each hit downs one plane);
 Mobility (`cruise`, `max`, `accel`, `decel`, `turn`, `flank turn`); Sensors
 (`radar range`, `radar interval`); Hardpoints (`hardpoints` — sized like naval
 VLS cells, to fit the `loadout`); Endurance (`endurance`, `rearm time`);
 Survivability (`speed loss per plane lost`, `flares`).
+Squadrons carrying dedicated surface munitions (Harpoon/JSOW-class) already act as
+strike specialists by default; the checkbox forces the same priority for unusual
+loadouts if needed.
 
 - **Unarmed = never fights.** Leave the `loadout` empty and the squadron
   automatically falls through every combat branch (no strike weapon, no
@@ -96,14 +107,24 @@ Survivability (`speed loss per plane lost`, `flares`).
 
 ### Ammo
 Identity (`ID` only — the loadout key; it also serves as the weapon's map/inventory
-label); Classification (`launchers`, `targets`, `symbol`); Ranges (`max range`, `pref. min`, `pref. max`, `seeker`);
+label); Classification (`launchers`, `targets`, `symbol`, `rcs`); Ranges (`max range`, `pref. min`, `pref. max`, `seeker`);
 Kinematics (`speed`, `max turn`); Effect (`cell cost`, `pk`, `salvo`,
 `per threat`, `reserve`); Timing (`launch interval`, `salvo spacing`); Behavior
-(`ring style`, `guidance`, `retargetable`, `self-destruct on loss`).
+(`ring style`, `guidance`, **flight profile**, **cruise / terminal altitude**,
+**strategic / deep-strike**, `retargetable`, `self-destruct on loss`).
 
 `launchers` may include naval, ground, and air. `targets` may include missiles,
 aircraft, ships, and ground units. `pk` is the base per-shot success chance
 before track quality, geometry, speed, saturation, and countermeasure modifiers.
+
+- **Strategic / deep-strike.** When checked, the weapon may use the reserved
+  strategic raid quota after general ASCMs have filled a target's normal
+  allocation — so a custom LRHW is not starved by nearby destroyers dumping
+  shorter-range munitions. Also auto-inferred when flight profile is
+  *Hypersonic glide* or max range is ≥ 800 NM (vanilla Dark Eagle).
+- **Flight profile → Hypersonic glide** sets a high cruise/terminal altitude
+  (defaults 30 km / 5 km if you leave altitudes at 0) and a non-sea-skim
+  terminal dive, matching the Dark Eagle abstraction.
 
 ## For developers
 

@@ -18,7 +18,8 @@ import {
   serializeScenario,
   restoreScenario,
   forceTrack,
-  FLEET_ROLE
+  FLEET_ROLE,
+  offensiveTargetValue
 } from "../src/sim.js";
 import { isLandPoint, isWaterPoint, tacticalMap } from "../src/world/terrain.js";
 
@@ -71,6 +72,12 @@ test("Dark Eagle is a ground-only surface strike weapon", () => {
   assert.equal(missileAllowedForDomain("DarkEagle", "ground"), true);
   assert.equal(missileAllowedForDomain("DarkEagle", "sea"), false);
   assert.equal(missileAllowedForDomain("DarkEagle", "air"), false);
+});
+
+test("command estimates recognize Dark Eagle batteries as high-priority strike threats", () => {
+  const deb = offensiveTargetValue({ classification: "Dark Eagle Battery approx.", quality: 0.9, uncertainty: 0 });
+  const destroyer = offensiveTargetValue({ classification: "Arleigh Burke Flight IIA approx.", quality: 0.9, uncertainty: 0 });
+  assert.ok(deb > destroyer, "DEB must not fall back to a generic destroyer estimate");
 });
 
 test("ground emplacements never move and never re-seat to water", () => {

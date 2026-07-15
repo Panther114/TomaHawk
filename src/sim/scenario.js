@@ -27,6 +27,16 @@ const MAP_RESEAT_STEP_M = 2.5 * NM;
 const MAP_RESEAT_MAX_RADIUS_M = 36 * NM;
 const SIM_WIDTH_M = MAP_WIDTH_M;
 const SIM_HEIGHT_M = MAP_HEIGHT_M;
+const MAX_SCENARIO_SHIPS = 200;
+const MAX_SCENARIO_MISSILES = 5_000;
+const MAX_SCENARIO_EVENTS = 500;
+
+function boundedScenarioArray(value, name, maximum, { required = false } = {}) {
+  if (value == null && !required) return [];
+  if (!Array.isArray(value)) throw new Error(`Invalid scenario ${name}.`);
+  if (value.length > maximum) throw new Error(`Invalid scenario: too many ${name}.`);
+  return value;
+}
 
 function scenarioDimension(value, fallback) {
   const numeric = Number(value);
@@ -234,11 +244,14 @@ export function restoreScenario(data) {
   if (!data || ![1, 2].includes(data.version) || !Array.isArray(data.ships)) {
     throw new Error("Unsupported scenario file");
   }
+  const ships = boundedScenarioArray(data.ships, "ships", MAX_SCENARIO_SHIPS, { required: true });
+  const missiles = boundedScenarioArray(data.missiles, "missiles", MAX_SCENARIO_MISSILES);
+  const events = boundedScenarioArray(data.events, "events", MAX_SCENARIO_EVENTS);
   const seed = Number.isFinite(Number(data.seed)) ? Number(data.seed) : 7;
   const widthM = scenarioDimension(data.widthM, SIM_WIDTH_M);
   const heightM = scenarioDimension(data.heightM, SIM_HEIGHT_M);
   const mapId = normalizeMapId(data.mapId ?? DEFAULT_MAP_ID);
-  resetShipIds(Math.max(1, ...data.ships.map((s) => {
+  resetShipIds(Math.max(1, ...ships.map((s) => {
     const num = Number(String(s.id).replace(/^[A-Z]+-/, "")) || 0;
     return num;
   })) + 1);
@@ -249,7 +262,7 @@ export function restoreScenario(data) {
     widthM,
     heightM,
     mapId,
-    ships: data.ships.map((ship) => {
+    ships: ships.map((ship) => {
       const hull = ship.hull || "DDG";
       const cls = SHIP_CLASSES[hull] || SHIP_CLASSES.DDG;
       const domain = ship.domain ?? cls.domain ?? "sea";
@@ -275,6 +288,11 @@ export function restoreScenario(data) {
         domain,
         isFixed: ship.isFixed ?? cls.isFixed ?? false,
         isAirfield: ship.isAirfield ?? cls.isAirfield ?? false,
+        strikeSpecialist: ship.strikeSpecialist === true ? true
+          : ship.strikeSpecialist === false ? false
+            : cls.strikeSpecialist === true ? true
+              : cls.strikeSpecialist === false ? false
+                : undefined,
         className: ship.className || cls.className,
         tracks: new Map((ship.tracks || []).map((track) => [track.id, track])),
         loadout,
@@ -355,8 +373,8 @@ export function restoreScenario(data) {
         navigationWaypoint: ship.navigationWaypoint || null
       };
     }),
-    missiles: Array.isArray(data.missiles) ? data.missiles : [],
-    events: Array.isArray(data.events) ? data.events : [],
+    missiles,
+    events,
     selectedId: data.selectedId,
     mode: Object.values(SCENARIO_MODE).includes(data.mode) ? data.mode : SCENARIO_MODE.SETUP,
     paused: data.paused ?? true,

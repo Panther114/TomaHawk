@@ -152,19 +152,18 @@ function missileRadarDetectionChance(rangeM, detectRangeM, missile, profile) {
   return clamp(base + terminalBonus - seaSkimPenalty, 0.04, 0.92);
 }
 
-function sensorGrid(entities, usefulRangeM) {
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const entity of entities) {
-    if (!entity.alive) continue;
-    minX = Math.min(minX, entity.x);
-    maxX = Math.max(maxX, entity.x);
-    minY = Math.min(minY, entity.y);
-    maxY = Math.max(maxY, entity.y);
-  }
-  if (maxX - minX <= usefulRangeM * 2 && maxY - minY <= usefulRangeM * 2) return { entities, cells: null };
+// Always bucket entities into a uniform grid. Earlier code skipped the grid
+// when the force fit inside 2× radar range — the common head-on / coastal case —
+// which forced every observer into an O(entities) scan with full range/horizon
+// math. The grid is pure broad-phase; detection outcomes are unchanged because
+// every candidate still passes the same RCS/horizon/chance tests. Candidate
+// order stays deterministic via a stable index sort.
+function sensorGrid(entities, _usefulRangeM) {
+  let aliveCount = 0;
+  for (const entity of entities) if (entity.alive) aliveCount++;
+  if (aliveCount === 0) return { entities, cells: null, aliveCount: 0 };
+  // Tiny force: grid overhead exceeds the linear scan.
+  if (aliveCount <= 8) return { entities, cells: null, aliveCount };
   const cells = new Map();
   for (let index = 0; index < entities.length; index++) {
     const entity = entities[index];
@@ -172,11 +171,14 @@ function sensorGrid(entities, usefulRangeM) {
     const x = Math.floor(entity.x / SENSOR_GRID_CELL_M);
     const y = Math.floor(entity.y / SENSOR_GRID_CELL_M);
     const key = `${x},${y}`;
-    const bucket = cells.get(key) ?? [];
+    let bucket = cells.get(key);
+    if (!bucket) {
+      bucket = [];
+      cells.set(key, bucket);
+    }
     bucket.push(index);
-    cells.set(key, bucket);
   }
-  return { entities, cells };
+  return { entities, cells, aliveCount };
 }
 
 function sensorCandidates(grid, observer, rangeM) {
@@ -188,12 +190,19 @@ function sensorCandidates(grid, observer, rangeM) {
   const indexes = [];
   for (let x = minX; x <= maxX; x++) {
     for (let y = minY; y <= maxY; y++) {
-      for (const index of grid.cells.get(`${x},${y}`) ?? []) indexes.push(index);
+      const bucket = grid.cells.get(`${x},${y}`);
+      if (!bucket) continue;
+      for (const index of bucket) indexes.push(index);
     }
   }
-  if (indexes.length >= grid.entities.length * 0.7) return grid.entities;
+  const aliveCount = grid.aliveCount ?? grid.entities.length;
+  // Neighbourhood already covers most of the force — skip the sort/map and
+  // walk the full list (alive entities are still filtered by the caller).
+  if (indexes.length >= aliveCount * 0.7) return grid.entities;
   indexes.sort((a, b) => a - b);
-  return indexes.map((index) => grid.entities[index]);
+  const out = new Array(indexes.length);
+  for (let i = 0; i < indexes.length; i++) out[i] = grid.entities[indexes[i]];
+  return out;
 }
 
 function sharedTrackMap(sim, side) {

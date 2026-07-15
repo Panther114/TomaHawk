@@ -109,7 +109,17 @@ const legacyTarget = (targets) => {
 function toMissileSpec(u) {
   const launchers = normalizeLaunchers(u);
   const targets = normalizeTargets(u);
-  return {
+  const cruiseAltitudeM = Number(u.cruiseAltitudeM);
+  const terminalAltitudeM = Number(u.terminalAltitudeM);
+  const terminalProfile = u.terminalProfile === "hypersonic_glide" ? "hypersonic_glide" : undefined;
+  const rangeM = Number(u.rangeNm) * NM;
+  // Explicit checkbox wins; otherwise hypersonic profile or very long reach
+  // implies strategic (matches combat.js isStrategicSurfaceWeapon fallback).
+  let strategic;
+  if (u.strategic === true) strategic = true;
+  else if (u.strategic === false) strategic = false;
+  else if (terminalProfile === "hypersonic_glide" || rangeM >= 800 * NM) strategic = true;
+  const spec = {
     name: u.name,
     // The ammo editor only exposes the ID, so a custom weapon labels itself with
     // its ID everywhere (map ring, inventory, loadout picker). We force shortLabel
@@ -124,7 +134,7 @@ function toMissileSpec(u) {
     launchers,
     targets,
     symbol: u.symbol,
-    rangeM: Number(u.rangeNm) * NM,
+    rangeM,
     speedMps: Number(u.speedMps),
     cellCost: Number(u.cellCost),
     pk: Number(u.pk),
@@ -144,12 +154,36 @@ function toMissileSpec(u) {
     retargetable: !!u.retargetable,
     selfDestructOnLoss: !!u.selfDestructOnLoss
   };
+  if (terminalProfile) {
+    spec.terminalProfile = terminalProfile;
+    // High terminal profile defaults when the modder left altitudes at 0.
+    if (Number.isFinite(cruiseAltitudeM) && cruiseAltitudeM > 0) spec.cruiseAltitudeM = cruiseAltitudeM;
+    else spec.cruiseAltitudeM = 30000;
+    if (Number.isFinite(terminalAltitudeM) && terminalAltitudeM > 0) spec.terminalAltitudeM = terminalAltitudeM;
+    else spec.terminalAltitudeM = 5000;
+    spec.terminalSeaSkimming = false;
+  } else {
+    if (Number.isFinite(cruiseAltitudeM) && cruiseAltitudeM > 0) spec.cruiseAltitudeM = cruiseAltitudeM;
+    if (Number.isFinite(terminalAltitudeM) && terminalAltitudeM > 0) spec.terminalAltitudeM = terminalAltitudeM;
+  }
+  if (strategic === true) spec.strategic = true;
+  if (strategic === false) spec.strategic = false;
+  return spec;
+}
+
+// Checkbox in the Workshop only *opts in*. Unchecked means "use domain
+// heuristic" (air + fixed ground with dedicated surface munitions), not an
+// explicit opt-out — otherwise cloning an F-35 and re-saving would strip its
+// specialist pass. Naval hulls still need the box checked (arsenal-ship case).
+function strikeSpecialistFlag(u) {
+  return u.strikeSpecialist === true ? true : undefined;
 }
 
 function toNavalClass(u) {
   // Hull dimensions are not exposed in the editor (draft/displacement are pure
   // flavor; length/beam only scale the map icon). Default them so custom ships
   // still render at a sensible size and hand-edited imports never break.
+  const strikeSpecialist = strikeSpecialistFlag(u);
   return {
     hull: u.id, className: u.name, prefix: u.prefix, prefixZh: String(u.prefixZh || "").trim(), domain: "sea", isFixed: false,
     lengthM: Number(u.lengthM) || 150, beamM: Number(u.beamM) || 20,
@@ -170,12 +204,14 @@ function toNavalClass(u) {
       ciws: Math.round(Number(u.defenseCiws))
     },
     damageResist: Number(u.damageResist), damageDegrade: Number(u.damageDegrade),
+    ...(strikeSpecialist === undefined ? {} : { strikeSpecialist }),
     baseLoadout: numClean(u.baseLoadout)
   };
 }
 
 function toGroundClass(u) {
   const isAirfield = !!u.isAirfield;
+  const strikeSpecialist = strikeSpecialistFlag(u);
   return {
     // An airfield is a ground unit that may be placed anywhere and rearms
     // friendly squadrons; it carries the runway glyph by default.
@@ -189,6 +225,7 @@ function toGroundClass(u) {
     ciwsCount: 0, ciwsAmmo: 0, ciwsBurstRounds: 0, ciwsBurstS: 0, ciwsCycleS: 5,
     defenseChannels: { sam: Math.round(Number(u.defenseSam ?? ((u.defenseArea ?? 0) + (u.defensePoint ?? 0)))), ciws: 0 },
     damageResist: Number(u.damageResist), damageDegrade: Number(u.damageDegrade),
+    ...(strikeSpecialist === undefined ? {} : { strikeSpecialist }),
     baseLoadout: numClean(u.baseLoadout)
   };
 }
@@ -198,6 +235,7 @@ function toAircraftClass(u) {
   // the flight size. Hull dimensions are nominal (icon only). enduranceS /
   // rearmTimeS feed the (temporary) RTB/rearm model.
   const size = Math.max(1, Math.round(Number(u.squadronSize) || 4));
+  const strikeSpecialist = strikeSpecialistFlag(u);
   return {
     hull: u.id, className: u.name, prefix: u.prefix, prefixZh: String(u.prefixZh || "").trim(), domain: "air", isFixed: false, glyph: "aircraft",
     lengthM: Number(u.lengthM) || 20, beamM: Number(u.beamM) || 14, draftM: 5, displacementT: 30,
@@ -213,6 +251,7 @@ function toAircraftClass(u) {
     enduranceS: Number(u.enduranceS) || 1800, rearmTimeS: Number(u.rearmTimeS) || 90,
     flares: Number.isFinite(Number(u.flares)) ? Math.round(Number(u.flares)) : 60,
     commandHub: !!u.commandHub,
+    ...(strikeSpecialist === undefined ? {} : { strikeSpecialist }),
     baseLoadout: numClean(u.baseLoadout)
   };
 }
@@ -230,6 +269,8 @@ export function toInternalSpec(unit) {
 function fromMissileSpec(id, s) {
   const launchers = missileLaunchers(s);
   const targets = missileTargets(s);
+  const strategic = s.strategic === true
+    || (s.strategic !== false && (s.terminalProfile === "hypersonic_glide" || (s.rangeM ?? 0) >= 800 * NM));
   return {
     kind: "ammo", id, name: id, displayName: s.displayName, shortLabel: s.shortLabel, role: s.role,
     category: s.category, symbol: s.symbol, target: s.target,
@@ -250,7 +291,12 @@ function fromMissileSpec(id, s) {
     cellCost: s.cellCost, pk: s.pk, salvo: s.salvo, interceptorsPerThreat: s.interceptorsPerThreat,
     nezFraction: s.nezFraction ?? 0.5,
     magazineReserveRatio: s.magazineReserveRatio, launchIntervalS: s.launchIntervalS, salvoSpacingS: s.salvoSpacingS,
-    ringStyle: s.ringStyle, guidance: s.guidance, retargetable: !!s.retargetable, selfDestructOnLoss: !!s.selfDestructOnLoss
+    ringStyle: s.ringStyle, guidance: s.guidance,
+    terminalProfile: s.terminalProfile === "hypersonic_glide" ? "hypersonic_glide" : "",
+    cruiseAltitudeM: Number.isFinite(s.cruiseAltitudeM) ? s.cruiseAltitudeM : 0,
+    terminalAltitudeM: Number.isFinite(s.terminalAltitudeM) ? s.terminalAltitudeM : 0,
+    strategic: !!strategic,
+    retargetable: !!s.retargetable, selfDestructOnLoss: !!s.selfDestructOnLoss
   };
 }
 
@@ -266,6 +312,7 @@ function fromShipClass(hull, c) {
     rcsM2: defaultRcsM2(c),
     vlsCells: c.vlsCells, damageResist: c.damageResist, damageDegrade: c.damageDegrade,
     defenseSam: c.defenseChannels?.sam ?? ((c.defenseChannels?.area ?? 0) + (c.defenseChannels?.point ?? 0)),
+    strikeSpecialist: c.strikeSpecialist === true,
     baseLoadout: { ...(c.baseLoadout ?? defaultLoadout(hull)) }
   };
   if (c.domain === "air") {
@@ -273,6 +320,7 @@ function fromShipClass(hull, c) {
       kind: "aircraft", id: hull, name: c.className, prefix: c.prefix, prefixZh: c.prefixZh ?? BUILTIN_PREFIX_ZH[hull] ?? "",
       squadronSize: Math.max(1, Math.round(c.damageResist ?? 4)),
       commandHub: c.commandHub === true,
+      strikeSpecialist: c.strikeSpecialist === true,
       rcsM2: defaultRcsM2(c),
       cruiseSpeedKt: c.cruiseSpeedKt, maxSpeedKt: c.maxSpeedKt,
       accelMps2: c.accelMps2, decelMps2: c.decelMps2,

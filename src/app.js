@@ -39,6 +39,7 @@ import {
   renderBattleStatus,
   inventoryHtml,
   clusterProximityLabels,
+  escapeHtml,
   worldToScreen as projectWorldToScreen,
   screenToWorld as projectScreenToWorld
 } from "./ui/view.js";
@@ -89,7 +90,8 @@ const filters = {
 
 let sim = createDefaultScenario(undefined, mapSelect?.value);
 let tool = "select";
-let camera = { x: 13900, y: -3600, scale: 0.00125 };
+// Camera coordinates are metres; the tactical readout presents kilometres.
+let camera = { x: 13_900 * KM, y: -3_600 * KM, scale: 0.00125 };
 let drag = null;
 let activeRuler = null;
 let rulers = [];
@@ -106,19 +108,55 @@ const PANEL_RENDER_INTERVAL_MS = 50;
 // very expensive and indistinguishable in a crowded raid — exactly when frame
 // budget is tight).
 const MISSILE_GLOW_CAP = 50;
+// Guide-lines (dashed missile→target strokes) are free at low density but
+// dominate canvas cost in large raids. Only draw them when few missiles, or the
+// related unit is selected, or the camera is zoomed in for tactical reading.
+const MISSILE_GUIDE_LINE_CAP = 40;
+// Above this count, thin non-terminal icons with a stable id hash (terminal and
+// selection-related missiles always drawn). Purely visual; sim unchanged.
+const MISSILE_ICON_THIN_CAP = 120;
+// When many hulls and ranges are on, only selected ships draw WEZ rings.
+const WEAPON_RING_SELECT_SHIP_CAP = 18;
+// Reused label buckets to avoid per-frame Map/array churn in drawMissiles.
+const _missileLabelBuckets = new Map();
+const _missileLabelWidths = new Map();
+
+function stableMissileHash(id) {
+  // Deterministic visual thinning — not crypto; just spreads ids across buckets.
+  let h = 0;
+  const s = String(id);
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
 
 // --- per-run debug capture --------------------------------------------------
 // Two read-only collectors observe each running simulation and are persisted to
 // debug/ (perf-debug.log + sim-debug.log) via the server, OVERWRITTEN every run,
 // so the AI behaviour and device cost of the last run can be inspected offline.
+// Opt-in only: enable with ?debug=1 in the URL or localStorage tomahawk.debug=1
+// so normal play does not pay logging / network cost on every fight.
 // A "run" is one SETUP→RUNNING→ENDED lifecycle; the collectors reset when a new
 // run starts and the logs are saved when it ends (and periodically while live).
 let perfRec = null;
 let battleLog = null;
 let debugRunActive = false;
 let lastDebugSaveAt = 0;
+// Wall-clock sim work left over when a frame hits its budget (seconds of sim).
+let simTimeDebt = 0;
+
+function debugCaptureEnabled() {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem("tomahawk.debug") === "1") return true;
+  } catch { /* private mode */ }
+  try {
+    return typeof location !== "undefined" && /(?:\?|&)debug=1(?:&|$)/.test(location.search || "");
+  } catch {
+    return false;
+  }
+}
 
 function beginDebugRun() {
+  if (!debugCaptureEnabled()) return;
   perfRec = new PerfRecorder({ label: `app run ${new Date().toISOString()}` });
   battleLog = new BattleLogger({ intervalS: 15, label: `app run ${new Date().toISOString()}` });
   debugRunActive = true;
@@ -292,10 +330,14 @@ function drawGrid() {
   if (!filters.grid.classList.contains("active")) return;
   const leftTop = screenToWorld(0, 0);
   const rightBottom = screenToWorld(innerWidth, innerHeight);
+  // Strategic zoom: only major lines (minor spacing becomes sub-pixel clutter
+  // and wastes stroke calls across a huge map viewport).
+  const minorStep = camera.scale < 0.0009 ? GRID_MAJOR_M : GRID_MINOR_M;
 
-  for (let x = Math.floor(leftTop.x / GRID_MINOR_M) * GRID_MINOR_M; x < rightBottom.x; x += GRID_MINOR_M) {
+  for (let x = Math.floor(leftTop.x / minorStep) * minorStep; x < rightBottom.x; x += minorStep) {
     const sx = worldToScreen({ x, y: 0 }).x;
     const isMajor = Math.abs(x % GRID_MAJOR_M) < 1;
+    if (minorStep === GRID_MAJOR_M && !isMajor) continue;
     ctx.strokeStyle = isMajor ? "rgba(95,139,154,.36)" : "rgba(95,139,154,.14)";
     ctx.lineWidth = isMajor ? 1.2 : 1;
     ctx.beginPath();
@@ -303,9 +345,10 @@ function drawGrid() {
     ctx.lineTo(sx, innerHeight);
     ctx.stroke();
   }
-  for (let y = Math.floor(leftTop.y / GRID_MINOR_M) * GRID_MINOR_M; y < rightBottom.y; y += GRID_MINOR_M) {
+  for (let y = Math.floor(leftTop.y / minorStep) * minorStep; y < rightBottom.y; y += minorStep) {
     const sy = worldToScreen({ x: 0, y }).y;
     const isMajor = Math.abs(y % GRID_MAJOR_M) < 1;
+    if (minorStep === GRID_MAJOR_M && !isMajor) continue;
     ctx.strokeStyle = isMajor ? "rgba(95,139,154,.36)" : "rgba(95,139,154,.14)";
     ctx.lineWidth = isMajor ? 1.2 : 1;
     ctx.beginPath();
@@ -313,7 +356,6 @@ function drawGrid() {
     ctx.lineTo(innerWidth, sy);
     ctx.stroke();
   }
-
 }
 
 function drawRadarRings() {
@@ -346,13 +388,18 @@ function cachedWeaponRangeEntries(ship) {
 }
 
 // Collect every weapon range ring that should be drawn this frame, in screen
-// space. The top-bar WEZ toggle controls the whole layer.
+// space. The top-bar WEZ toggle controls the whole layer. With many hulls,
+// only selected units draw rings (full detail returns when the force is small
+// or the user selects the units they care about).
 function collectWeaponRangeRings() {
   const rings = [];
   if (!filters.ranges.classList.contains("active")) return rings;
+  const aliveCount = sim._aliveShips?.length ?? sim.ships.length;
+  const selectOnly = aliveCount > WEAPON_RING_SELECT_SHIP_CAP && selectedIds.size > 0;
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
-    const selected = ship.id === sim.selectedId;
+    const selected = selectedIds.has(ship.id) || ship.id === sim.selectedId;
+    if (selectOnly && !selected) continue;
     const p = worldToScreen(ship);
     // Nearest distance from the viewport rectangle to this ship (ring centre).
     const nx = Math.max(0, Math.min(p.x, innerWidth));
@@ -755,44 +802,74 @@ function drawTracks() {
 function drawMissiles(label) {
   if (!filters.missiles.classList.contains("active")) return;
   const labelFontPx = Math.max(7, VISUAL_CONFIG.shipLabelPx * 0.4 * label.scale);
-  const missileLabelsByType = new Map();
-  const labelWidths = new Map();
+  // Reuse label buckets (clear in place) to cut per-frame Map churn.
+  for (const bucket of _missileLabelBuckets.values()) bucket.length = 0;
+  const missileLabelsByType = _missileLabelBuckets;
+  const labelWidths = _missileLabelWidths;
+  const liveCount = sim._aliveMissiles?.length ?? sim.missiles.length;
   // Drop the per-missile glow in a crowded raid (shadowBlur is the most expensive
   // per-draw op and invisible at that density).
-  const useGlow = (sim._aliveMissiles?.length ?? sim.missiles.length) <= MISSILE_GLOW_CAP;
+  const useGlow = liveCount <= MISSILE_GLOW_CAP;
+  const zoomedIn = camera.scale >= 0.0012;
+  const drawAllGuides = liveCount <= MISSILE_GUIDE_LINE_CAP || zoomedIn;
+  const thinIcons = liveCount > MISSILE_ICON_THIN_CAP;
+  // Strategic zoom: tiny points instead of rotated polygons (still read side/color).
+  const lodDots = label.scale <= 0 || label.alpha < 0.15;
+  const wantLabels = !lodDots && label.scale > 0 && label.alpha > 0;
   ctx.save();
   ctx.font = canvasFont(labelFontPx);
-  for (const missile of sim.missiles) {
+  const missiles = sim._aliveMissiles ?? sim.missiles;
+  for (const missile of missiles) {
+    if (!missile.alive) continue;
     const p = worldToScreen(missile);
     const iconVisible = screenPointVisible(p, 24);
-    const spec = MISSILES[missile.missileId];
+    const relatedSelected = selectedIds.has(missile.launcherId) || selectedIds.has(missile.targetId);
+    // Density sampling: always show terminal + selection-related; thin the rest.
+    if (thinIcons && !missile.terminal && !relatedSelected && (stableMissileHash(missile.id) % 3) !== 0) {
+      continue;
+    }
+    const drawGuide = drawAllGuides || relatedSelected || missile.terminal;
+    if (!iconVisible && !drawGuide) continue;
+
     const isAntiAir = missileDisplayRole(missile) === "anti_air";
+    const iconColor = missile.terminal ? "#f7b955" : sideColor(missile.side);
+
+    if (drawGuide) {
+      const targetCandidate = isAntiAir
+        ? (sim._missileById?.get(missile.targetId) ?? null)
+        : (sim._shipById?.get(missile.targetId) ?? null);
+      const target = targetCandidate?.alive ? targetCandidate : null;
+      if (target) {
+        const t = worldToScreen(target);
+        if (segmentIntersectsViewport(p, t, 4)) {
+          ctx.save();
+          ctx.strokeStyle = `${sideColor(missile.side)}24`;
+          ctx.lineWidth = missile.terminal ? 0.62 : 0.42;
+          ctx.setLineDash(missile.terminal ? [2, 3] : [7, 6]);
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(t.x, t.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+    if (!iconVisible) continue;
+
+    if (lodDots) {
+      ctx.fillStyle = iconColor;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, missile.terminal ? 2.4 : 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+
     const size = worldSize(
       isAntiAir ? 34 : 52,
       Math.max(2.2, VISUAL_CONFIG.missileMinPx * (isAntiAir ? 0.85 : 1)),
       VISUAL_CONFIG.missileMaxPx * (isAntiAir ? 0.7 : 0.9),
       19
     );
-    const iconColor = missile.terminal ? "#f7b955" : sideColor(missile.side);
-    const targetCandidate = isAntiAir
-      ? (sim._missileById?.get(missile.targetId) ?? sim.missiles.find((m) => m.id === missile.targetId))
-      : (sim._shipById?.get(missile.targetId) ?? sim.ships.find((s) => s.id === missile.targetId));
-    const target = targetCandidate?.alive ? targetCandidate : null;
-    if (target) {
-      const t = worldToScreen(target);
-      if (segmentIntersectsViewport(p, t, 4)) {
-        ctx.save();
-        ctx.strokeStyle = `${sideColor(missile.side)}24`;
-        ctx.lineWidth = missile.terminal ? 0.62 : 0.42;
-        ctx.setLineDash(missile.terminal ? [2, 3] : [7, 6]);
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(t.x, t.y);
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-    if (!iconVisible) continue;
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(missile.heading);
@@ -816,7 +893,8 @@ function drawMissiles(label) {
     ctx.stroke();
     ctx.restore();
 
-    if (label.scale > 0 && label.alpha > 0) {
+    if (wantLabels) {
+      const spec = MISSILES[missile.missileId];
       const text = spec?.shortLabel ?? spec?.name ?? "";
       const anchorX = p.x + size * 0.5 + 2;
       const anchorY = p.y - 4;
@@ -827,8 +905,12 @@ function drawMissiles(label) {
       }
       const height = Math.max(7, labelFontPx + 2);
       const groupKey = `${missile.side}:${missile.missileId}`;
-      if (!missileLabelsByType.has(groupKey)) missileLabelsByType.set(groupKey, []);
-      missileLabelsByType.get(groupKey).push({
+      let bucket = missileLabelsByType.get(groupKey);
+      if (!bucket) {
+        bucket = [];
+        missileLabelsByType.set(groupKey, bucket);
+      }
+      bucket.push({
         x: anchorX,
         y: anchorY,
         cx: anchorX + width / 2,
@@ -837,14 +919,15 @@ function drawMissiles(label) {
         height,
         text,
         color: iconColor,
-        alpha: missile.alive ? 0.96 : 0.34
+        alpha: 0.96
       });
     }
   }
   ctx.restore();
 
-  if (label.scale > 0 && label.alpha > 0) {
+  if (wantLabels) {
     for (const items of missileLabelsByType.values()) {
+      if (!items.length) continue;
       const clusters = clusterSameTypeMissileLabels(items, Math.max(18, labelFontPx * 1.8));
       for (const cluster of clusters) {
         const [first] = cluster.items;
@@ -972,7 +1055,7 @@ function populateSpawnDropdown() {
     const bucket = cls.domain === "ground" ? ground : cls.domain === "air" ? air : naval;
     bucket.push([hull, cls]);
   }
-  const escAttr = (s) => String(s).replace(/"/g, "&quot;");
+  const escAttr = escapeHtml;
   const optHtml = (arr) => arr
     .map(([hull, cls]) => `<option value="${escAttr(hull)}">${escAttr(spawnOptionLabel(hull, cls))}</option>`)
     .join("");
@@ -1168,12 +1251,12 @@ function renderPanels() {
     panelRenderCache.eventHead = newestEvent;
     replaceHtmlIfChanged(eventLog, sim.events.map((e) => {
       const sLabel = sideLabel(e.side);
-      const sideClass = e.side === 'BLUE' ? 'blue' : e.side === 'RED' ? 'red' : '';
+      const sideClass = e.side === SIDE.BLUE ? 'blue' : e.side === SIDE.RED ? 'red' : '';
       const sideWidth = lang === 'zh' ? '14px' : '12px';
       return `<div class="${eventSeverity(e.text)}" style="grid-template-columns:34px ${sideWidth} minmax(0, 1fr)">
         <span class="event-time">${formatTime(e.t)}</span>
         <b class="event-side ${sideClass}">${sLabel}</b>
-        <span class="event-text">${translateEventText(e.text)}</span>
+        <span class="event-text">${escapeHtml(translateEventText(e.text))}</span>
       </div>`;
     }).join(""));
   }
@@ -1230,19 +1313,37 @@ function pickShip(world) {
   return best;
 }
 
+// Cap sim catch-up work per animation frame so a heavy raid (100+ missiles)
+// cannot force 4×32ms ticks into one frame and hitch the UI. Leftover sim time
+// carries as debt into the next frame (rate is wall-clock only).
+const FRAME_SIM_BUDGET_MS = 12;
+
 function tick(now) {
   const elapsed = Math.min(0.1, (now - last) / 1000);
   last = now;
   // Returning to SETUP (a fresh scenario / reset) ends the current capture so
   // the next run starts clean rather than appending to the previous one.
-  if (sim.mode === SCENARIO_MODE.SETUP) debugRunActive = false;
+  if (sim.mode === SCENARIO_MODE.SETUP) {
+    debugRunActive = false;
+    simTimeDebt = 0;
+  }
   if (!sim.paused) {
     if (!debugRunActive && sim.mode === SCENARIO_MODE.RUNNING) beginDebugRun();
     const rate = Number(speed.value);
-    let remaining = elapsed * rate;
+    let remaining = elapsed * rate + simTimeDebt;
+    simTimeDebt = 0;
+    const budgetStart = performance.now();
+    let steppedThisFrame = false;
     while (remaining > 0) {
+      // Always allow the first tick of the frame so a slow device still advances;
+      // subsequent ticks respect the budget and carry leftover sim time as debt.
+      if (steppedThisFrame && performance.now() - budgetStart > FRAME_SIM_BUDGET_MS) {
+        simTimeDebt = remaining;
+        break;
+      }
       const t0 = performance.now();
       stepSim(sim, Math.min(0.25, remaining));
+      steppedThisFrame = true;
       if (debugRunActive) {
         perfRec.record(sim, performance.now() - t0);
         battleLog.sample(sim);
@@ -1519,6 +1620,12 @@ async function submitSave(name, force) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name, data, force })
     });
+    if (!res.ok) {
+      await saveJsonToCustomLocation(`${name || "Untitled"}.json`, data);
+      status.textContent = t("save.done");
+      closeSavePopup();
+      return;
+    }
     const result = await res.json();
     if (!result.ok && result.reason === "exists") {
       if (await confirmDialog(t("save.overwrite").replace("{n}", result.name))) {
@@ -1577,6 +1684,7 @@ document.querySelector("#load-file").addEventListener("change", async (event) =>
   const file = event.target.files?.[0];
   if (!file) return;
   try {
+    if (file.size > 5 * 1024 * 1024) throw new Error("Scenario file exceeds the 5 MB import limit.");
     sim = restoreScenario(JSON.parse(await file.text()));
     selectedIds = new Set([sim.selectedId].filter(Boolean));
     closeLoadPopup();
@@ -1601,7 +1709,8 @@ async function refreshLoadList() {
   loadList.textContent = "";
   let entries = [];
   try {
-    entries = await (await fetch("/scenario/list")).json();
+    const response = await fetch("/scenario/list");
+    if (response.ok) entries = await response.json();
   } catch {
     loadList.innerHTML = `<div class="load-empty">${t("load.failed")}</div>`;
     return;

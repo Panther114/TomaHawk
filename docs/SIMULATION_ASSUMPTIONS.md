@@ -60,9 +60,11 @@ dragging preserves the last valid water position, map changes are setup-only,
 and running ships either follow a deterministic coastal detour or stop/replan
 at the last safe water point rather than crossing land.
 
-Combat firing is now planned at the force level once per second. The planner allocates defensive interceptors to inbound missiles and offensive salvos to hostile ships using local/shared tracks, current queue state, active missiles, track quality, range, magazine depth, and a side-wide command posture. Defensive assignment does not wait for a stale force-wide composite if a local ship already has the inbound threat on radar. That posture is deliberately estimate-based: the commander only sees its own inventory plus the observed enemy picture, then raises aggressiveness when the side has more useful VLS and missile depth and lowers it when missile pressure is high. The force does not directly convert every posture tick into a new mood; instead it moves through persistent strike modes with hysteresis, closer to a real task group committing to a plan for some period of time. High aggression is not just a label: it shortens offensive commit delays, allows more strike allocations per planning pass, and keeps more pressure on already-targeted ships, so a force with advantage actually behaves like a force attempting saturation. This avoids suppressing every other friendly ship simply because one ship already fired.
+Combat firing is now planned at the force level once per second. The planner allocates defensive interceptors to inbound missiles and offensive salvos to hostile ships using local/shared tracks, current queue state, active missiles, track quality, range, magazine depth, and a side-wide command posture. Defensive assignment does not wait for a stale force-wide composite if a local ship already has the inbound threat on radar. That posture is deliberately estimate-based: the commander only sees its own inventory plus the observed enemy picture, then raises aggressiveness when the side has more useful VLS and missile depth. Peer fights open near half-aggression (willing to prosecute) rather than a permanent low “survive” floor; inbound missile pressure only lightly reins offensive will so a full magazine does not freeze the moment the first ASCMs appear. Own-force strike depth counts every surface-capable munition still aboard (MSTK, TLAM, Dark Eagle, AGM-84/154, and dual-role SM-6 when included), matching the enemy-estimate priors that already weight DEB and air threats — so accounting asymmetry no longer drives both sides into survive on an equal fight. The force does not directly convert every posture tick into a new mood; instead it moves through persistent strike modes with hysteresis, closer to a real task group committing to a plan for some period of time. High aggression is not just a label: it shortens offensive commit delays, allows more strike allocations per planning pass, and keeps more pressure on already-targeted ships, so a force with advantage actually behaves like a force attempting saturation.
 
-Strike-empty ships now shift from prosecution to survival. A ship with no dedicated offensive missiles (`MSTK`/`TLAM`) keeps self-defence capability but sets a high-speed retreat waypoint away from the nearest hostile track instead of continuing to close the enemy. If the opposing force is also out of offensive missiles, ships that still hold reserve strike weapons may release those reserves rather than sitting on a clean endgame shot.
+Offensive allocation is two-pass and domain-aware. Strike specialists (fixed ground batteries with surface magazines, and aircraft carrying surface munitions) take a first allocation pass so a nearby destroyer’s ASCMs cannot permanently starve a Dark Eagle battery or a JSOW flight. Long-range / hypersonic weapons may also consume a small strategic overflow quota after the general raid cap is full. Target breadth at focus/pressure can reach two concurrent surface tracks so air-to-ground and naval strike are not locked to a single monopolising contact. Aircraft surface locks are weapon-domain-filtered (Harpoon only locks sea targets; JSOW only locks ground), so flights no longer orbit a contact they cannot arm against.
+
+Strike-empty ships now shift from prosecution to survival. A ship with no dedicated surface-strike munitions (any non-dual-role weapon that can target sea/ground — not only `MSTK`/`TLAM`) keeps self-defence capability but sets a high-speed retreat waypoint away from the nearest hostile track instead of continuing to close the enemy. If the opposing force is also out of offensive missiles, ships that still hold reserve strike weapons may release those reserves rather than sitting on a clean endgame shot.
 
 Default spawn loadouts are full for the hull class, so a fresh DDG does not begin the scenario with empty VLS cells. That keeps the tactical picture readable and avoids a misleading "already partly depleted" setup state.
 
@@ -89,7 +91,9 @@ behaviourally meaningful level:
   capable surviving unit as Officer in Tactical Command (OTC / formation guide)
   and the next as Anti-Air Warfare Commander (AAWC). Selection is deterministic
   and re-evaluated as ships are damaged or lost.
-- **Sector responsibility.** AAW sectors are anchored on the mean threat axis and
+- **Sector responsibility.** AAW sectors are anchored on the mean threat axis
+  (unit tracks only — inbound missiles are excluded so a dense raid does not
+  thrash CAP stations and formation bearings) and
   divided among the units, so each ship owns a slice of sky. The unit that owns
   the sector an inbound threat is in engages it first, spreading a raid across
   the screen instead of piling every interceptor onto one launcher.
@@ -233,7 +237,7 @@ Four fixed land-based unit types extend the same ship model with `domain: "groun
 - **Placement.** Ground units must be placed on land (and are rejected on water on terrain maps); they never move, are never assigned a formation station or the OTC role, and are never re-seated to water on restore or map change.
 - **Cross-domain behaviour.** A ground radar (especially the EWR) contributes to the side's cooperative force picture, so ships can engage on a ground unit's remote track and vice versa; naval anti-ship fire targets and destroys enemy ground units, and a coastal SAM can defend nearby friendly ships.
 - **CDB targeting radar.** The coastal anti-ship battery is given a long, over-the-horizon targeting radar (≈250 NM) so its long-range missiles are usable at standoff; a battery whose radar is shorter than its weapons would otherwise sit blind and passive. Beyond its own radar it still depends on external cueing (e.g. an EWR) through CEC.
-- **DEB remote cueing.** The Dark Eagle battery has a long-range surface-search abstraction so it can participate in the sandbox, but its 1,500 NM LRHW shots can also use shared tracks from EWR, aircraft, or ships. The missile flies high and fast, so it can be detected earlier than a sea-skimmer but gives defenders less engagement time.
+- **DEB remote cueing.** The Dark Eagle battery has a long-range surface-search abstraction so it can participate in the sandbox, but its 1,500 NM LRHW shots can also use shared tracks from EWR, aircraft, or ships (engage-on-remote + mid-course CEC). The missile flies high and fast, so it can be detected earlier than a sea-skimmer but gives defenders less engagement time. Force planning treats DEB as a strike specialist with a strategic-weapon quota so short-range naval ASCMs do not monopolise every raid slot.
 - **Win condition.** Unchanged — a side is eliminated when all of its units (sea and ground) are destroyed.
 
 ### SM-6 Dual-Role
@@ -253,7 +257,26 @@ approximations of flight profile and detectability, not exact sensor
 performance claims.
 
 ### Interceptor PK Refinements
-Interceptor PK now includes a speed penalty (-0.15 for fast supersonic targets, -0.28 for hypersonic targets), sea-skimming penalty (-0.14), stale/low-quality track penalty, and defence saturation penalty (concurrent threats degrade each interceptor's PK). Hard-kill missile intercepts are capped at 0.90 after modifiers. CIWS PK uses a base 0.45 × saturation ratio with penalties for sea-skimmer (-0.18), damage (-0.06), and supersonic speed (-0.12).
+Interceptor hard-kill chance is O(1) per attempt and now models **high-energy /
+hypersonic threats** more realistically than a flat speed step:
+
+- **Kinematic Mach penalty** (continuous): the engagement window shrinks as
+  target speed rises (~Mach 2 → −0.07, Mach 5 → −0.24, capped near −0.42).
+- **Boost-glide / strategic profile**: weapons with `terminalProfile:
+  "hypersonic_glide"` or `strategic: true` (vanilla Dark Eagle and Workshop
+  LRHW-class ammo) take a modest profile penalty, slightly larger at high altitude.
+- **Layer suitability**: short-range point-defence (ESSM-class) and CIWS are a
+  poorer match for hypersonic kinematics; long-reach high-speed interceptors
+  (SM-6-class) get a credit and a higher ceiling (~0.38 single-shot vs LRHW).
+  Typical good-cue SM-6 vs Dark Eagle lands around the mid-20s–low-30s percent —
+  harder than a cruise missile, not hopeless; shoot-shoot doctrine matters.
+- Sea-skimming (−0.14 SAM / −0.18 CIWS), stale or low-quality track cueing, and
+  local saturation still apply on top.
+- Against non-hypersonic threats the soft band remains (SAM floor ~0.10,
+  ceiling ~0.90).
+
+Defensive planning also treats high-energy threats as higher priority (threat
+score bonus), commits multi-shot depth early, and prefers SM-6 over ESSM.
 
 Saturation is now a **true local spatial density**, not a per-target proxy: both the interceptor penalty and the CIWS saturation ratio count the live threat missiles physically crowding the airspace around the interceptor / point-defence bubble (from any raid), via a pooled per-tick missile grid. This makes a dense, multi-axis raid degrade defences the way a single concentrated raid does, and is bounded to a handful of nearby grid cells rather than a naive scan of every missile.
 

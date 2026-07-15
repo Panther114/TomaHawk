@@ -6,6 +6,12 @@ const root = resolve(process.cwd());
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4172);
 const scenarioDir = resolve(root, "saves", "scenarios");
+const hosted = Boolean(process.env.RAILWAY_ENVIRONMENT);
+const scenarioStoreEnabled = !hosted;
+
+function isPublicAsset(rel) {
+  return rel === "index.html" || rel.startsWith("src/");
+}
 
 // Fixed on-disk save location: strips anything but word chars/space/dash so the
 // name can't escape saves/scenarios/ via "../" or an absolute path.
@@ -14,7 +20,7 @@ function safeScenarioName(name) {
   return (cleaned || "Untitled").slice(0, 80);
 }
 
-async function readJsonBody(req, maxBytes = 32 * 1024 * 1024) {
+async function readJsonBody(req, maxBytes = 5 * 1024 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
@@ -47,7 +53,7 @@ createServer(async (req, res) => {
     // logs here so they are written to debug/ (overwritten every run), the same
     // files the headless runner produces. Local-only convenience; ignored if the
     // payload is malformed.
-    if (url.pathname === "/debug/save" && req.method === "POST") {
+    if (scenarioStoreEnabled && url.pathname === "/debug/save" && req.method === "POST") {
       const chunks = [];
       for await (const chunk of req) {
         chunks.push(chunk);
@@ -67,7 +73,7 @@ createServer(async (req, res) => {
       }
       return;
     }
-    if (url.pathname === "/scenario/save" && req.method === "POST") {
+    if (scenarioStoreEnabled && url.pathname === "/scenario/save" && req.method === "POST") {
       try {
         const { name, data, force } = await readJsonBody(req);
         const filename = `${safeScenarioName(name)}.json`;
@@ -89,7 +95,7 @@ createServer(async (req, res) => {
       }
       return;
     }
-    if (url.pathname === "/scenario/list" && req.method === "GET") {
+    if (scenarioStoreEnabled && url.pathname === "/scenario/list" && req.method === "GET") {
       try {
         await mkdir(scenarioDir, { recursive: true });
         const files = (await readdir(scenarioDir)).filter((f) => f.endsWith(".json"));
@@ -106,7 +112,7 @@ createServer(async (req, res) => {
       }
       return;
     }
-    if (url.pathname === "/scenario/load" && req.method === "GET") {
+    if (scenarioStoreEnabled && url.pathname === "/scenario/load" && req.method === "GET") {
       const filename = `${safeScenarioName(url.searchParams.get("name"))}.json`;
       const file = resolve(scenarioDir, filename);
       if (!file.startsWith(`${scenarioDir}${sep}`)) {
@@ -124,7 +130,7 @@ createServer(async (req, res) => {
       }
       return;
     }
-    if (url.pathname === "/scenario/delete" && req.method === "DELETE") {
+    if (scenarioStoreEnabled && url.pathname === "/scenario/delete" && req.method === "DELETE") {
       const filename = `${safeScenarioName(url.searchParams.get("name"))}.json`;
       const file = resolve(scenarioDir, filename);
       if (!file.startsWith(`${scenarioDir}${sep}`)) {
@@ -143,6 +149,11 @@ createServer(async (req, res) => {
       return;
     }
     const rel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+    if (!isPublicAsset(rel)) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
     const file = resolve(root, rel);
     if (!file.startsWith(`${root}${sep}`)) {
       res.writeHead(403);

@@ -37,7 +37,7 @@ test("camera clamping uses the viewport-derived map scale", () => {
 test("the initial tactical viewport focuses the requested East China Sea coordinate", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
 
-  assert.match(appSource, /let camera = \{ x: 13900, y: -3600, scale: 0\.00125 \};/);
+  assert.match(appSource, /let camera = \{ x: 13_900 \* KM, y: -3_600 \* KM, scale: 0\.00125 \};/);
 });
 
 test("frame rendering preserves interactive panel DOM when content is unchanged", () => {
@@ -45,6 +45,18 @@ test("frame rendering preserves interactive panel DOM when content is unchanged"
 
   assert.match(appSource, /replaceHtmlIfChanged\(unitTab,/);
   assert.doesNotMatch(appSource, /unitTab\.innerHTML\s*=/);
+});
+
+test("hosted save fallback preserves browser-file export when server storage is unavailable", () => {
+  const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+
+  assert.match(appSource, /if \(!res\.ok\) \{\s*await saveJsonToCustomLocation/s);
+});
+
+test("tactical feed escapes translated scenario event text before inserting markup", () => {
+  const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+
+  assert.match(appSource, /escapeHtml\(translateEventText\(e\.text\)\)/);
 });
 
 test("tactical-map renders ship and missile labels as fill text, not stroke labels", () => {

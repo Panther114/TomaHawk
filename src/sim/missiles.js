@@ -168,6 +168,9 @@ export const MISSILES = {
     terminalAltitudeM: 5000,
     terminalSeaSkimming: false,
     terminalProfile: "hypersonic_glide",
+    // Explicit strategic flag so custom clones / Unit Workshop ammo can opt
+    // into the reserved deep-strike raid quota without needing 800+ NM range.
+    strategic: true,
     guidance: "inertial_active",
     retargetable: false,
     selfDestructOnLoss: true

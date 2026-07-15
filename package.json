@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node server.mjs",
     "refresh:start": "node scripts/build-east-china-sea-map.mjs && node server.mjs",
-    "test": "node --test",
+    "test": "node --test tests/",
     "bench": "node scripts/bench.mjs",
     "bench:terrain": "node scripts/bench-terrain.mjs",
     "bench:frontend": "node scripts/bench-frontend.mjs",

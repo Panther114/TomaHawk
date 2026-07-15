@@ -240,15 +240,44 @@ function friendlyHomeAnchor(sim, ship) {
   return { x, y: ship.y };
 }
 
+function airfieldsForSide(sim, side) {
+  let cache = sim._airfieldsBySide;
+  if (!cache) {
+    cache = new Map();
+    sim._airfieldsBySide = cache;
+    for (const other of sim._aliveShips || sim.ships) {
+      if (!other.alive || !isAirfield(other)) continue;
+      let list = cache.get(other.side);
+      if (!list) { list = []; cache.set(other.side, list); }
+      list.push(other);
+    }
+  }
+  return cache.get(side) || [];
+}
+
 function nearestFriendlyAirfield(sim, ship) {
   let best = null;
   let bestD = Infinity;
-  for (const other of sim.ships) {
-    if (!other.alive || other.side !== ship.side || !isAirfield(other)) continue;
+  for (const other of airfieldsForSide(sim, ship.side)) {
+    if (!other.alive) continue;
     const d = distance(ship, other);
     if (d < bestD) { bestD = d; best = other; }
   }
   return best;
+}
+
+// True when the squadron currently carries at least one round that can engage
+// the given domain (sea / ground / air). Used so anti-ground flights do not
+// lock a destroyer they can never shoot, and anti-ship flights do not lock a
+// SAM battery with Harpoons only.
+function loadoutCanEngageDomain(ship, domain) {
+  const lo = ship.loadout;
+  if (!lo) return false;
+  for (const id of Object.keys(lo)) {
+    if (!(lo[id] > 0)) continue;
+    if (missileCanTarget(MISSILES[id], domain)) return true;
+  }
+  return false;
 }
 
 // Acquire the nearest enemy surface and air contacts a squadron can be vectored
@@ -269,6 +298,8 @@ function nearestFriendlyAirfield(sim, ship) {
 // the lock — see the config comment. Only once neither a live update nor the
 // coast window is available does it fall through to a fresh "nearest" pick,
 // which is the "target genuinely lost" case a mission should retask on.
+// Surface locks are further filtered by weapon domain: a JSOW-only flight will
+// not commit geometry to a ship it cannot arm against.
 function resolveLockedTrack(sim, ship, all, wantAir, keyPrefix) {
   const cfg = AIRCRAFT_TEMP_CONFIG;
   const idKey = `_${keyPrefix}TargetId`;
@@ -279,11 +310,16 @@ function resolveLockedTrack(sim, ship, all, wantAir, keyPrefix) {
   if (currentId) {
     const current = all.find((t) => t && t.id === currentId);
     if (current) {
-      ship[seenKey] = sim.time;
-      return current;
-    }
-    if (Number.isFinite(ship[seenKey]) && Number.isFinite(ship[xKey]) && sim.time - ship[seenKey] < cfg.trackCoastS) {
-      return { id: currentId, x: ship[xKey], y: ship[yKey] };
+      // Drop a held surface lock if the magazine can no longer engage that domain
+      // (e.g. spent last JSOW while still holding AAMs — retask rather than orbit).
+      if (!wantAir && !loadoutCanEngageDomain(ship, current.domain ?? "sea")) {
+        ship[idKey] = null;
+      } else {
+        ship[seenKey] = sim.time;
+        return current;
+      }
+    } else if (Number.isFinite(ship[seenKey]) && Number.isFinite(ship[xKey]) && sim.time - ship[seenKey] < cfg.trackCoastS) {
+      return { id: currentId, x: ship[xKey], y: ship[yKey], domain: ship[`_${keyPrefix}AimDomain`] };
     }
   }
   let best = null; let bestD = Infinity;
@@ -292,11 +328,15 @@ function resolveLockedTrack(sim, ship, all, wantAir, keyPrefix) {
     if (String(track.id).startsWith("M-")) continue;
     if ((track.quality ?? 0) <= cfg.acquireTrackQuality) continue;
     if (((track.domain ?? "sea") === "air") !== wantAir) continue;
+    if (!wantAir && !loadoutCanEngageDomain(ship, track.domain ?? "sea")) continue;
     const d = distance(ship, track);
     if (d < bestD) { bestD = d; best = track; }
   }
   ship[idKey] = best?.id ?? null;
-  if (best) ship[seenKey] = sim.time;
+  if (best) {
+    ship[seenKey] = sim.time;
+    ship[`_${keyPrefix}AimDomain`] = best.domain ?? "sea";
+  }
   return best;
 }
 
@@ -347,13 +387,19 @@ function acquireAirTargets(sim, ship) {
   };
 }
 
-// Longest reach (m) among the anti-ship weapons currently aboard — the basis for
-// the stand-off ring. 0 when the flight carries no strike rounds.
-function bestStrikeRangeM(ship) {
+// Longest reach (m) among surface weapons currently aboard. When `domain` is
+// set (sea/ground), only munitions that can engage that domain count — so a
+// JSOW flight sizes its stand-off ring for ground sites, not for a Harpoon it
+// does not carry. 0 when nothing fireable remains.
+function bestStrikeRangeM(ship, domain = null) {
   let max = 0;
   const lo = ship.loadout;
   if (lo) for (const id in lo) {
-    if (lo[id] > 0 && missileHasSurfaceTarget(MISSILES[id])) max = Math.max(max, MISSILES[id].rangeM);
+    if (!(lo[id] > 0)) continue;
+    const spec = MISSILES[id];
+    if (!spec || !missileHasSurfaceTarget(spec)) continue;
+    if (domain && !missileCanTarget(spec, domain)) continue;
+    max = Math.max(max, spec.rangeM);
   }
   return max;
 }
@@ -476,7 +522,9 @@ export function decideAircraft(sim, ship) {
   // the flight cannot rearm on a crater, so it diverts (RTB to seek another
   // field, or splash). Falls through to the RTB logic below.
   if (ship.airState === AIR_STATE.REARMING) {
-    const base = sim.ships.find((s) => s.id === ship.homeBaseId && s.alive && isAirfield(s));
+    const baseCandidate = sim._shipById?.get(ship.homeBaseId)
+      ?? sim.ships.find((s) => s.id === ship.homeBaseId);
+    const base = baseCandidate?.alive && isAirfield(baseCandidate) ? baseCandidate : null;
     if (base) {
       setPhase(sim, ship, "rearming", base.id);
       ship.desiredSpeed = 0;
@@ -534,7 +582,9 @@ export function decideAircraft(sim, ship) {
   const cfg = AIRCRAFT_TEMP_CONFIG;
   const { surf, surfRangeM, air, airRangeM } = acquireAirTargets(sim, ship);
   const aam = hasAirToAir(ship);
-  const strikeRangeM = bestStrikeRangeM(ship);
+  const surfDomain = surf?.domain ?? "sea";
+  // Size the stand-off ring from weapons that can actually engage this lock.
+  const strikeRangeM = bestStrikeRangeM(ship, surf ? surfDomain : null);
   const lowObservableStrike = lowObservableAntiShipProfile(ship, surf);
   const strikeReleaseFrac = lowObservableStrike ? cfg.lowObservableStandInFrac : cfg.standoffFrac;
   ship._standoffNm = strikeRangeM > 0 ? (strikeRangeM * strikeReleaseFrac) / NM : null;
@@ -590,6 +640,7 @@ export function decideAircraft(sim, ship) {
     if (ship._strikeSubTargetId !== surf.id) {
       ship._strikeSubPhase = null;
       ship._strikeSubTargetId = surf.id;
+      ship._noseOnUntil = null;
     }
     let sub = ship._strikeSubPhase;
     if (sub === "ingress") {
@@ -614,18 +665,32 @@ export function decideAircraft(sim, ship) {
       ship.waypoint = { x: ship.x + Math.cos(away) * 12 * NM, y: ship.y + Math.sin(away) * 12 * NM };
       ship.desiredSpeed = ship.maxSpeed;
     } else {
-      // On station at stand-off: weave a racetrack across the threat bearing to
-      // hold range while the strike is released, rather than boring straight in.
-      // The beam leg reverses every `stationWeaveS` so the net drift cancels and
-      // the flight stays on the stand-off ring instead of sliding off the axis.
+      // On station at stand-off: hold a nose-on release geometry first (real
+      // air-launched weapons need the target roughly ahead of the jet), then
+      // fall back to a beam racetrack weave so the flight does not slide off
+      // the ring while waiting for the force planner to queue the shot.
       setPhase(sim, ship, "strike-onstation", `${surf.id} @ ${(r / NM).toFixed(0)}NM`);
-      if (sim.time >= (ship._weaveFlipAt ?? 0)) {
-        ship._weaveSign = ship._weaveSign === 1 ? -1 : 1;
-        ship._weaveFlipAt = sim.time + cfg.stationWeaveS;
+      const stillArmed = loadoutCanEngageDomain(ship, surfDomain);
+      if (stillArmed && (ship._noseOnUntil == null || sim.time < ship._noseOnUntil)) {
+        if (ship._noseOnUntil == null) ship._noseOnUntil = sim.time + 12;
+        // Short lead toward the target — aspect for release without re-entering
+        // a deep ingress (egress hysteresis still protects the envelope).
+        const bearing = angleTo(ship, surf);
+        ship.waypoint = {
+          x: ship.x + Math.cos(bearing) * 2.5 * NM,
+          y: ship.y + Math.sin(bearing) * 2.5 * NM
+        };
+        ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
+      } else {
+        ship._noseOnUntil = null;
+        if (sim.time >= (ship._weaveFlipAt ?? 0)) {
+          ship._weaveSign = ship._weaveSign === 1 ? -1 : 1;
+          ship._weaveFlipAt = sim.time + cfg.stationWeaveS;
+        }
+        const beam = angleTo(ship, surf) + (ship._weaveSign ?? 1) * Math.PI / 2;
+        ship.waypoint = { x: ship.x + Math.cos(beam) * 5 * NM, y: ship.y + Math.sin(beam) * 5 * NM };
+        ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
       }
-      const beam = angleTo(ship, surf) + (ship._weaveSign ?? 1) * Math.PI / 2;
-      ship.waypoint = { x: ship.x + Math.cos(beam) * 5 * NM, y: ship.y + Math.sin(beam) * 5 * NM };
-      ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
     }
     return;
   }
@@ -655,22 +720,46 @@ export function decideAircraft(sim, ship) {
   setPhase(sim, ship, aam ? "cap" : "orbit");
   ship.targetAltitudeM = cfg.cruiseAltitudeM;
   ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
+  // CAP / support stations re-anchor only when the computed station has moved
+  // materially — micro-updates every decision tick from a wandering OTC or a
+  // noisy axis read as continuous heading wobble even on a quiet patrol.
+  const CAP_STATION_DEADBAND_M = 2.5 * NM;
+  const setStationIfMoved = (next) => {
+    if (!ship.waypoint || distance(ship.waypoint, next) > CAP_STATION_DEADBAND_M) {
+      ship.waypoint = next;
+    }
+  };
   const cmd = sim.fleetCommand?.get(ship.side);
   if (cmd?.otc?.alive && cmd.otc.domain !== "air" && Number.isFinite(cmd.axis)) {
     const standM = aam ? cfg.capStationM : cfg.supportOrbitM;
     const bearing = aam ? cmd.axis : cmd.axis + Math.PI; // support orbit: opposite the threat axis
-    ship.waypoint = { x: cmd.otc.x + Math.cos(bearing) * standM, y: cmd.otc.y + Math.sin(bearing) * standM };
+    setStationIfMoved({
+      x: cmd.otc.x + Math.cos(bearing) * standM,
+      y: cmd.otc.y + Math.sin(bearing) * standM
+    });
   } else if (Number.isFinite(cmd?.axis)) {
     // No surface OTC to anchor a station on (a pure-air fleet, or the last
     // surface unit just died) — fly the SAME real threat axis fleet command
     // already computed (bearing toward the enemy's actual force, not a
     // fixed compass heading; see enemyFleetCentroid in command.js), just
-    // anchored on the aircraft itself instead of a formation guide. Re-reads
-    // every decision tick like the OTC-anchored branch above, so the course
-    // re-centers as the picture develops instead of committing to one
-    // straight leg and holding it forever.
+    // anchored on the aircraft itself instead of a formation guide.
     const bearing = aam ? cmd.axis : cmd.axis + Math.PI;
-    ship.waypoint = { x: ship.x + Math.cos(bearing) * 30 * NM, y: ship.y + Math.sin(bearing) * 30 * NM };
+    // Self-relative stations always advance with the jet; only re-pick when
+    // the axis itself has shifted enough that the old waypoint is off-axis.
+    const axisKey = Math.round(cmd.axis * 20); // ~3 deg buckets
+    if (ship._capAxisKey !== axisKey || !ship.waypoint) {
+      ship._capAxisKey = axisKey;
+      ship.waypoint = {
+        x: ship.x + Math.cos(bearing) * 30 * NM,
+        y: ship.y + Math.sin(bearing) * 30 * NM
+      };
+    } else if (distance(ship, ship.waypoint) < 4 * NM) {
+      // Reached the leg end — extend along the same axis.
+      ship.waypoint = {
+        x: ship.x + Math.cos(bearing) * 30 * NM,
+        y: ship.y + Math.sin(bearing) * 30 * NM
+      };
+    }
   } else if (!ship.waypoint) {
     // Absolute fallback for the one tick before fleet command has ever run
     // (computeFleetCommand hasn't executed yet this game). Self-corrects to
@@ -723,10 +812,28 @@ export function updateAircraft(sim, dt) {
     ship.fuelS = (ship.fuelS ?? 0) - dt * fuelBurnMult;
     if (ship.fuelS <= 0) {
       ship.fuelS = 0;
-      ship.alive = false;
       ship.speed = 0;
-      markContactDead(sim, ship.id);
-      sim._entityIndexesDirty = true;
+      if (ship.alive) {
+        ship.alive = false;
+        markContactDead(sim, ship.id);
+        // Incremental side/alive indexes (same pattern as combat.deactivateShip).
+        if (sim._aliveShips && sim._shipsBySide) {
+          const alive = sim._aliveShips;
+          const ai = alive.indexOf(ship);
+          if (ai >= 0) { alive[ai] = alive[alive.length - 1]; alive.pop(); }
+          const bucket = sim._shipsBySide.get(ship.side);
+          if (bucket) {
+            const bi = bucket.indexOf(ship);
+            if (bi >= 0) { bucket[bi] = bucket[bucket.length - 1]; bucket.pop(); }
+            if (!bucket.length) sim._shipsBySide.delete(ship.side);
+          }
+          if (sim._aliveSideCount && (ship.side === SIDE.BLUE || ship.side === SIDE.RED)) {
+            sim._aliveSideCount[ship.side] = Math.max(0, (sim._aliveSideCount[ship.side] || 0) - 1);
+          }
+        } else {
+          sim._entityIndexesDirty = true;
+        }
+      }
       addEvent(sim, `${ship.name} ran out of fuel and splashed.`, ship.side);
     }
   }

@@ -91,10 +91,15 @@ start the clock.
 One-click deploy via the button above: the repository includes a root
 `railway.json`, starts with the existing `npm start` script, binds to
 Railway's injected `PORT`, and exposes a `/health` endpoint for platform
-health checks. Local development is unaffected.
+health checks. Railway serves only the application assets; scenario files and
+debug logs remain local. The SAVE workflow automatically falls back to a
+browser-file download on hosted deployments, and LOAD supports importing that
+JSON file. Local development retains its default on-disk scenario list.
 
 点击上方按钮即可一键部署到 Railway：仓库包含 `railway.json`，沿用现有 `npm start`
-启动脚本，兼容 Railway 注入的 `PORT`，并提供 `/health` 健康检查端点；本地开发流程不受影响。
+启动脚本，兼容 Railway 注入的 `PORT`，并提供 `/health` 健康检查端点。Railway 仅提供应用静态资源；
+想定文件和调试日志保留在本地。托管部署时，SAVE 会自动回退为浏览器文件下载，LOAD 可导入该 JSON 文件；
+本地开发则仍保留默认的磁盘想定列表。
 
 ---
 
@@ -136,9 +141,8 @@ one living Blue **and** one living Red unit to run.
   adds more units to that selection (for multi-unit inspection); **right-drag
   on empty water** draws a box select.
 - `Delete` / `Backspace` removes every currently selected unit — setup only.
-- **`REV`** doesn't just clear the board — it reloads the built-in 4-vs-4 East
-  China Sea template from scratch, so it's a fast way to get back to a known
-  starting point.
+- **`REV`** reloads the built-in empty East China Sea setup, clearing the board
+  while keeping the current map selection.
 - Switch tactical maps with the map dropdown (**East China Sea** — a real,
   projected coastline, or borderless **Open Sea**). Changing the map is
   setup-only and re-seats every naval unit onto open water.

@@ -172,6 +172,15 @@ test("inventory row is a selectable button carrying the ship id and HP/VLS cells
   assert.match(row, /\/96</); // VLS capacity cell
 });
 
+test("inventory markup escapes scenario-provided unit identifiers", () => {
+  const html = inventoryRowHtml({
+    id: '\"><img src=x onerror=alert(1)>', side: SIDE.BLUE, alive: true,
+    damage: 0, damageResist: 1, loadout: {}, vlsCells: 1
+  }, false);
+  assert.doesNotMatch(html, /<img/);
+  assert.match(html, /&lt;img/);
+});
+
 test("inventory row localizes the ship name in Chinese", () => {
   setLang("zh");
   const ship = { ...createScenario(7).ships[1], id: "CG-2", hull: "CCG" };

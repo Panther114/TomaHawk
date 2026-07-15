@@ -664,6 +664,12 @@ test("scenario restore normalizes invalid dimensions and ship coordinates", () =
   assert.equal(restored.ships[0].y, 0);
 });
 
+test("scenario restore rejects entity counts beyond the supported simulation limit", () => {
+  const data = serializeScenario(createScenario(0));
+  data.ships = Array.from({ length: 201 }, (_, index) => ({ ...data.ships[0], id: `DDG-${index + 1}` }));
+  assert.throws(() => restoreScenario(data), /too many ships/i);
+});
+
 test("ship movement rendering uses a dashed velocity arrow without a waypoint square", () => {
   const app = fs.readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(app, /Math\.atan2\(ship\.vy, ship\.vx\)/);

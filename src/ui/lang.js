@@ -296,8 +296,9 @@ export function roleLabel(role) {
 
 /** Return the localized event side label (B/R/S or 蓝/红/系). */
 export function sideLabel(side) {
-  if (side === "BLUE") return t("side.blue");
-  if (side === "RED") return t("side.red");
+  const normalized = String(side ?? "").toUpperCase();
+  if (normalized === "BLUE") return t("side.blue");
+  if (normalized === "RED") return t("side.red");
   return t("side.sys");
 }
 

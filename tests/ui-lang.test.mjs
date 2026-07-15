@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { formatLocalizedEventLines, setLang, translateEventText } from "../src/ui/lang.js";
+import { formatLocalizedEventLines, setLang, sideLabel, translateEventText } from "../src/ui/lang.js";
 
 test("Chinese tactical feed localization preserves identifiers and translates full sentences", () => {
   setLang("zh");
@@ -42,4 +42,12 @@ test("copied event lines use the active language and do not duplicate the side",
 
   setLang("zh");
   assert.equal(formatLocalizedEventLines(events, time), "00:49 蓝方 DDG 1 向 敌方 DDG 发射 MSTK。");
+});
+
+test("event side labels accept simulation-side values as well as legacy uppercase values", () => {
+  setLang("en");
+  assert.equal(sideLabel("Blue"), "B");
+  assert.equal(sideLabel("Red"), "R");
+  assert.equal(sideLabel("BLUE"), "B");
+  assert.equal(sideLabel("RED"), "R");
 });
