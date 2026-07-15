@@ -175,6 +175,13 @@ export function isAirfield(ship) {
   return ship?.isAirfield === true;
 }
 
+/** True for a sea-domain moving airfield (carrier). Fixed ground AFBs are false. */
+export function isCarrier(ship) {
+  if (!ship) return false;
+  if (ship.isCarrier === true) return true;
+  return ship.isAirfield === true && (ship.domain ?? "sea") === "sea" && ship.isFixed !== true;
+}
+
 export function squadronSize(ship) {
   // The HP pool IS the plane count: max planes = ceil(damageResist).
   return Math.max(1, Math.ceil(ship?.damageResist ?? AIRCRAFT_TEMP_CONFIG.defaultSquadronSize));
@@ -222,9 +229,10 @@ export const AIR_MAX_MPS = AIRCRAFT_TEMP_CONFIG.maxSpeedKt * KNOT * SHIP_SPEED_M
 // friendly airfield to rearm/refuel and relaunch. If no airfield is reachable
 // it presses toward friendly territory and splashes when fuel runs out.
 //
-// This whole block is provisional scaffolding — carrier basing, per-airframe
-// fuel, CAP/strike tasking, etc. can replace it later. Keep the decisions here
-// deterministic (no RNG) so the simulation stays reproducible.
+// Carrier basing is implemented as a *moving airfield*: any unit with
+// isAirfield:true is a rearm node. Land AFBs accept every squadron; sea
+// carriers only recover carrierCapable airframes. Parked flights stick to the
+// deck each movement tick. Keep decisions deterministic (no RNG).
 // ---------------------------------------------------------------------------
 
 function totalWeapons(ship) {
@@ -238,6 +246,16 @@ function friendlyHomeAnchor(sim, ship) {
   // Fallback "go home" point when no airfield exists: deep on the friendly edge.
   const x = ship.side === SIDE.BLUE ? -sim.widthM / 2 + 4 * NM : sim.widthM / 2 - 4 * NM;
   return { x, y: ship.y };
+}
+
+/** Land AFB accepts all; sea carriers only accept carrierCapable airframes. */
+export function canRecoverAtBase(aircraft, base) {
+  if (!aircraft || !base?.alive || !isAirfield(base)) return false;
+  if (base.side !== aircraft.side) return false;
+  if (isCarrier(base) || ((base.domain ?? "sea") === "sea" && !base.isFixed)) {
+    return aircraft.carrierCapable === true;
+  }
+  return true;
 }
 
 function airfieldsForSide(sim, side) {
@@ -255,15 +273,88 @@ function airfieldsForSide(sim, side) {
   return cache.get(side) || [];
 }
 
-function nearestFriendlyAirfield(sim, ship) {
+/** Per-tick count of squadrons already rearming on each base (O(air) once). */
+function parkedCountAt(sim, baseId) {
+  let map = sim._parkedByBase;
+  if (!map) {
+    map = new Map();
+    sim._parkedByBase = map;
+    for (const s of sim._aliveShips || sim.ships) {
+      if (!s.alive || s.domain !== "air") continue;
+      if (s.airState !== AIR_STATE.REARMING || !s.homeBaseId) continue;
+      map.set(s.homeBaseId, (map.get(s.homeBaseId) || 0) + 1);
+    }
+  }
+  return map.get(baseId) || 0;
+}
+
+function baseHasDeckSlot(sim, aircraft, base) {
+  const cap = base.maxParkedSquadrons;
+  if (!(cap > 0)) return true; // 0 / unset = unlimited
+  const parked = parkedCountAt(sim, base.id);
+  // Already assigned to this deck (re-check during rearming) always fits.
+  if (aircraft.homeBaseId === base.id && aircraft.airState === AIR_STATE.REARMING) return true;
+  return parked < cap;
+}
+
+/**
+ * Nearest friendly base this squadron may recover on. Carriers are skipped for
+ * land-only airframes; full decks are still eligible as approach targets so
+ * flights hold nearby until a slot frees (see RTB branch).
+ */
+function nearestFriendlyAirfield(sim, ship, { requireSlot = false } = {}) {
   let best = null;
   let bestD = Infinity;
   for (const other of airfieldsForSide(sim, ship.side)) {
-    if (!other.alive) continue;
+    if (!other.alive || !canRecoverAtBase(ship, other)) continue;
+    if (requireSlot && !baseHasDeckSlot(sim, ship, other)) continue;
     const d = distance(ship, other);
     if (d < bestD) { bestD = d; best = other; }
   }
   return best;
+}
+
+/** Lead intercept point for a moving deck; fixed AFBs return current position. */
+function approachPointForBase(ship, base) {
+  if (!base) return null;
+  if (base.isFixed || (base.speed || 0) < 0.5) return { x: base.x, y: base.y };
+  const approachSpeed = Math.max(ship.maxSpeed || AIR_MAX_MPS, 1);
+  const eta = distance(ship, base) / approachSpeed;
+  return {
+    x: base.x + Math.cos(base.heading || 0) * (base.speed || 0) * eta,
+    y: base.y + Math.sin(base.heading || 0) * (base.speed || 0) * eta
+  };
+}
+
+/** Pin a rearming squadron to its base deck (O(1)). Returns false if base lost. */
+export function stickToBaseDeck(sim, ship) {
+  if (!ship?.homeBaseId) return false;
+  const base = sim._shipById?.get(ship.homeBaseId)
+    ?? sim.ships.find((s) => s.id === ship.homeBaseId);
+  if (!base?.alive || !isAirfield(base) || !canRecoverAtBase(ship, base)) return false;
+  ship.x = base.x;
+  ship.y = base.y;
+  ship.heading = base.heading ?? ship.heading;
+  ship.speed = base.speed || 0;
+  ship.desiredSpeed = 0;
+  ship.waypoint = null;
+  ship.altitudeM = 0;
+  ship.targetAltitudeM = 0;
+  ship.afterburner = false;
+  ship.evading = false;
+  return true;
+}
+
+function holdingPatternPoint(base, ship) {
+  // Orbit ~4 NM abeam the base (starboard relative to base heading) so full-deck
+  // traffic does not stack on the recovery point itself.
+  const h = base.heading || 0;
+  const abeam = h + Math.PI / 2;
+  const r = 4 * NM;
+  return {
+    x: base.x + Math.cos(abeam) * r,
+    y: base.y + Math.sin(abeam) * r
+  };
 }
 
 // True when the squadron currently carries at least one round that can engage
@@ -523,20 +614,20 @@ export function decideAircraft(sim, ship) {
   ship.nextDecision = sim.time + 1;
   if (sim.mode !== SCENARIO_MODE.RUNNING) return;
 
-  // Parked + rearming: hold until the rearm timer elapses, then relaunch — but
-  // only while the home airfield is still alive. If it is destroyed mid-rearm
-  // the flight cannot rearm on a crater, so it diverts (RTB to seek another
-  // field, or splash). Falls through to the RTB logic below.
+  // Parked + rearming: ride the deck (including a moving carrier) until the
+  // rearm timer elapses, then relaunch. If the base is destroyed or the
+  // squadron is no longer allowed to recover there, divert (RTB / splash).
   if (ship.airState === AIR_STATE.REARMING) {
-    const baseCandidate = sim._shipById?.get(ship.homeBaseId)
-      ?? sim.ships.find((s) => s.id === ship.homeBaseId);
-    const base = baseCandidate?.alive && isAirfield(baseCandidate) ? baseCandidate : null;
-    if (base) {
-      setPhase(sim, ship, "rearming", base.id);
-      ship.desiredSpeed = 0;
-      ship.waypoint = null;
-      ship.afterburner = false;
-      if (sim.time >= (ship.rearmUntil ?? 0)) refillFromBase(ship);
+    if (stickToBaseDeck(sim, ship)) {
+      setPhase(sim, ship, "rearming", ship.homeBaseId);
+      if (sim.time >= (ship.rearmUntil ?? 0)) {
+        refillFromBase(ship);
+        // Climb out after relaunch so the next mission tick is not stuck at deck
+        // altitude (LO stand-in / CAP both assume a cruising height).
+        const climbTo = 9000;
+        ship.targetAltitudeM = climbTo;
+        ship.altitudeM = Math.min((ship.altitudeM || 0) + 80, climbTo);
+      }
       return;
     }
     ship.airState = AIR_STATE.RTB;
@@ -560,23 +651,45 @@ export function decideAircraft(sim, ship) {
 
   if (ship.airState === AIR_STATE.RTB) {
     ship.afterburner = false; // conserve fuel getting home, not sprinting there
-    const base = nearestFriendlyAirfield(sim, ship);
+    // Prefer a base with an open deck slot; if every compatible deck is full,
+    // still approach the nearest so we can hold a pattern until a slot frees.
+    const base = nearestFriendlyAirfield(sim, ship, { requireSlot: true })
+      || nearestFriendlyAirfield(sim, ship, { requireSlot: false });
     if (base) {
       ship.homeBaseId = base.id;
-      if (distance(ship, base) <= AIRCRAFT_TEMP_CONFIG.baseReachM) {
+      const onFinal = distance(ship, base) <= AIRCRAFT_TEMP_CONFIG.baseReachM;
+      if (onFinal && baseHasDeckSlot(sim, ship, base)) {
         ship.airState = AIR_STATE.REARMING;
         ship.rearmUntil = sim.time + (ship.rearmTimeS ?? AIRCRAFT_TEMP_CONFIG.rearmTimeS);
-        ship.desiredSpeed = 0;
-        ship.waypoint = null;
+        // Occupy a deck slot immediately so concurrent RTBs see the capacity.
+        if (sim._parkedByBase) {
+          sim._parkedByBase.set(base.id, (sim._parkedByBase.get(base.id) || 0) + 1);
+        }
+        stickToBaseDeck(sim, ship);
+        setPhase(sim, ship, "rearming", base.id);
         return;
       }
-      setPhase(sim, ship, "rtb", `${lowFuel ? "fuel" : winchester ? "winchester" : "strike-spent"} -> ${base.id}`);
-      ship.waypoint = { x: base.x, y: base.y };
+      if (onFinal && !baseHasDeckSlot(sim, ship, base)) {
+        // Deck full: hold pattern abeam until a squadron relaunches.
+        setPhase(sim, ship, "deck-wait", base.id);
+        ship.waypoint = holdingPatternPoint(base, ship);
+        ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
+        ship.targetAltitudeM = Math.min(ship.altitudeM || 1500, 1500);
+        return;
+      }
+      const reason = lowFuel ? "fuel" : winchester ? "winchester" : "strike-spent";
+      const kind = isCarrier(base) ? "CVN" : "AFB";
+      setPhase(sim, ship, "rtb", `${reason} -> ${kind} ${base.id}`);
+      // Lead the moving deck so recovery does not chase the carrier's wake.
+      ship.waypoint = approachPointForBase(ship, base);
       ship.desiredSpeed = ship.maxSpeed;
+      ship.targetAltitudeM = Math.min(ship.altitudeM || 3000, 3000);
       return;
     }
-    // No airfield: limp toward friendly territory; fuel exhaustion → splash.
+    // No compatible base (e.g. land-only fighter with only a CVN present): limp
+    // toward friendly territory; fuel exhaustion → splash.
     setPhase(sim, ship, "rtb-no-base");
+    ship.homeBaseId = null;
     ship.waypoint = friendlyHomeAnchor(sim, ship);
     ship.desiredSpeed = ship.cruiseSpeed ?? AIR_CRUISE_MPS;
     return;
@@ -783,7 +896,13 @@ export function decideAircraft(sim, ship) {
 export function updateAircraft(sim, dt) {
   for (const ship of sim.ships) {
     if (!ship.alive || ship.domain !== "air") continue;
-    if (ship.airState === AIR_STATE.REARMING) { ship.evading = false; continue; } // parked
+    if (ship.airState === AIR_STATE.REARMING) {
+      // Deck stay is applied in moveAirUnit every tick; here only clear evade
+      // and skip fuel burn while parked (rearm/refuel covers fuel).
+      ship.evading = false;
+      ship.afterburner = false;
+      continue;
+    }
 
     // Evasive break: when a missile is closing inside the reaction envelope (or
     // already terminal) the flight flies a COMBINATION defensive maneuver, not

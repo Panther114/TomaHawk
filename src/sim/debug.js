@@ -119,6 +119,9 @@ function describeAircraftIntent(sim, ship) {
 // as if it were still trying to fight, which reads as a live contradiction
 // once you check the ship's actual heading/position over time.
 function describeShipIntent(sim, ship) {
+  if (isAirfield(ship) && (ship.isCarrier || ((ship.domain ?? "sea") === "sea" && !ship.isFixed))) {
+    return "carrier (moving airfield / flight deck)";
+  }
   if (isAirfield(ship)) return "airfield (rearm/refuel node)";
   if (ship.isFixed) return "fixed emplacement";
   // Inbound missile defence dominates the movement decision.

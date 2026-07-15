@@ -38,7 +38,7 @@ const BUILTIN_PREFIX_ZH = {
   F22: "F-22", F35A: "F-35A", F35C: "F-35C",
   F15E: "F-15E", F15N: "F-15N", F15C: "F-15C",
   F15EX: "F-15EX", F16V: "F-16V",
-  AWAC: "预警机", AFB: "机场"
+  AWAC: "预警机", AFB: "机场", CVN: "航母"
 };
 // prefixZh is display-only; unit-tag `prefix` itself stays alphanumeric (no "-").
 
@@ -186,8 +186,16 @@ function toNavalClass(u) {
   // flavor; length/beam only scale the map icon). Default them so custom ships
   // still render at a sensible size and hand-edited imports never break.
   const strikeSpecialist = strikeSpecialistFlag(u);
+  const isAirfield = !!u.isAirfield;
+  const maxParked = Number.isFinite(Number(u.maxParkedSquadrons))
+    ? Math.max(0, Math.round(Number(u.maxParkedSquadrons)))
+    : (isAirfield ? 6 : 0);
   return {
     hull: u.id, className: u.name, prefix: u.prefix, prefixZh: String(u.prefixZh || "").trim(), domain: "sea", isFixed: false,
+    isAirfield,
+    isCarrier: isAirfield,
+    maxParkedSquadrons: maxParked,
+    glyph: isAirfield ? (u.glyph || "carrier") : (u.glyph || null),
     lengthM: Number(u.lengthM) || 150, beamM: Number(u.beamM) || 20,
     draftM: Number(u.draftM) || 9, displacementT: Number(u.displacementT) || 9000,
     rcsM2: Number(u.rcsM2),
@@ -227,6 +235,9 @@ function toGroundClass(u) {
     ciwsCount: 0, ciwsAmmo: 0, ciwsBurstRounds: 0, ciwsBurstS: 0, ciwsCycleS: 5,
     defenseChannels: { sam: Math.round(Number(u.defenseSam ?? ((u.defenseArea ?? 0) + (u.defensePoint ?? 0)))), ciws: 0 },
     damageResist: Number(u.damageResist), damageDegrade: Number(u.damageDegrade),
+    maxParkedSquadrons: Number.isFinite(Number(u.maxParkedSquadrons))
+      ? Math.max(0, Math.round(Number(u.maxParkedSquadrons)))
+      : (isAirfield ? 12 : 0),
     ...(strikeSpecialist === undefined ? {} : { strikeSpecialist }),
     baseLoadout: numClean(u.baseLoadout)
   };
@@ -254,6 +265,7 @@ function toAircraftClass(u) {
     flares: Number.isFinite(Number(u.flares)) ? Math.round(Number(u.flares)) : 60,
     commandHub: !!u.commandHub,
     lowObservable: !!u.lowObservable,
+    carrierCapable: !!u.carrierCapable,
     ...(strikeSpecialist === undefined ? {} : { strikeSpecialist }),
     baseLoadout: numClean(u.baseLoadout)
   };
@@ -324,6 +336,7 @@ function fromShipClass(hull, c) {
       squadronSize: Math.max(1, Math.round(c.damageResist ?? 4)),
       commandHub: c.commandHub === true,
       lowObservable: c.lowObservable === true,
+      carrierCapable: c.carrierCapable === true,
       strikeSpecialist: c.strikeSpecialist === true,
       rcsM2: defaultRcsM2(c),
       cruiseSpeedKt: c.cruiseSpeedKt, maxSpeedKt: c.maxSpeedKt,
@@ -336,10 +349,16 @@ function fromShipClass(hull, c) {
     };
   }
   if (c.domain === "ground") {
-    return { kind: "ground", glyph: c.glyph ?? "bunker", isAirfield: c.isAirfield ?? false, ...base };
+    return {
+      kind: "ground", glyph: c.glyph ?? "bunker", isAirfield: c.isAirfield ?? false,
+      maxParkedSquadrons: c.maxParkedSquadrons ?? 0,
+      ...base
+    };
   }
   return {
     kind: "naval", ...base,
+    isAirfield: c.isAirfield === true,
+    maxParkedSquadrons: c.maxParkedSquadrons ?? 0,
     draftM: c.draftM, displacementT: c.displacementT,
     cruiseSpeedKt: c.cruiseSpeedKt, maxSpeedKt: c.maxSpeedKt,
     accelMps2: c.accelMps2, decelMps2: c.decelMps2,

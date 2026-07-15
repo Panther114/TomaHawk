@@ -172,49 +172,47 @@ const SHIP_CLASSES = {
   // Unit-tag `prefix` must NOT contain "-" — ship ids are `${prefix}-${seq}` and
   // shipDisplayName splits on the first dash. Pretty names live in className /
   // i18n (ship.f22 etc.).
-  F22: { hull:"F22",className:"F-22 Raptor approx.",prefix:"F22",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,lengthM:18.9,beamM:13.6,draftM:5.1,displacementT:29,cruiseSpeedKt:480,maxSpeedKt:720,accelMps2:3.6,decelMps2:3.4,turnRateDps:11,turnRateFlankDps:9,maxGLoad:9.0,radarRangeNm:130,radarIntervalS:2.2,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.25,damageResist:4,damageDegrade:0.09,enduranceS:9600,rearmTimeS:85,flares:60,airEvasionBonus:0.14,baseLoadout:{ "AIM-120D":6,"AIM-9X":2 } },
+  F22: { hull:"F22",className:"F-22 Raptor approx.",prefix:"F22",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,carrierCapable:false,lengthM:18.9,beamM:13.6,draftM:5.1,displacementT:29,cruiseSpeedKt:480,maxSpeedKt:720,accelMps2:3.6,decelMps2:3.4,turnRateDps:11,turnRateFlankDps:9,maxGLoad:9.0,radarRangeNm:130,radarIntervalS:2.2,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.25,damageResist:4,damageDegrade:0.09,enduranceS:9600,rearmTimeS:85,flares:60,airEvasionBonus:0.14,baseLoadout:{ "AIM-120D":6,"AIM-9X":2 } },
   // 5th-GEN — F-35A Lightning II. Conventional-takeoff multirole in a stand-off
   // anti-ground load (internal-bay JSOW + self-defence AAMs). Public: Mach ~1.6,
-  // ~7 g, AN/APG-81, LO (higher signature than F-22).
-  F35A: { hull:"F35A",className:"F-35A Lightning II approx.",prefix:"F35A",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,strikeSpecialist:true,lengthM:15.7,beamM:10.7,draftM:4.4,displacementT:29,cruiseSpeedKt:430,maxSpeedKt:650,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.5,turnRateFlankDps:5.5,maxGLoad:7.0,radarRangeNm:120,radarIntervalS:2.4,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.55,damageResist:4,damageDegrade:0.10,enduranceS:12300,rearmTimeS:95,flares:56,airEvasionBonus:0.08,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-154":4 } },
+  // ~7 g, AN/APG-81, LO (higher signature than F-22). Land-based only.
+  F35A: { hull:"F35A",className:"F-35A Lightning II approx.",prefix:"F35A",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,strikeSpecialist:true,carrierCapable:false,lengthM:15.7,beamM:10.7,draftM:4.4,displacementT:29,cruiseSpeedKt:430,maxSpeedKt:650,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.5,turnRateFlankDps:5.5,maxGLoad:7.0,radarRangeNm:120,radarIntervalS:2.4,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.55,damageResist:4,damageDegrade:0.10,enduranceS:12300,rearmTimeS:95,flares:56,airEvasionBonus:0.08,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-154":4 } },
   // 5th-GEN — F-35C Lightning II. Carrier variant: larger wing/fuel, AGM-84
-  // anti-ship load. Same LO family as F-35A, slightly higher RCS / lower g.
-  F35C: { hull:"F35C",className:"F-35C Lightning II approx.",prefix:"F35C",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,strikeSpecialist:true,lengthM:15.7,beamM:13.1,draftM:4.4,displacementT:32,cruiseSpeedKt:410,maxSpeedKt:630,accelMps2:2.9,decelMps2:2.9,turnRateDps:6.8,turnRateFlankDps:5.2,maxGLoad:6.5,radarRangeNm:120,radarIntervalS:2.4,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.65,damageResist:4,damageDegrade:0.10,enduranceS:13200,rearmTimeS:100,flares:56,airEvasionBonus:0.07,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-84":4 } },
+  // anti-ship load. Same LO family as F-35A; carrierCapable for CVN recovery.
+  F35C: { hull:"F35C",className:"F-35C Lightning II approx.",prefix:"F35C",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,strikeSpecialist:true,carrierCapable:true,lengthM:15.7,beamM:13.1,draftM:4.4,displacementT:32,cruiseSpeedKt:410,maxSpeedKt:630,accelMps2:2.9,decelMps2:2.9,turnRateDps:6.8,turnRateFlankDps:5.2,maxGLoad:6.5,radarRangeNm:120,radarIntervalS:2.4,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.65,damageResist:4,damageDegrade:0.10,enduranceS:13200,rearmTimeS:100,flares:56,airEvasionBonus:0.07,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-84":4 } },
   // 4th-GEN — F-15E Strike Eagle. Heavy non-stealth dual-role strike: large
   // JSOW load + self-defence AAMs. Public: Mach 2.5 class dash, APG-70/82 family.
-  F15E: { hull:"F15E",className:"F-15E Strike Eagle approx.",prefix:"F15E",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:37,cruiseSpeedKt:440,maxSpeedKt:720,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.2,turnRateFlankDps:5.6,maxGLoad:7.5,radarRangeNm:95,radarIntervalS:2.8,vlsCells:16,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:13600,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":10 } },
-  // Fictional naval-strike sibling of the Strike Eagle (keeps a pure AGM-84
-  // role option for sandbox scenarios). Same non-stealth chassis.
-  F15N: { hull:"F15N",className:"F-15 Sea Strike approx.",prefix:"F15N",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:37,cruiseSpeedKt:440,maxSpeedKt:720,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.2,turnRateFlankDps:5.6,maxGLoad:7.5,radarRangeNm:95,radarIntervalS:2.8,vlsCells:16,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:13600,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-84":10 } },
+  F15E: { hull:"F15E",className:"F-15E Strike Eagle approx.",prefix:"F15E",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,carrierCapable:false,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:37,cruiseSpeedKt:440,maxSpeedKt:720,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.2,turnRateFlankDps:5.6,maxGLoad:7.5,radarRangeNm:95,radarIntervalS:2.8,vlsCells:16,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:13600,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":10 } },
+  // Fictional naval-strike sibling of the Strike Eagle — carrierCapable so
+  // sandbox carrier air wings have a non-stealth anti-ship option.
+  F15N: { hull:"F15N",className:"F-15 Sea Strike approx.",prefix:"F15N",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,carrierCapable:true,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:37,cruiseSpeedKt:440,maxSpeedKt:720,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.2,turnRateFlankDps:5.6,maxGLoad:7.5,radarRangeNm:95,radarIntervalS:2.8,vlsCells:16,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:13600,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-84":10 } },
   // 4th-GEN — F-15C Eagle. Air-superiority only. Public: Mach 2.5, ~9 g,
   // large RCS, deep AAM magazine.
-  F15C: { hull:"F15C",className:"F-15C Eagle approx.",prefix:"F15C",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:31,cruiseSpeedKt:450,maxSpeedKt:780,accelMps2:3.4,decelMps2:3.1,turnRateDps:8.5,turnRateFlankDps:6.5,maxGLoad:9.0,radarRangeNm:100,radarIntervalS:2.6,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:18,damageResist:4,damageDegrade:0.10,enduranceS:12800,rearmTimeS:90,flares:60,airEvasionBonus:0.03,baseLoadout:{ "AIM-120C":10,"AIM-9X":4 } },
+  F15C: { hull:"F15C",className:"F-15C Eagle approx.",prefix:"F15C",domain:"air",isFixed:false,glyph:"aircraft",carrierCapable:false,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:31,cruiseSpeedKt:450,maxSpeedKt:780,accelMps2:3.4,decelMps2:3.1,turnRateDps:8.5,turnRateFlankDps:6.5,maxGLoad:9.0,radarRangeNm:100,radarIntervalS:2.6,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:18,damageResist:4,damageDegrade:0.10,enduranceS:12800,rearmTimeS:90,flares:60,airEvasionBonus:0.03,baseLoadout:{ "AIM-120C":10,"AIM-9X":4 } },
   // 4.5-GEN — F-15EX Eagle II. Public: advanced EPAWSS, APG-82 AESA, very large
   // external load. Multirole magazine (AAM-heavy + mixed stand-off strike).
-  F15EX: { hull:"F15EX",className:"F-15EX Eagle II approx.",prefix:"F15EX",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:38,cruiseSpeedKt:445,maxSpeedKt:760,accelMps2:3.3,decelMps2:3.1,turnRateDps:8.2,turnRateFlankDps:6.2,maxGLoad:9.0,radarRangeNm:115,radarIntervalS:2.4,vlsCells:18,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:16,damageResist:4,damageDegrade:0.10,enduranceS:13400,rearmTimeS:95,flares:72,airEvasionBonus:0.04,baseLoadout:{ "AIM-120D":8,"AIM-9X":2,"AGM-154":4,"AGM-84":4 } },
+  F15EX: { hull:"F15EX",className:"F-15EX Eagle II approx.",prefix:"F15EX",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,carrierCapable:false,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:38,cruiseSpeedKt:445,maxSpeedKt:760,accelMps2:3.3,decelMps2:3.1,turnRateDps:8.2,turnRateFlankDps:6.2,maxGLoad:9.0,radarRangeNm:115,radarIntervalS:2.4,vlsCells:18,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:16,damageResist:4,damageDegrade:0.10,enduranceS:13400,rearmTimeS:95,flares:72,airEvasionBonus:0.04,baseLoadout:{ "AIM-120D":8,"AIM-9X":2,"AGM-154":4,"AGM-84":4 } },
   // 4th-GEN — F-16V (Block 70/72) Viper. Lighter multirole: APG-83 AESA class,
   // high agility, shorter legs and smaller magazine than the F-15 family.
-  F16V: { hull:"F16V",className:"F-16V Viper approx.",prefix:"F16V",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,lengthM:15.1,beamM:9.5,draftM:5.1,displacementT:19,cruiseSpeedKt:420,maxSpeedKt:700,accelMps2:3.5,decelMps2:3.3,turnRateDps:10,turnRateFlankDps:8,maxGLoad:9.0,radarRangeNm:85,radarIntervalS:2.8,vlsCells:10,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:12,damageResist:4,damageDegrade:0.11,enduranceS:9800,rearmTimeS:80,flares:48,airEvasionBonus:0.05,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":4 } },
-  // AEW&C — E-2D Hawkeye squadron approx. (1 aircraft: unlike the fighter
-  // roster this models a single high-value, unescorted-feeling sensor
-  // platform, not a 4-ship flight — damageResist:1 makes any hit a mission
-  // kill, same as the real thing). Unarmed (baseLoadout:{}) and slow — it is
-  // a moving radar, not a combatant, and its own AI never chases a fight (see
-  // decideAircraft's unarmed-orbit branch in aircraft.js). Its radar is the
-  // longest of any mobile platform (only a fixed EWR out-ranges it) and its
-  // rcsM2 is large and non-stealthy (a big, un-hidden rotodome) — it survives
-  // by standing off behind the formation, not by being hard to see.
-  // commandHub:true is the "acts as a command hub when present" behaviour: it
-  // tightens fleet-wide CEC track-sharing latency while alive and on mission
-  // (see shareTracks in sensors.js) — any custom aircraft can opt into the
-  // same behaviour from the Unit Workshop.
-  AWAC: { hull:"AWAC",className:"E-2D Hawkeye Squadron (AEW&C) approx.",prefix:"AWAC",domain:"air",isFixed:false,glyph:"aircraft",lengthM:17.6,beamM:24.6,draftM:5.6,displacementT:24,cruiseSpeedKt:300,maxSpeedKt:330,accelMps2:1.6,decelMps2:1.6,turnRateDps:5,turnRateFlankDps:4,maxGLoad:3.0,commandHub:true,radarRangeNm:350,radarIntervalS:2,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:35,damageResist:1,damageDegrade:0.10,enduranceS:7200,rearmTimeS:60,flares:30,airEvasionBonus:0,baseLoadout:{} },
+  F16V: { hull:"F16V",className:"F-16V Viper approx.",prefix:"F16V",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,carrierCapable:false,lengthM:15.1,beamM:9.5,draftM:5.1,displacementT:19,cruiseSpeedKt:420,maxSpeedKt:700,accelMps2:3.5,decelMps2:3.3,turnRateDps:10,turnRateFlankDps:8,maxGLoad:9.0,radarRangeNm:85,radarIntervalS:2.8,vlsCells:10,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:12,damageResist:4,damageDegrade:0.11,enduranceS:9800,rearmTimeS:80,flares:48,airEvasionBonus:0.05,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":4 } },
+  // AEW&C — E-2D Hawkeye (carrier-based). Unarmed command-hub sensor; recovers
+  // on CVN. damageResist:1 — one irreplaceable airframe.
+  AWAC: { hull:"AWAC",className:"E-2D Hawkeye Squadron (AEW&C) approx.",prefix:"AWAC",domain:"air",isFixed:false,glyph:"aircraft",commandHub:true,carrierCapable:true,lengthM:17.6,beamM:24.6,draftM:5.6,displacementT:24,cruiseSpeedKt:300,maxSpeedKt:330,accelMps2:1.6,decelMps2:1.6,turnRateDps:5,turnRateFlankDps:4,maxGLoad:3.0,radarRangeNm:350,radarIntervalS:2,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:35,damageResist:1,damageDegrade:0.10,enduranceS:7200,rearmTimeS:60,flares:30,airEvasionBonus:0,baseLoadout:{} },
 
   // --- Airfield (domain:"ground", placeable anywhere) ----------------------
   // Behaves like a fixed ground unit but may be placed on land OR water. Serves
   // as a rearm/refuel node for friendly squadrons. isAirfield gates placement
   // and the RTB logic (see aircraft.js / scenario.js).
-  AFB: { hull:"AFB",className:"Airfield approx.",prefix:"Airfield",domain:"ground",isFixed:true,isAirfield:true,glyph:"airfield",lengthM:80,beamM:80,draftM:10,displacementT:8000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:180,radarIntervalS:4,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},damageResist:3,damageDegrade:0.30,baseLoadout:{} }
+  AFB: { hull:"AFB",className:"Airfield approx.",prefix:"Airfield",domain:"ground",isFixed:true,isAirfield:true,glyph:"airfield",lengthM:80,beamM:80,draftM:10,displacementT:8000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:180,radarIntervalS:4,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},damageResist:3,damageDegrade:0.30,maxParkedSquadrons:12,baseLoadout:{} },
+
+  // --- Carrier (domain:"sea", moving airfield) -----------------------------
+  // Nimitz/Ford-class approx.: a surface combatant that is ALSO an airfield
+  // (isAirfield:true). It moves, fights, and takes damage like any ship, but
+  // friendly carrierCapable squadrons RTB/rearm/refuel on its deck. Only
+  // carrier-capable airframes recover here (F-35C, E-2, etc.); land-based
+  // types still need an AFB. maxParkedSquadrons caps concurrent rearm slots
+  // (overflow flights hold a pattern nearby — O(1) per decision tick).
+  CVN: { hull:"CVN",className:"Nimitz/Ford-class Carrier approx.",prefix:"CVN",domain:"sea",isFixed:false,isAirfield:true,isCarrier:true,glyph:"carrier",lengthM:333,beamM:78,draftM:12.5,displacementT:100000,cruiseSpeedKt:18,maxSpeedKt:30,accelMps2:0.05,decelMps2:0.10,turnRateDps:0.9,turnRateFlankDps:0.55,radarRangeNm:160,radarIntervalS:3.5,vlsCells:24,ciwsCount:3,ciwsAmmo:4500,ciwsBurstRounds:220,ciwsBurstS:1.5,ciwsCycleS:4.5,defenseChannels:{sam:4,ciws:3},rcsM2:45000,damageResist:6,damageDegrade:0.12,maxParkedSquadrons:6,baseLoadout:{ "SM-2MR":8,ESSM:64 } }
 };
 
 // Built-in hull ids captured at module load. Protected from deletion and
@@ -306,6 +304,12 @@ export function makeShip(side, x, y, hull = "DDG") {
     // modelling. Explicit class flag (not inferred from rcs alone) so Workshop
     // clones can opt in without guessing a numeric threshold.
     lowObservable: cls.lowObservable === true,
+    // Carrier basing: sea-domain airfields (CVN) only recover carrierCapable
+    // airframes. Land AFBs accept every squadron. Workshop can toggle this.
+    carrierCapable: cls.carrierCapable === true,
+    // Moving/fixed airfield capacity (squadrons rearming at once). 0/omit = unlimited.
+    maxParkedSquadrons: Number.isFinite(cls.maxParkedSquadrons) ? Math.max(0, Math.round(cls.maxParkedSquadrons)) : 0,
+    isCarrier: cls.isCarrier === true || (cls.isAirfield === true && (cls.domain ?? "sea") === "sea" && cls.isFixed !== true),
     lengthM: cls.lengthM, beamM: cls.beamM, draftM: cls.draftM, displacementT: cls.displacementT,
     // Signature + altitude drive RCS/horizon-based detection (see sensors.js).
     rcsM2: defaultRcsM2(cls),

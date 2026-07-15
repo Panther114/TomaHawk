@@ -696,6 +696,21 @@ function drawScaledShip(ship, label) {
     ctx.lineTo(len * 0.44, 0);
     ctx.stroke();
   }
+  // Carrier: dashed flight-deck centreline so a CVN reads as a moving airfield
+  // at a glance without a separate draw path.
+  if (ship.isAirfield || ship.isCarrier || ship.glyph === "carrier") {
+    ctx.save();
+    ctx.globalAlpha = ship.alive ? 0.85 : 0.4;
+    ctx.strokeStyle = "rgba(255,255,255,.75)";
+    ctx.lineWidth = 0.7;
+    ctx.setLineDash([Math.max(2, len * 0.08), Math.max(1.5, len * 0.05)]);
+    ctx.beginPath();
+    ctx.moveTo(-len * 0.35, 0);
+    ctx.lineTo(len * 0.4, 0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
   ctx.save();
   ctx.globalAlpha = ship.alive ? 0.76 : 0.42;
   ctx.strokeStyle = "rgba(255,255,255,.82)";

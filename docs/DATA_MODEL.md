@@ -322,8 +322,11 @@ on land or water that serves as the rearm/refuel node:
 | F15C | F-15C Eagle approx. (A2A) | F15C | 100 nm | AIM-120C×10, AIM-9X×4 |
 | F15EX | F-15EX Eagle II approx. (multirole) | F15EX | 115 nm | AIM-120D×8, AIM-9X×2, AGM-154×4, AGM-84×4 |
 | F16V | F-16V Viper approx. (light multirole) | F16V | 85 nm | AIM-120C×4, AIM-9X×2, AGM-154×4 |
-| AWAC | AEW&C — unarmed, command hub (E-2D approx.) | AWAC | 350 nm | — |
+| AWAC | AEW&C — unarmed, command hub (E-2D approx.), carrier-capable | AWAC | 350 nm | — |
 | AFB | airfield / rearm-refuel node (land or water) | Airfield | 180 nm | — |
+| CVN | Nimitz/Ford-class carrier approx. (moving airfield) | CVN | 160 nm | SM-2MR×8, ESSM×64 |
+
+**Carrier basing:** any unit with `isAirfield:true` is a rearm node. Ground AFBs accept every squadron. Sea carriers (`CVN`, or any naval Workshop hull with **Carrier deck**) only recover airframes with `carrierCapable:true`. While `airState === "rearming"`, the squadron is pinned to the base position each movement tick (so a steaming CVN carries parked flights). `maxParkedSquadrons` caps concurrent deck slots; overflow flights hold a pattern nearby.
 
 Fighter endurance is tuned as combat radius with return reserve, not ferry range: the 5th-gen set has about 600 nm radius, and the 4.5-gen set has about 680 nm radius.
 

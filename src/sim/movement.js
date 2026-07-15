@@ -7,7 +7,7 @@ import { offensiveMissileCount } from "./ships.js";
 import { firstLandCollisionFraction, isWaterPoint, segmentCrossesLand, terrainCollision } from "../world/terrain.js";
 import { shipWaterClearanceM } from "./scenario.js";
 import { iterateTracksForShip } from "./sensors.js";
-import { AIRCRAFT_TEMP_CONFIG } from "./aircraft.js";
+import { AIRCRAFT_TEMP_CONFIG, AIR_STATE, stickToBaseDeck } from "./aircraft.js";
 
 // Shared empty list: when the per-tick missile-by-target index exists but holds
 // no bucket for a ship, that ship has nothing inbound — iterate nothing rather
@@ -190,6 +190,13 @@ function applyWaterCollisionGuard(sim, ship, nextPosition) {
 // clamp to the map. No terrain interaction (overflies everything). Speed is
 // degraded by attrition (lost aircraft) just like a damaged ship's propulsion.
 function moveAirUnit(sim, ship, dt) {
+  // Carrier / airfield deck: a rearming squadron is a passenger of its base.
+  // Without this, a moving CVN would leave parked flights floating in the sea
+  // at their recovery coordinates. O(1) per parked flight.
+  if (ship.airState === AIR_STATE.REARMING) {
+    if (stickToBaseDeck(sim, ship)) return;
+    // Base lost mid-rearm — fall through to free flight; decideAircraft will RTB.
+  }
   // Full signed heading error (unclamped) — used both to limit this tick's
   // turn and, below, to bleed a little commanded speed proportional to how
   // hard the turn is (induced drag rises with bank angle; a real jet can't

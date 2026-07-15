@@ -76,8 +76,9 @@ export function stepSim(sim, dt = 0.25) {
   // These are pure lookup structures — they never draw RNG — so they do not
   // affect deterministic output, only the cost of resolving entities by id.
   if (sim._entityIndexesDirty || !sim._aliveShips) rebuildEntityIndexes(sim);
-  // Per-tick airfield cache for aircraft RTB (filled lazily by aircraft.js).
+  // Per-tick airfield / deck-parking caches for aircraft RTB (filled lazily).
   sim._airfieldsBySide = null;
+  sim._parkedByBase = null;
   ageTracks(sim, dt);
   moveShips(sim, dt);
   updateAircraft(sim, dt);

@@ -77,7 +77,10 @@ const NAVAL_SCHEMA = {
     { title: { en: "Identity", zh: "标识" }, fields: [
       text("name", { en: "Class name", zh: "舰级名称" }, { placeholder: "Arleigh Burke approx." }),
       text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "DDG", maxlength: 6 }),
-      text("prefixZh", { en: "Chinese unit tag", zh: "中文单位代号" }, { placeholder: "驱逐舰", maxlength: 12 })
+      text("prefixZh", { en: "Chinese unit tag", zh: "中文单位代号" }, { placeholder: "驱逐舰", maxlength: 12 }),
+      // Moving airfield: sea units with isAirfield act as carriers (rearm deck).
+      { key: "isAirfield", type: "checkbox", label: { en: "Carrier deck (moving airfield)", zh: "航母甲板（移动机场）" } },
+      num("maxParkedSquadrons", { en: "Max parked squadrons", zh: "最大同时停放中队" }, { min: 0, max: 32, step: 1 })
     ] },
     { title: { en: "Mobility", zh: "机动" }, fields: [
       num("cruiseSpeedKt", { en: "Cruise speed", zh: "巡航速度" }, { unit: "kt", min: 0, max: 60, step: 0.5 }),
@@ -165,6 +168,8 @@ const AIRCRAFT_SCHEMA = {
       // Low-observable: stand-in strike release + RCS modelling (see aircraft.js /
       // combat.js). Explicit flag so Workshop clones do not guess from rcsM2 alone.
       { key: "lowObservable", type: "checkbox", label: { en: "Low-observable (stand-in strike profile)", zh: "低可探测性（贴进释放剖面）" } },
+      // Only carrierCapable airframes may recover on a CVN / sea airfield.
+      { key: "carrierCapable", type: "checkbox", label: { en: "Carrier capable (may recover on CVN)", zh: "舰载（可在航母回收）" } },
       STRIKE_SPECIALIST_FIELD
     ] },
     { title: { en: "Squadron", zh: "中队" }, fields: [
@@ -284,6 +289,7 @@ export const SCHEMAS = {
 export const DEFAULTS = {
   naval: () => ({
     kind: "naval", name: "New Warship", prefix: "XXG", prefixZh: "",
+    isAirfield: false, maxParkedSquadrons: 0,
     lengthM: 150, beamM: 20, draftM: 9, displacementT: 9000, rcsM2: 5000,
     cruiseSpeedKt: 16, maxSpeedKt: 30, accelMps2: 0.12, decelMps2: 0.22,
     turnRateDps: 2.6, turnRateFlankDps: 1.8, radarRangeNm: 180, radarIntervalS: 4,
@@ -294,6 +300,7 @@ export const DEFAULTS = {
   }),
   ground: () => ({
     kind: "ground", name: "New Emplacement", prefix: "GND", prefixZh: "", glyph: "bunker", isAirfield: false,
+    maxParkedSquadrons: 0,
     lengthM: 50, beamM: 50, radarRangeNm: 160, radarIntervalS: 4, rcsM2: 9000,
     vlsCells: 48, damageResist: 2, damageDegrade: 0.3,
     defenseSam: 5, strikeSpecialist: false,
@@ -301,7 +308,7 @@ export const DEFAULTS = {
   }),
   aircraft: () => ({
     kind: "aircraft", name: "New Squadron", prefix: "VFX", prefixZh: "",
-    squadronSize: 4, commandHub: false, lowObservable: false, strikeSpecialist: false, rcsM2: 25,
+    squadronSize: 4, commandHub: false, lowObservable: false, carrierCapable: false, strikeSpecialist: false, rcsM2: 25,
     cruiseSpeedKt: 420, maxSpeedKt: 540, accelMps2: 3.0, decelMps2: 3.0,
     turnRateDps: 6, turnRateFlankDps: 4, radarRangeNm: 90, radarIntervalS: 3,
     vlsCells: 20, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1, flares: 60,

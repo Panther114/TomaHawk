@@ -124,6 +124,7 @@ const strings = {
   "ship.f16v": { en: "F-16V", zh: "F-16V" },
   "ship.awac": { en: "AWAC", zh: "预警机" },
   "ship.afb":  { en: "Airfield", zh: "机场" },
+  "ship.cvn":  { en: "CVN", zh: "航母" },
 
   // Placement / setup
   "place.addBlue": { en: "Add blue unit", zh: "添加蓝方单位" },

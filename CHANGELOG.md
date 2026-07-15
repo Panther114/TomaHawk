@@ -5,6 +5,12 @@ All notable changes to this repository will be documented in this file.
 
 ## Unreleased
 
+### Added — Carrier basing (moving airfield) / 航母基地（移动机场）
+- **CVN hull** (Nimitz/Ford approx.): sea-domain combatant with `isAirfield:true` — steams, fights, and serves as a rearm/refuel deck for friendly squadrons.
+- **Carrier-capable airframes only** recover on CVN (`F-35C`, `AWAC`/E-2, fictional `F15N`); land-based types still need an AFB. Workshop exposes `carrierCapable` and naval **Carrier deck**.
+- **Deck stick + lead recovery:** rearming flights ride the moving deck every tick; RTB aims at a lead intercept of the carrier, not its wake. Full decks (`maxParkedSquadrons`) put overflow flights in a holding pattern.
+- 新增 CVN 航母（移动机场）：舰载机型方可回收；停放中队贴合甲板运动；满甲板时盘旋等待。
+
 ### Fixed / Added — Accuracy pass + player airframes / 精度修复与玩家机型
 - **RCS floor no longer collapses LO fighters.** Detection floor 0.12 made F-22 and F-35 identical on radar; floor is now 0.05 with distinct LO RCS values.
 - **Air-domain detection lift (O(1)).** Destroyer-referenced fourth-root alone painted non-stealth fighters only at knife-fight range (~38 NM), so track quality never cleared the 0.32 ID gate and SAMs never engaged. Air targets get a capped lift so F-15-class flights paint at ~90 NM while LO stays much shorter.

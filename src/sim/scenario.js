@@ -293,6 +293,12 @@ export function restoreScenario(data) {
         domain,
         isFixed: ship.isFixed ?? cls.isFixed ?? false,
         isAirfield: ship.isAirfield ?? cls.isAirfield ?? false,
+        isCarrier: ship.isCarrier === true || cls.isCarrier === true
+          || ((ship.isAirfield ?? cls.isAirfield) && (domain === "sea") && !(ship.isFixed ?? cls.isFixed)),
+        carrierCapable: ship.carrierCapable === true || cls.carrierCapable === true,
+        maxParkedSquadrons: Number.isFinite(ship.maxParkedSquadrons)
+          ? ship.maxParkedSquadrons
+          : (Number.isFinite(cls.maxParkedSquadrons) ? cls.maxParkedSquadrons : 0),
         strikeSpecialist: ship.strikeSpecialist === true ? true
           : ship.strikeSpecialist === false ? false
             : cls.strikeSpecialist === true ? true
@@ -433,11 +439,19 @@ export function exportAfterAction(sim) {
 export function placeShip(sim, side, x, y, hull = "DDG") {
   const ship = clampShipToBounds(sim, makeShip(side, x, y, hull));
   // Placement rules by unit kind:
-  //   air units and airfields may be placed anywhere (land or water);
+  //   air units may be placed anywhere (land or water);
+  //   ground airfields (AFB) may be placed anywhere;
   //   other fixed ground emplacements require land;
-  //   sea units require open water (except the terrain-less open-sea map).
-  const placeAnywhere = ship.domain === "air" || ship.isAirfield;
-  if (!placeAnywhere && (ship.isFixed ? !canEmplaceOnLand(sim, ship) : !canOccupyWater(sim, ship, ship))) return null;
+  //   sea units — including carriers (moving airfields) — require open water.
+  const placeAnywhere = ship.domain === "air"
+    || (ship.isAirfield && (ship.domain === "ground" || ship.isFixed));
+  if (!placeAnywhere) {
+    if (ship.isFixed) {
+      if (!canEmplaceOnLand(sim, ship)) return null;
+    } else if (!canOccupyWater(sim, ship, ship)) {
+      return null;
+    }
+  }
   sim.ships.push(ship);
   sim._entityIndexesDirty = true;
   sim.selectedId = ship.id;
