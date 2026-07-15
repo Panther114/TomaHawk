@@ -5,6 +5,15 @@ All notable changes to this repository will be documented in this file.
 
 ## Unreleased
 
+### Fixed / Added — Accuracy pass + player airframes / 精度修复与玩家机型
+- **RCS floor no longer collapses LO fighters.** Detection floor 0.12 made F-22 and F-35 identical on radar; floor is now 0.05 with distinct LO RCS values.
+- **Air-domain detection lift (O(1)).** Destroyer-referenced fourth-root alone painted non-stealth fighters only at knife-fight range (~38 NM), so track quality never cleared the 0.32 ID gate and SAMs never engaged. Air targets get a capped lift so F-15-class flights paint at ~90 NM while LO stays much shorter.
+- **Domain-aware track classification.** Low-quality air/ground tracks no longer read as "surface combatant" (which inflated enemy offense with DDG priors).
+- **Air-launched weapons inherit launch altitude** and blend toward cruise profile over ~8 NM (no more Harpoon teleporting to 30 m sea-skim on the launch tick).
+- **LO stand-in doctrine is flag-based** (`lowObservable`), not hard-coded to F-35C + Harpoon — F-35A JSOW uses the same low-release gate.
+- **Player airframes with public-approx data:** F-22, F-35A, F-35C, F-15C, F-15E, F-15N (role sibling), **F-15EX**, **F-16V** — real class names, differentiated speeds/RCS/radar/loadouts; tags stay alphanumeric (no `-` in prefix, so inventory id split stays correct).
+- 修复隐身机 RCS 探测被地板值抹平；修复非隐身战斗机因探测距离过近而无法被舰空导弹交战；低质量航迹按域分类；空射武器从载机高度下降；新增 F-15EX / F-16V 等玩家机型开源近似数据。
+
 ### Fixed — Fire planning, aircraft doctrine, peer aggression, and lag / 火力规划、空中条令、对等交战进攻性与卡顿
 - **Realistic hypersonic intercept difficulty (perf-safe).** SAM/CIWS hit chance against high-energy threats was only a flat −0.28 speed step, so SM-6 vs Dark Eagle still landed near ~50% single-shot PK. Intercepts now use an O(1) model: continuous Mach kinematic penalty, boost-glide/strategic profile + altitude, interceptor-layer match (ESSM/CIWS collapse; SM-6-class least-bad with a hard ~30% ceiling), plus existing track/saturation terms. Defensive planning prioritises hypersonic threats, commits multi-shot depth, and prefers SM-6 over ESSM. Custom Workshop `strategic` / hypersonic-glide ammo uses the same path.
 - **Dark Eagle / specialist starvation.** Force offensive planning used a single target slot filled by the nearest destroyers’ ASCMs, so DEB (and often CDB/air strike) magazines never received an allocation in multi-shooter fights even though isolated DEB tests passed. Specialists now get a first allocation pass; hypersonic / very-long-range weapons may use a small strategic overflow after the general raid cap is full; domain-specialist target slots keep ground-only and sea-only magazines usable.

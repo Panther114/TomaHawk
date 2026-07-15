@@ -44,7 +44,12 @@ function scenarioDimension(value, fallback) {
 }
 
 function legacyAim120IdForHull(hull) {
-  return hull === "F22" || hull === "F35A" || hull === "F35C" ? "AIM-120D" : "AIM-120C";
+  // Prefer the hull's actual default magazine so new 5th-gen / AIM-120D types
+  // (F-15EX, Workshop LO clones) do not silently map to AIM-120C.
+  const cls = SHIP_CLASSES[hull];
+  if (cls?.baseLoadout && (cls.baseLoadout["AIM-120D"] ?? 0) > 0) return "AIM-120D";
+  if (hull === "F22" || hull === "F35A" || hull === "F35C" || hull === "F15EX") return "AIM-120D";
+  return "AIM-120C";
 }
 
 export function clampShipToBounds(sim, ship) {

@@ -10,18 +10,18 @@ import { DEFAULTS } from "../src/mods/schema.js";
 import { registerUnit, unregisterUnit, makeUniqueShipId, vanillaUnits, unitId } from "../src/mods/registry.js";
 import { airRowHtml, isAirUnit, isGroundUnit } from "../src/ui/view.js";
 
-// The six built-in squadron hulls, replacing the old generic VFA/VFS pair.
-// Each has a RIGID default loadout that defines its role: an air-superiority
-// airframe carries no strike weapon at all, an anti-ground airframe carries
-// AGM-154 JSOW and no AGM-84, an anti-ship airframe carries AGM-84 and no
-// JSOW. Two generations (5th-gen low-observable, 4.5-gen non-stealth) cross
-// the three roles.
+// Player airframes: real public-name types plus role siblings (F15N fictional
+// sea-strike). Each has a RIGID default loadout. LO 5th-gen: F22/F35A/F35C.
 const AIR_SUPERIORITY_HULLS = ["F22", "F15C"];
-const ANTI_GROUND_HULLS = ["F35A", "F15E"];
+const ANTI_GROUND_HULLS = ["F35A", "F15E", "F16V"];
 const ANTI_SHIP_HULLS = ["F35C", "F15N"];
+const MULTIROLE_HULLS = ["F15EX"];
 const FIFTH_GEN_HULLS = ["F22", "F35A", "F35C"];
-const FOURTH_HALF_GEN_HULLS = ["F15E", "F15N", "F15C"];
-const ALL_AIRCRAFT_HULLS = [...AIR_SUPERIORITY_HULLS, ...ANTI_GROUND_HULLS, ...ANTI_SHIP_HULLS];
+const FOURTH_HALF_GEN_HULLS = ["F15E", "F15N", "F15C", "F15EX", "F16V"];
+const ALL_AIRCRAFT_HULLS = [
+  ...AIR_SUPERIORITY_HULLS, ...ANTI_GROUND_HULLS, ...ANTI_SHIP_HULLS, ...MULTIROLE_HULLS
+];
+const PLAYER_NAMED_HULLS = ["F22", "F35A", "F15C", "F15EX", "F16V"];
 
 function running(seed = 7) {
   const sim = createScenario(seed);
@@ -37,10 +37,13 @@ test("VFA and VFS no longer exist as ship classes", () => {
   assert.equal(SHIP_CLASSES.VFS, undefined);
 });
 
-test("all six aircraft squadron hulls exist with the right shape and airfield (AFB) is unchanged", () => {
+test("all player aircraft squadron hulls exist with the right shape and airfield (AFB) is unchanged", () => {
   for (const hull of ALL_AIRCRAFT_HULLS) {
     assert.equal(SHIP_CLASSES[hull].domain, "air", `${hull} domain`);
     assert.equal(SHIP_CLASSES[hull].isFixed, false, `${hull} isFixed`);
+  }
+  for (const hull of PLAYER_NAMED_HULLS) {
+    assert.ok(SHIP_CLASSES[hull], `${hull} player airframe must exist`);
   }
   assert.equal(SHIP_CLASSES.AFB.isAirfield, true);
   assert.equal(SHIP_CLASSES.AFB.domain, "ground");
@@ -51,8 +54,18 @@ test("aircraft endurance supports realistic combat radius with return reserve", 
     const cls = SHIP_CLASSES[hull];
     return (cls.enduranceS * (1 - 0.18) * cls.cruiseSpeedKt * KNOT / 2) / NM;
   };
-  for (const hull of FIFTH_GEN_HULLS) assert.ok(Math.abs(radiusNm(hull) - 600) < 2, `${hull} radius`);
-  for (const hull of FOURTH_HALF_GEN_HULLS) assert.ok(Math.abs(radiusNm(hull) - 680) < 2, `${hull} radius`);
+  // Public-approx combat radii (one-way equivalent of endurance/2 with reserve).
+  // Differentiated by airframe rather than a single generation constant.
+  const expected = {
+    F22: [480, 560], F35A: [560, 640], F35C: [580, 680],
+    F15C: [600, 700], F15E: [640, 740], F15N: [640, 740],
+    F15EX: [630, 730], F16V: [430, 520]
+  };
+  for (const hull of ALL_AIRCRAFT_HULLS) {
+    const r = radiusNm(hull);
+    const [lo, hi] = expected[hull];
+    assert.ok(r >= lo && r <= hi, `${hull} combat radius ${r.toFixed(0)} NM should be in [${lo},${hi}]`);
+  }
 });
 
 test("each aircraft hull's vlsCells exactly fits its own default loadout (a genuinely rigid magazine)", () => {
@@ -75,23 +88,31 @@ test("F-22 and F-15C squadrons are air-to-air only: zero strike weapons of any k
   }
 });
 
-test("5th-gen aircraft carry AIM-120D while 4.5-gen aircraft carry AIM-120C", () => {
+test("5th-gen and F-15EX carry AIM-120D; classic 4th-gen carry AIM-120C", () => {
   for (const hull of FIFTH_GEN_HULLS) {
     assert.ok((SHIP_CLASSES[hull].baseLoadout["AIM-120D"] ?? 0) > 0, `${hull} should carry AIM-120D`);
     assert.equal(SHIP_CLASSES[hull].baseLoadout["AIM-120C"] ?? 0, 0, `${hull} should not carry AIM-120C`);
   }
-  for (const hull of FOURTH_HALF_GEN_HULLS) {
+  assert.ok((SHIP_CLASSES.F15EX.baseLoadout["AIM-120D"] ?? 0) > 0, "F-15EX should carry AIM-120D");
+  for (const hull of ["F15E", "F15N", "F15C", "F16V"]) {
     assert.ok((SHIP_CLASSES[hull].baseLoadout["AIM-120C"] ?? 0) > 0, `${hull} should carry AIM-120C`);
     assert.equal(SHIP_CLASSES[hull].baseLoadout["AIM-120D"] ?? 0, 0, `${hull} should not carry AIM-120D`);
   }
 });
 
-test("F-35A and F-15E squadrons carry the anti-ground JSOW and no anti-ship Harpoon", () => {
+test("F-35A, F-15E, and F-16V carry anti-ground JSOW and no anti-ship Harpoon", () => {
   for (const hull of ANTI_GROUND_HULLS) {
     const loadout = SHIP_CLASSES[hull].baseLoadout;
     assert.ok((loadout["AGM-154"] ?? 0) > 0, `${hull} should carry AGM-154`);
     assert.equal(loadout["AGM-84"] ?? 0, 0, `${hull} should carry no AGM-84`);
   }
+});
+
+test("F-15EX multirole magazine carries both AAMs and mixed surface strike", () => {
+  const lo = SHIP_CLASSES.F15EX.baseLoadout;
+  assert.ok((lo["AIM-120D"] ?? 0) > 0);
+  assert.ok((lo["AGM-154"] ?? 0) > 0);
+  assert.ok((lo["AGM-84"] ?? 0) > 0);
 });
 
 test("F-35C and F-15N squadrons carry the anti-ship Harpoon and no anti-ground JSOW", () => {
@@ -106,23 +127,52 @@ test("5th-gen airframes have a meaningfully smaller radar cross-section than 4.5
   const maxFifthGenRcs = Math.max(...FIFTH_GEN_HULLS.map((hull) => SHIP_CLASSES[hull].rcsM2));
   const minFourthHalfGenRcs = Math.min(...FOURTH_HALF_GEN_HULLS.map((hull) => SHIP_CLASSES[hull].rcsM2));
   assert.ok(maxFifthGenRcs < minFourthHalfGenRcs / 5, "5th-gen RCS should be far smaller than 4.5-gen RCS");
+  // LO differentiation: F-22 must be smaller than F-35 family (was previously
+  // collapsed by the rcsRangeFactor floor so both sat at the same detect range).
+  assert.ok(SHIP_CLASSES.F22.rcsM2 < SHIP_CLASSES.F35A.rcsM2, "F-22 RCS < F-35A RCS");
+  assert.ok(SHIP_CLASSES.F35A.rcsM2 < SHIP_CLASSES.F35C.rcsM2, "F-35A RCS <= F-35C RCS");
 });
 
-// Unit tags now spell out the role instead of opaque GxRR abbreviations, and every hull within a
-// generation shares the same hardpoint count (5th-gen: 8, 4.5-gen: 14) so the
-// roster reads as two clean weight classes instead of six ad hoc numbers.
-test("aircraft tags/names explain role and hardpoints are uniform per generation", () => {
-  const expectedPrefix = {
-    F22: "G5 Air Sup", F35A: "G5 Strike", F35C: "G5 Sea Strike",
-    F15C: "G4 Air Sup", F15E: "G4 Strike", F15N: "G4 Sea Strike"
+test("player airframes use real public names and LO flags; hardpoints fit each loadout", () => {
+  const expected = {
+    F22: { prefix: "F22", name: /F-22 Raptor/, lo: true },
+    F35A: { prefix: "F35A", name: /F-35A Lightning/, lo: true },
+    F35C: { prefix: "F35C", name: /F-35C Lightning/, lo: true },
+    F15C: { prefix: "F15C", name: /F-15C Eagle/, lo: false },
+    F15E: { prefix: "F15E", name: /F-15E Strike Eagle/, lo: false },
+    F15N: { prefix: "F15N", name: /F-15 Sea Strike/, lo: false },
+    F15EX: { prefix: "F15EX", name: /F-15EX Eagle II/, lo: false },
+    F16V: { prefix: "F16V", name: /F-16V Viper/, lo: false }
   };
-  for (const [hull, prefix] of Object.entries(expectedPrefix)) {
-    assert.equal(SHIP_CLASSES[hull].prefix, prefix, `${hull} unit tag`);
-    assert.ok(!/approx\.$/.test(SHIP_CLASSES[hull].className), `${hull} className should be concise, not a real-airframe name`);
+  for (const [hull, exp] of Object.entries(expected)) {
+    assert.equal(SHIP_CLASSES[hull].prefix, exp.prefix, `${hull} unit tag`);
+    assert.ok(!String(exp.prefix).includes("-"), `${hull} prefix must not contain '-' (id split)`);
+    assert.match(SHIP_CLASSES[hull].className, exp.name, `${hull} className`);
+    assert.equal(!!SHIP_CLASSES[hull].lowObservable, exp.lo, `${hull} lowObservable`);
+    const ship = makeShip(SIDE.BLUE, 0, 0, hull);
+    assert.equal(!!ship.lowObservable, exp.lo, `${hull} instance lowObservable`);
+    assert.match(ship.id, new RegExp(`^${exp.prefix}-\\d+$`), `${hull} id uses prefix-seq`);
   }
-  for (const hull of FIFTH_GEN_HULLS) assert.equal(SHIP_CLASSES[hull].vlsCells, 8, `${hull} 5th-gen hardpoints`);
-  const fourthGenHardpoints = new Set(FOURTH_HALF_GEN_HULLS.map((hull) => SHIP_CLASSES[hull].vlsCells));
-  assert.equal(fourthGenHardpoints.size, 1, "every 4.5-gen hull should share the same hardpoint count");
+  for (const hull of FIFTH_GEN_HULLS) assert.equal(SHIP_CLASSES[hull].vlsCells, 8, `${hull} internal-bay hardpoints`);
+  assert.equal(SHIP_CLASSES.F15EX.vlsCells, 18, "F-15EX large external load");
+  assert.equal(SHIP_CLASSES.F16V.vlsCells, 10, "F-16V lighter multirole load");
+});
+
+test("LO RCS differentiation produces distinct detection ranges (not floor-clamped identical)", () => {
+  // Mirrors sensors.js rcsRangeFactor (air domain lift + caps).
+  const factor = (rcs) => {
+    let f = Math.min(1, Math.max(0.05, Math.pow(rcs / 12000, 0.25)));
+    f = Math.min(0.72, Math.max(0.05, f * 2.4));
+    return f;
+  };
+  const f22 = factor(SHIP_CLASSES.F22.rcsM2);
+  const f35 = factor(SHIP_CLASSES.F35A.rcsM2);
+  const f15 = factor(SHIP_CLASSES.F15C.rcsM2);
+  assert.ok(f22 < f35, `F-22 factor ${f22} should be < F-35A ${f35}`);
+  assert.ok(f35 < f15 * 0.7, `F-35A factor ${f35} should be well below F-15C ${f15}`);
+  assert.ok(f22 > 0.05, "F-22 still above absolute floor (not invisible)");
+  // Non-stealth fighter must clear a useful fraction of a 190 NM naval radar.
+  assert.ok(f15 * 190 > 60, `F-15C detect range ${ (f15 * 190).toFixed(0) } NM should exceed 60 NM`);
 });
 
 test("AGM-154 JSOW is a distinct anti-ground stand-off weapon with its own range/speed profile", () => {
@@ -343,11 +393,13 @@ test("a custom airfield (ground + isAirfield) can be placed on water", () => {
   unregisterUnit(unit);
 });
 
-test("vanillaUnits includes all six built-in air squadrons and the airfield", () => {
+test("vanillaUnits includes all built-in air squadrons and the airfield", () => {
   const v = vanillaUnits();
   for (const hull of ALL_AIRCRAFT_HULLS) {
     assert.ok(v.some((u) => u.kind === "aircraft" && unitId(u) === hull), `${hull} listed as a vanilla aircraft unit`);
   }
+  assert.ok(v.some((u) => u.kind === "aircraft" && unitId(u) === "F15EX"));
+  assert.ok(v.some((u) => u.kind === "aircraft" && unitId(u) === "F16V"));
   assert.ok(v.some((u) => u.kind === "ground" && unitId(u) === "AFB" && u.isAirfield === true));
 });
 
@@ -543,13 +595,13 @@ test("5th-gen anti-ship strikers hold fire until the low ingress gate", () => {
   assert.ok(f35c.launchQueue.some((order) => order.missileId === "AGM-84"), "F-35C releases after descending below the gate");
 });
 
-test("4.5-gen anti-ship and 5th-gen JSOW profiles keep stand-off release behavior", () => {
-  const releaseFromHighAltitude = (hull, targetHull) => {
+test("non-LO anti-ship releases high; LO JSOW holds for stand-in then releases low", () => {
+  const releaseAtAltitude = (hull, targetHull, altitudeM) => {
     const sim = running();
     const striker = placeShip(sim, SIDE.BLUE, -40 * NM, 0, hull);
     const target = placeShip(sim, SIDE.RED, 0, 0, targetHull);
     striker.fuelS = 1e9;
-    striker.altitudeM = 5000;
+    striker.altitudeM = altitudeM;
     const track = {
       id: target.id,
       side: target.side,
@@ -570,8 +622,11 @@ test("4.5-gen anti-ship and 5th-gen JSOW profiles keep stand-off release behavio
     planEngagements(sim);
     return striker.launchQueue.map((order) => order.missileId);
   };
-  assert.ok(releaseFromHighAltitude("F15N", "BBG").includes("AGM-84"));
-  assert.ok(releaseFromHighAltitude("F35A", "SAM").includes("AGM-154"));
+  // Non-LO F-15N may loft-release Harpoons from high altitude.
+  assert.ok(releaseAtAltitude("F15N", "BBG", 5000).includes("AGM-84"));
+  // LO F-35A holds JSOW until low stand-in (same gate as F-35C Harpoon).
+  assert.equal(releaseAtAltitude("F35A", "SAM", 5000).includes("AGM-154"), false, "LO F-35A holds JSOW while high");
+  assert.ok(releaseAtAltitude("F35A", "SAM", 400).includes("AGM-154"), "LO F-35A releases JSOW after descending");
 });
 
 test("a CAP fighter hard-kills an inbound ASCM but keeps an air-to-air reserve", () => {

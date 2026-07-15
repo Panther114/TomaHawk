@@ -158,49 +158,43 @@ const SHIP_CLASSES = {
   // legacy/display-only for aircraft (kept for schema compatibility) and no
   // longer drive their steering.
   //
-  // Six fixed-identity airframes, each with a RIGID default loadout that
-  // defines its role — vlsCells is sized to exactly fit that loadout, so a
-  // squadron spawns as (and stays) purpose-built rather than a generic
-  // "multirole" hardpoint budget. Two generations (5th-gen low-observable,
-  // 4.5-gen non-stealth) cross three roles (air-to-air only, anti-ground
-  // strike, anti-ship strike): AGM-154 JSOW is the dedicated stand-off
-  // anti-ground weapon, AGM-84 Harpoon the dedicated anti-ship weapon — a
-  // strike airframe never carries both, and an air-superiority airframe
-  // carries neither.
+  // Player airframes use public open-source approximate names and envelopes
+  // (not classified performance data). Each has a RIGID default loadout —
+  // vlsCells is sized to exactly fit it. lowObservable drives stand-in strike
+  // doctrine and RCS differentiation (see sensors.js rcsRangeFactor floor).
+  // Speeds are combat-envelope approximations (cruise + MIL dash); afterburner
+  // multiplies on top (AIRCRAFT_TEMP_CONFIG). RCS values are aspect-averaged
+  // flight signatures for a 4-ship element, not clean frontal single-ship
+  // "marble" estimates — relative LO vs non-LO is what matters for play.
   //
-  // Unit tags follow a GxRR scheme (Generation x Role): AA = air-superiority
-  // (air-to-air only), AG = anti-ground strike (matches this project's own
-  // AGM-84/AGM-154 naming), AS = anti-ship strike. Class names are kept short
-  // ("5th Gen X" / "4th Gen X") rather than a real-airframe name + parenthetical
-  // — the tag + name pair is what actually renders in the unit list/inventory.
-  // All 5th-gen hulls share the same hardpoint count (8) and all 4.5-gen hulls
-  // share theirs (14) so the roster reads as two clean weight classes rather
-  // than six ad hoc numbers; loadouts are rebalanced to fill each exactly.
-  //
-  // 5th-GEN air-superiority — 4-aircraft squadron. No strike weapons at all:
-  // the lowest radar cross-section and the highest agility of the six, built
-  // to win the air-to-air fight before anyone else can shoot.
-  F22: { hull:"F22",className:"5th Gen Air Supremacy",prefix:"G5 Air Sup",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19,beamM:13.5,draftM:5,displacementT:28,cruiseSpeedKt:460,maxSpeedKt:580,accelMps2:3.4,decelMps2:3.2,turnRateDps:10,turnRateFlankDps:8,maxGLoad:9.0,radarRangeNm:120,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:1.5,damageResist:4,damageDegrade:0.09,enduranceS:11454,rearmTimeS:85,flares:60,airEvasionBonus:0.12,baseLoadout:{ "AIM-120D":6,"AIM-9X":2 } },
-  // 5th-GEN anti-ground — 4-aircraft squadron. Self-defence AAMs plus a JSOW
-  // stand-off strike load; carries no anti-ship weapon.
-  F35A: { hull:"F35A",className:"5th Gen Strike",prefix:"G5 Strike",domain:"air",isFixed:false,glyph:"aircraft",lengthM:15.7,beamM:10.7,draftM:4.4,displacementT:29,cruiseSpeedKt:420,maxSpeedKt:540,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5,maxGLoad:7.0,radarRangeNm:110,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:2.3,damageResist:4,damageDegrade:0.10,enduranceS:12544,rearmTimeS:95,flares:56,airEvasionBonus:0.06,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-154":4 } },
-  // 5th-GEN anti-ship — 4-aircraft squadron, the carrier variant. Same stealth
-  // family as the anti-ground hull but loaded with AGM-84 instead of JSOW;
-  // bigger wing and fuel fraction mean it needs more endurance seconds to cover
-  // the same 5th-gen combat radius at its lower cruise speed.
-  F35C: { hull:"F35C",className:"5th Gen Sea Strike",prefix:"G5 Sea Strike",domain:"air",isFixed:false,glyph:"aircraft",lengthM:15.7,beamM:13.1,draftM:4.4,displacementT:32,cruiseSpeedKt:400,maxSpeedKt:520,accelMps2:2.8,decelMps2:2.8,turnRateDps:6.5,turnRateFlankDps:5,maxGLoad:6.5,radarRangeNm:110,radarIntervalS:2.5,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:2.3,damageResist:4,damageDegrade:0.10,enduranceS:13171,rearmTimeS:100,flares:56,airEvasionBonus:0.06,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-84":4 } },
-  // 4.5-GEN anti-ground — 4-aircraft squadron. Non-stealth (large radar
-  // cross-section, no evasion bonus) but the biggest bomb truck of the six: a
-  // heavier JSOW load than the 5th-gen anti-ground hull and the toughest airframe.
-  F15E: { hull:"F15E",className:"4th Gen Strike",prefix:"G4 Strike",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:36,cruiseSpeedKt:430,maxSpeedKt:560,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5.5,maxGLoad:7.5,radarRangeNm:90,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:22,damageResist:4,damageDegrade:0.10,enduranceS:13885,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":8 } },
-  // 4.5-GEN anti-ship — 4-aircraft squadron. Not a real airframe: a fictional
-  // naval-strike sibling of the anti-ground hull carrying AGM-84 instead of
-  // JSOW, same non-stealth chassis and toughness.
-  F15N: { hull:"F15N",className:"4th Gen Sea Strike",prefix:"G4 Sea Strike",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:36,cruiseSpeedKt:430,maxSpeedKt:560,accelMps2:3.0,decelMps2:3.0,turnRateDps:7,turnRateFlankDps:5.5,maxGLoad:7.5,radarRangeNm:90,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:22,damageResist:4,damageDegrade:0.10,enduranceS:13885,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-84":8 } },
-  // 4.5-GEN air-superiority — 4-aircraft squadron. No strike weapons at all,
-  // like the 5th-gen air-superiority hull, but non-stealth: a bigger radar
-  // signature traded for the biggest internal AAM load of the roster.
-  F15C: { hull:"F15C",className:"4th Gen Air Supremacy",prefix:"G4 Air Sup",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13,draftM:5.6,displacementT:31,cruiseSpeedKt:440,maxSpeedKt:580,accelMps2:3.2,decelMps2:3.0,turnRateDps:8,turnRateFlankDps:6,maxGLoad:8.5,radarRangeNm:95,radarIntervalS:3,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:13570,rearmTimeS:90,flares:60,airEvasionBonus:0.02,baseLoadout:{ "AIM-120C":10,"AIM-9X":4 } },
+  // 5th-GEN — F-22 Raptor. Air-superiority only. Public: ~Mach 2.25 dash,
+  // supercruise, ~9 g, AN/APG-77 class AESA, internal AAM carriage, very LO.
+  // Unit-tag `prefix` must NOT contain "-" — ship ids are `${prefix}-${seq}` and
+  // shipDisplayName splits on the first dash. Pretty names live in className /
+  // i18n (ship.f22 etc.).
+  F22: { hull:"F22",className:"F-22 Raptor approx.",prefix:"F22",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,lengthM:18.9,beamM:13.6,draftM:5.1,displacementT:29,cruiseSpeedKt:480,maxSpeedKt:720,accelMps2:3.6,decelMps2:3.4,turnRateDps:11,turnRateFlankDps:9,maxGLoad:9.0,radarRangeNm:130,radarIntervalS:2.2,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.25,damageResist:4,damageDegrade:0.09,enduranceS:9600,rearmTimeS:85,flares:60,airEvasionBonus:0.14,baseLoadout:{ "AIM-120D":6,"AIM-9X":2 } },
+  // 5th-GEN — F-35A Lightning II. Conventional-takeoff multirole in a stand-off
+  // anti-ground load (internal-bay JSOW + self-defence AAMs). Public: Mach ~1.6,
+  // ~7 g, AN/APG-81, LO (higher signature than F-22).
+  F35A: { hull:"F35A",className:"F-35A Lightning II approx.",prefix:"F35A",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,strikeSpecialist:true,lengthM:15.7,beamM:10.7,draftM:4.4,displacementT:29,cruiseSpeedKt:430,maxSpeedKt:650,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.5,turnRateFlankDps:5.5,maxGLoad:7.0,radarRangeNm:120,radarIntervalS:2.4,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.55,damageResist:4,damageDegrade:0.10,enduranceS:12300,rearmTimeS:95,flares:56,airEvasionBonus:0.08,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-154":4 } },
+  // 5th-GEN — F-35C Lightning II. Carrier variant: larger wing/fuel, AGM-84
+  // anti-ship load. Same LO family as F-35A, slightly higher RCS / lower g.
+  F35C: { hull:"F35C",className:"F-35C Lightning II approx.",prefix:"F35C",domain:"air",isFixed:false,glyph:"aircraft",lowObservable:true,strikeSpecialist:true,lengthM:15.7,beamM:13.1,draftM:4.4,displacementT:32,cruiseSpeedKt:410,maxSpeedKt:630,accelMps2:2.9,decelMps2:2.9,turnRateDps:6.8,turnRateFlankDps:5.2,maxGLoad:6.5,radarRangeNm:120,radarIntervalS:2.4,vlsCells:8,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:0.65,damageResist:4,damageDegrade:0.10,enduranceS:13200,rearmTimeS:100,flares:56,airEvasionBonus:0.07,baseLoadout:{ "AIM-120D":2,"AIM-9X":2,"AGM-84":4 } },
+  // 4th-GEN — F-15E Strike Eagle. Heavy non-stealth dual-role strike: large
+  // JSOW load + self-defence AAMs. Public: Mach 2.5 class dash, APG-70/82 family.
+  F15E: { hull:"F15E",className:"F-15E Strike Eagle approx.",prefix:"F15E",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:37,cruiseSpeedKt:440,maxSpeedKt:720,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.2,turnRateFlankDps:5.6,maxGLoad:7.5,radarRangeNm:95,radarIntervalS:2.8,vlsCells:16,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:13600,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":10 } },
+  // Fictional naval-strike sibling of the Strike Eagle (keeps a pure AGM-84
+  // role option for sandbox scenarios). Same non-stealth chassis.
+  F15N: { hull:"F15N",className:"F-15 Sea Strike approx.",prefix:"F15N",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:37,cruiseSpeedKt:440,maxSpeedKt:720,accelMps2:3.1,decelMps2:3.0,turnRateDps:7.2,turnRateFlankDps:5.6,maxGLoad:7.5,radarRangeNm:95,radarIntervalS:2.8,vlsCells:16,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:20,damageResist:4,damageDegrade:0.10,enduranceS:13600,rearmTimeS:95,flares:60,airEvasionBonus:0,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-84":10 } },
+  // 4th-GEN — F-15C Eagle. Air-superiority only. Public: Mach 2.5, ~9 g,
+  // large RCS, deep AAM magazine.
+  F15C: { hull:"F15C",className:"F-15C Eagle approx.",prefix:"F15C",domain:"air",isFixed:false,glyph:"aircraft",lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:31,cruiseSpeedKt:450,maxSpeedKt:780,accelMps2:3.4,decelMps2:3.1,turnRateDps:8.5,turnRateFlankDps:6.5,maxGLoad:9.0,radarRangeNm:100,radarIntervalS:2.6,vlsCells:14,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:18,damageResist:4,damageDegrade:0.10,enduranceS:12800,rearmTimeS:90,flares:60,airEvasionBonus:0.03,baseLoadout:{ "AIM-120C":10,"AIM-9X":4 } },
+  // 4.5-GEN — F-15EX Eagle II. Public: advanced EPAWSS, APG-82 AESA, very large
+  // external load. Multirole magazine (AAM-heavy + mixed stand-off strike).
+  F15EX: { hull:"F15EX",className:"F-15EX Eagle II approx.",prefix:"F15EX",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,lengthM:19.4,beamM:13.1,draftM:5.6,displacementT:38,cruiseSpeedKt:445,maxSpeedKt:760,accelMps2:3.3,decelMps2:3.1,turnRateDps:8.2,turnRateFlankDps:6.2,maxGLoad:9.0,radarRangeNm:115,radarIntervalS:2.4,vlsCells:18,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:16,damageResist:4,damageDegrade:0.10,enduranceS:13400,rearmTimeS:95,flares:72,airEvasionBonus:0.04,baseLoadout:{ "AIM-120D":8,"AIM-9X":2,"AGM-154":4,"AGM-84":4 } },
+  // 4th-GEN — F-16V (Block 70/72) Viper. Lighter multirole: APG-83 AESA class,
+  // high agility, shorter legs and smaller magazine than the F-15 family.
+  F16V: { hull:"F16V",className:"F-16V Viper approx.",prefix:"F16V",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,lengthM:15.1,beamM:9.5,draftM:5.1,displacementT:19,cruiseSpeedKt:420,maxSpeedKt:700,accelMps2:3.5,decelMps2:3.3,turnRateDps:10,turnRateFlankDps:8,maxGLoad:9.0,radarRangeNm:85,radarIntervalS:2.8,vlsCells:10,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:12,damageResist:4,damageDegrade:0.11,enduranceS:9800,rearmTimeS:80,flares:48,airEvasionBonus:0.05,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":4 } },
   // AEW&C — E-2D Hawkeye squadron approx. (1 aircraft: unlike the fighter
   // roster this models a single high-value, unescorted-feeling sensor
   // platform, not a 4-ship flight — damageResist:1 makes any hit a mission
@@ -308,6 +302,10 @@ export function makeShip(side, x, y, hull = "DDG") {
     strikeSpecialist: cls.strikeSpecialist === true ? true
       : cls.strikeSpecialist === false ? false
         : undefined,
+    // Low-observable airframe flag: stand-in strike release geometry + RCS
+    // modelling. Explicit class flag (not inferred from rcs alone) so Workshop
+    // clones can opt in without guessing a numeric threshold.
+    lowObservable: cls.lowObservable === true,
     lengthM: cls.lengthM, beamM: cls.beamM, draftM: cls.draftM, displacementT: cls.displacementT,
     // Signature + altitude drive RCS/horizon-based detection (see sensors.js).
     rcsM2: defaultRcsM2(cls),

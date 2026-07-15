@@ -32,12 +32,36 @@ function radarHeightM(ship) {
 // referenced to a typical destroyer so ship-vs-ship play is near-unchanged while
 // small targets (a fighter flight) are only seen much closer and large or low-
 // observable hulls scale accordingly. Cheap: one pow() per detection candidate.
+//
+// Floor was 0.12 and silently collapsed every low-observable fighter onto the
+// same detection range. Floor 0.05 restores LO differentiation (F-22 vs F-35).
+//
+// Air targets get a modest domain lift: absolute fighter RCS (0.25–25 m²) is
+// three orders below a destroyer, so the destroyer-referenced fourth root
+// alone paints even a non-stealth F-15 only at ~38 NM on a 190 NM radar — far
+// inside real SPY-class search envelopes against high-altitude fighters — and
+// track quality at that knife-edge never cleared the 0.32 ID gate. The lift
+// keeps LO flights well inside non-stealth ones without letting any airframe
+// match a surface combatant's detectability (hard cap 0.72 of nominal range).
 const REF_RCS_M2 = 12000;
-function rcsRangeFactor(rcsM2) {
-  // Capped at 1.0 so nominal radar range stays the maximum (keeps the candidate
-  // broad-phase correct and surface play near-unchanged); RCS only shortens it
-  // for small/low-observable targets (a fighter flight, a stealth hull).
-  return clamp(Math.pow((rcsM2 ?? REF_RCS_M2) / REF_RCS_M2, 0.25), 0.12, 1.0);
+const RCS_RANGE_FLOOR = 0.05;
+const AIR_RCS_RANGE_LIFT = 2.4;
+const AIR_RCS_RANGE_CAP = 0.72;
+function rcsRangeFactor(rcsM2, domain = "sea") {
+  let factor = clamp(Math.pow((rcsM2 ?? REF_RCS_M2) / REF_RCS_M2, 0.25), RCS_RANGE_FLOOR, 1.0);
+  if (domain === "air") {
+    factor = clamp(factor * AIR_RCS_RANGE_LIFT, RCS_RANGE_FLOOR, AIR_RCS_RANGE_CAP);
+  }
+  return factor;
+}
+
+// Domain-aware unclassified label. Previously every low-quality track was
+// labelled "surface combatant", so an air contact was estimated as a DDG for
+// force posture and shown as a ship in the UI until firm classification.
+function unclassifiedContactLabel(domain) {
+  if (domain === "air") return "air contact";
+  if (domain === "ground") return "ground contact";
+  return "surface combatant";
 }
 
 // Same radar-range equation as rcsRangeFactor above, but referenced to the
@@ -361,7 +385,8 @@ export function scanSensors(sim, dt) {
       if (target.id === observer.id || target.side === observer.side || !target.alive) continue;
       // RCS-limited detection range (replaces the rigid radar range): a small or
       // low-observable target is only seen well inside the radar's nominal reach.
-      const effectiveRangeM = observer.radarRangeM * rcsRangeFactor(target.rcsM2);
+      const targetDomain = target.domain ?? "sea";
+      const effectiveRangeM = observer.radarRangeM * rcsRangeFactor(target.rcsM2, targetDomain);
       const dx = observer.x - target.x;
       const dy = observer.y - target.y;
       if (dx * dx + dy * dy > effectiveRangeM * effectiveRangeM) continue;
@@ -378,8 +403,8 @@ export function scanSensors(sim, dt) {
         setLocalTrack(sim, observer, target.id, {
           id: target.id,
           side: target.side,
-          domain: target.domain ?? "sea",
-          classification: quality > 0.7 ? target.className : "surface combatant",
+          domain: targetDomain,
+          classification: quality > 0.7 ? target.className : unclassifiedContactLabel(targetDomain),
           x: target.x + sim.rng.range(-uncertainty, uncertainty),
           y: target.y + sim.rng.range(-uncertainty, uncertainty),
           vx: Math.cos(target.heading) * target.speed,

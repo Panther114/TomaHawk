@@ -290,16 +290,28 @@ export function inventoryDividerHtml() {
 
 export function shipDisplayName(ship, separator = "-") {
   const rawId = String(ship?.id ?? "");
-  const dash = rawId.indexOf("-");
-  const suffix = dash >= 0 ? rawId.slice(dash + 1) : rawId.replace(/^[A-Z]+/, "");
-  // Vanilla hulls have a localized label (e.g. DDG -> 驱逐舰). Custom (modded)
-  // hulls have no translation, so `hullLabel` returns the raw i18n key; fall back
-  // to the user-chosen unit tag, which is the prefix already embedded in the id.
+  // Ids are `${prefix}-${seq}`. Prefer the class prefix (never contains "-") so
+  // a mistaken hyphenated tag cannot corrupt the numeric suffix. Fall back to
+  // the last "-" so custom tags like "G5-AA-12" still yield a useful label.
   const cls = SHIP_CLASSES[ship?.hull];
+  const prefix = cls?.prefix ? String(cls.prefix) : null;
+  let suffix;
+  let idLabel;
+  if (prefix && rawId.startsWith(`${prefix}-`)) {
+    suffix = rawId.slice(prefix.length + 1);
+    idLabel = prefix;
+  } else {
+    const dash = rawId.lastIndexOf("-");
+    suffix = dash >= 0 ? rawId.slice(dash + 1) : rawId.replace(/^[A-Z]+/, "");
+    idLabel = dash >= 0 ? rawId.slice(0, dash) : rawId.replace(/[-0-9].*$/, "");
+  }
+  // Vanilla hulls have a localized label (e.g. DDG -> 驱逐舰). Custom (modded)
+  // hulls have no translation, so `t` returns the raw i18n key; fall back to
+  // the user-chosen unit tag.
   const key = `ship.${(ship?.hull || "DDG").toLowerCase()}`;
   const localized = t(key);
   const label = localized === key
-    ? (getLang() === "zh" && cls?.prefixZh ? cls.prefixZh : (dash >= 0 ? rawId.slice(0, dash) : rawId.replace(/[-0-9].*$/, "")))
+    ? (getLang() === "zh" && cls?.prefixZh ? cls.prefixZh : idLabel)
     : localized;
   return suffix ? `${label}${separator}${suffix}` : label;
 }

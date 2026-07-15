@@ -442,8 +442,14 @@ function carriedStrike(ship) {
   return false;
 }
 
+// Low-observable stand-in strike profile: any LO airframe still holding a
+// fireable surface munition for the locked domain. Replaces the old
+// hull==="F35C" + AGM-84 hardcode so F-35A (JSOW) and Workshop LO clones share
+// the same doctrine path.
 function lowObservableAntiShipProfile(ship, surf) {
-  return ship.hull === "F35C" && (surf?.domain ?? "sea") === "sea" && (ship.loadout?.["AGM-84"] ?? 0) > 0;
+  if (!ship.lowObservable || !surf) return false;
+  const domain = surf.domain ?? "sea";
+  return loadoutCanEngageDomain(ship, domain);
 }
 
 // Whether this squadron's design carries any weapon at all (any hardpoint in

@@ -35,10 +35,12 @@ export const UNIT_KIND_DOMAIN = { naval: "sea", ground: "ground", aircraft: "air
 const BUILTIN_PREFIX_ZH = {
   DDG: "驱逐舰", CCG: "巡洋舰", BBG: "战列舰", FFG: "护卫舰",
   SAM: "防空", CDB: "岸舰", DEB: "鹰击", EWR: "预警",
-  F22: "5代空优", F35A: "5代对地", F35C: "5代反舰",
-  F15E: "4代对地", F15N: "4代反舰", F15C: "4代空优",
+  F22: "F-22", F35A: "F-35A", F35C: "F-35C",
+  F15E: "F-15E", F15N: "F-15N", F15C: "F-15C",
+  F15EX: "F-15EX", F16V: "F-16V",
   AWAC: "预警机", AFB: "机场"
 };
+// prefixZh is display-only; unit-tag `prefix` itself stays alphanumeric (no "-").
 
 /** True when this editor-JSON unit corresponds to a built-in (locked) type. */
 export function isBuiltinUnit(unit) {
@@ -251,6 +253,7 @@ function toAircraftClass(u) {
     enduranceS: Number(u.enduranceS) || 1800, rearmTimeS: Number(u.rearmTimeS) || 90,
     flares: Number.isFinite(Number(u.flares)) ? Math.round(Number(u.flares)) : 60,
     commandHub: !!u.commandHub,
+    lowObservable: !!u.lowObservable,
     ...(strikeSpecialist === undefined ? {} : { strikeSpecialist }),
     baseLoadout: numClean(u.baseLoadout)
   };
@@ -320,6 +323,7 @@ function fromShipClass(hull, c) {
       kind: "aircraft", id: hull, name: c.className, prefix: c.prefix, prefixZh: c.prefixZh ?? BUILTIN_PREFIX_ZH[hull] ?? "",
       squadronSize: Math.max(1, Math.round(c.damageResist ?? 4)),
       commandHub: c.commandHub === true,
+      lowObservable: c.lowObservable === true,
       strikeSpecialist: c.strikeSpecialist === true,
       rcsM2: defaultRcsM2(c),
       cruiseSpeedKt: c.cruiseSpeedKt, maxSpeedKt: c.maxSpeedKt,

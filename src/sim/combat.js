@@ -415,6 +415,21 @@ function launchMissile(sim, launcher, order) {
     order.targetX, order.targetY, order.targetVx ?? 0, order.targetVy ?? 0
   );
   const heading = Math.atan2(lead.y - launchPos.y, lead.x - launchPos.x);
+  // Cruise altitude (m): anti-ship weapons sea-skim, air-defence/strike rounds
+  // loft. AGM-154 (JSOW) is an air-to-GROUND glide weapon that reuses the
+  // anti_ship pipeline for targeting only — mid-altitude glide, not sea-skim.
+  const defaultCruiseAltM = order.missileId === "AGM-154"
+    ? 4500
+    : missileHasSurfaceTarget(spec) ? 30 : 7000;
+  const cruiseAltitudeM = Number.isFinite(spec.cruiseAltitudeM) ? spec.cruiseAltitudeM : defaultCruiseAltM;
+  // Air launches previously teleported to the cruise altitude on the launch
+  // tick (Harpoon from 9 km → 30 m sea-skim instantly). Real weapons start at
+  // the launch aircraft's altitude and descend toward their profile; ship/ground
+  // VLS still loft to the weapon's cruise altitude as before.
+  const isAirLaunch = launcher.domain === "air";
+  const launchAltitudeM = isAirLaunch
+    ? Math.max(0, launcher.altitudeM ?? cruiseAltitudeM)
+    : cruiseAltitudeM;
   const missile = {
     id: `M-${sim.missiles.length + 1}-${Math.floor(sim.time * 10)}`,
     side: launcher.side,
@@ -433,13 +448,9 @@ function launchMissile(sim, launcher, order) {
     aimX: lead.x,
     aimY: lead.y,
     phase: missileHasSurfaceTarget(spec) && order.targetDomain !== "air" && !String(order.targetId).startsWith("M-") ? "cruise" : "boost",
-    // Cruise altitude (m): anti-ship weapons sea-skim, air-defence/strike rounds
-    // loft. Drives the energy-bleed (drag) model and the detail display; the map
-    // stays top-down (altitude is not a third movement axis). AGM-154 (JSOW) is
-    // an air-to-GROUND glide weapon that reuses the anti_ship pipeline for
-    // targeting only (see missiles.js) — it flies a mid-altitude glide, not a
-    // sea-skim, so it is special-cased out of the anti_ship sea-skim default.
-    altitudeM: spec.cruiseAltitudeM ?? (order.missileId === "AGM-154" ? 4500 : missileHasSurfaceTarget(spec) ? 30 : 7000),
+    altitudeM: launchAltitudeM,
+    launchAltitudeM,
+    cruiseAltitudeM,
     launchSpeedMps: spec.speedMps,
     terminalReason: null,
     seaSkimming: false,
@@ -1196,9 +1207,14 @@ function offensiveWaveHold(sim, side, targetId, desired) {
   return pending >= Math.max(1, Math.min(4, Math.ceil(desired * 0.33)));
 }
 
+// LO stand-in release: any low-observable airframe (class flag) that still holds
+// a surface munition uses a low-altitude stand-in profile rather than lofted
+// max-range release. Previously hard-coded to hull === "F35C" + AGM-84 only.
 function airStrikeReleaseBlocked(shooter, target, weapon, track) {
-  if (shooter.domain !== "air" || shooter.hull !== "F35C" || weapon !== "AGM-84") return false;
-  if ((target.domain ?? "sea") !== "sea") return false;
+  if (shooter.domain !== "air" || !shooter.lowObservable) return false;
+  if (!missileHasSurfaceTarget(MISSILES[weapon])) return false;
+  const targetDomain = target.domain ?? track?.domain ?? "sea";
+  if (targetDomain !== "sea" && targetDomain !== "ground") return false;
   if (shooter.altitudeM > AIRCRAFT_TEMP_CONFIG.lowObservableReleaseAltitudeM) return true;
   return distance(shooter, track) > MISSILES[weapon].rangeM * AIRCRAFT_TEMP_CONFIG.lowObservableStandInFrac;
 }
@@ -1716,6 +1732,19 @@ export function updateMissiles(sim, dt) {
       missile.terminalReason = "intercept endgame";
     } else if (missile.flownM > 2 * NM) {
       missile.phase = "midcourse";
+    }
+
+    // Air-launched weapons: blend from launch altitude toward cruise profile
+    // over the first ~8 NM (O(1) per missile). Stops the previous teleport to
+    // sea-skim / glide altitude on the launch tick while still settling onto
+    // the weapon's design profile before terminal.
+    if (!missile.terminal
+      && Number.isFinite(missile.launchAltitudeM)
+      && Number.isFinite(missile.cruiseAltitudeM)
+      && missile.launchAltitudeM !== missile.cruiseAltitudeM) {
+      const blend = clamp(missile.flownM / (8 * NM), 0, 1);
+      missile.altitudeM = missile.launchAltitudeM
+        + (missile.cruiseAltitudeM - missile.launchAltitudeM) * blend;
     }
 
     // Select the aimpoint. Course is always computed on a velocity-lead

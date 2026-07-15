@@ -155,13 +155,16 @@ const AIRCRAFT_SCHEMA = {
   sections: [
     { title: { en: "Identity", zh: "标识" }, fields: [
       text("name", { en: "Squadron name", zh: "中队名称" }, { placeholder: "Strike Fighter Squadron" }),
-      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "F22", maxlength: 6 }),
-      text("prefixZh", { en: "Chinese unit tag", zh: "中文单位代号" }, { placeholder: "5代空优", maxlength: 12 }),
+      text("prefix", { en: "Unit tag", zh: "单位代号" }, { placeholder: "F-22", maxlength: 8 }),
+      text("prefixZh", { en: "Chinese unit tag", zh: "中文单位代号" }, { placeholder: "F-22", maxlength: 12 }),
       // A command hub tightens fleet-wide CEC track-sharing latency while it's
       // alive and airborne on mission (see shareTracks in sensors.js) -- a
       // moving-radar/AEW&C role, not a combat one. Any aircraft can opt in;
       // it's not tied to a specific hull.
       { key: "commandHub", type: "checkbox", label: { en: "Command hub (tightens fleet CEC latency while airborne)", zh: "指挥节点（在空时缩短全队协同交战延迟）" } },
+      // Low-observable: stand-in strike release + RCS modelling (see aircraft.js /
+      // combat.js). Explicit flag so Workshop clones do not guess from rcsM2 alone.
+      { key: "lowObservable", type: "checkbox", label: { en: "Low-observable (stand-in strike profile)", zh: "低可探测性（贴进释放剖面）" } },
       STRIKE_SPECIALIST_FIELD
     ] },
     { title: { en: "Squadron", zh: "中队" }, fields: [
@@ -196,6 +199,7 @@ const AIRCRAFT_SCHEMA = {
     ] }
   ]
 };
+// note: rcs floor 0.05 matches sensors.js RCS_RANGE_FLOOR gameplay envelope
 
 const AMMO_SCHEMA = {
   type: "ammo",
@@ -297,7 +301,7 @@ export const DEFAULTS = {
   }),
   aircraft: () => ({
     kind: "aircraft", name: "New Squadron", prefix: "VFX", prefixZh: "",
-    squadronSize: 4, commandHub: false, strikeSpecialist: false, rcsM2: 25,
+    squadronSize: 4, commandHub: false, lowObservable: false, strikeSpecialist: false, rcsM2: 25,
     cruiseSpeedKt: 420, maxSpeedKt: 540, accelMps2: 3.0, decelMps2: 3.0,
     turnRateDps: 6, turnRateFlankDps: 4, radarRangeNm: 90, radarIntervalS: 3,
     vlsCells: 20, enduranceS: 1800, rearmTimeS: 90, damageDegrade: 0.1, flares: 60,

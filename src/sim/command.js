@@ -201,18 +201,39 @@ export function strategicBearingEstimate(sim, side, from) {
 function offensivePriorForHull(hull) {
   if (offensivePriorCache.has(hull)) return offensivePriorCache.get(hull);
   const loadout = defaultLoadout(hull);
-  const prior = (loadout.MaritimeStrike ?? 0) + (loadout.TomahawkBlockV ?? 0)
-    + (loadout.DarkEagle ?? 0) * 2 + (loadout["SM-6"] ?? 0) * 0.35;
+  // Count every dedicated surface munition (naval ASCM/TLAM/LRHW and air-launched
+  // Harpoon/JSOW). Dual-role SM-6 still contributes a partial prior. Airframes
+  // without surface weapons (pure A2A) correctly return ~0 so they no longer
+  // inflate enemy strike depth via a DDG default.
+  let prior = (loadout.MaritimeStrike ?? 0) + (loadout.TomahawkBlockV ?? 0)
+    + (loadout.DarkEagle ?? 0) * 2 + (loadout["SM-6"] ?? 0) * 0.35
+    + (loadout["AGM-84"] ?? 0) + (loadout["AGM-154"] ?? 0);
   offensivePriorCache.set(hull, prior);
   return prior;
 }
 
 function trackHullEstimate(track) {
   const text = String(track?.classification ?? "").toLowerCase();
+  const domain = track?.domain ?? null;
+  // Air contacts are never estimated as ships — previously a low-quality air
+  // track labelled "surface combatant" inflated enemy offense with DDG priors.
+  // Do NOT bare-match "eagle" — that collides with "Dark Eagle" ground batteries.
+  if (domain === "air" || /air contact|raptor|lightning|f-1[56]|viper|fighter|squadron|hawkeye|awac|aew|strike eagle|eagle ii/.test(text)) {
+    if (/f-?22|raptor/.test(text)) return "F22";
+    if (/f-?35a|lightning ii approx\.?$|lightning.*\ba\b/.test(text)) return "F35A";
+    if (/f-?35c|lightning.*\bc\b/.test(text)) return "F35C";
+    if (/f-?15ex|eagle ii/.test(text)) return "F15EX";
+    if (/f-?15e|strike eagle/.test(text)) return "F15E";
+    if (/f-?15c|f-15c eagle/.test(text)) return "F15C";
+    if (/f-?15n|sea strike/.test(text)) return "F15N";
+    if (/f-?16|viper/.test(text)) return "F16V";
+    if (/hawkeye|awac|aew/.test(text)) return "AWAC";
+    if (domain === "air") return "F15C";
+  }
   // Ground emplacements first — their class strings contain words ("battery",
   // "coastal") that would otherwise mis-match naval patterns.
   if (/\bsam\b|coastal sam/.test(text)) return "SAM";
-  if (/early.?warn|\bewr\b|radar/.test(text)) return "EWR";
+  if (/early.?warn|\bewr\b|radar|ground contact/.test(text)) return "EWR";
   if (/dark eagle|\bdeb\b/.test(text)) return "DEB";
   if (/coastal defense|coastal defence|defense battery|defence battery|\bcdb\b/.test(text)) return "CDB";
   if (/battleship|trump|bbg/.test(text)) return "BBG";
@@ -220,6 +241,7 @@ function trackHullEstimate(track) {
   if (/frigate|constellation|ffg/.test(text)) return "FFG";
   if (/destroyer|burke|ddg/.test(text)) return "DDG";
   if (/surface combatant/.test(text)) return "DDG";
+  if (domain === "ground") return "SAM";
   return null;
 }
 

@@ -46,6 +46,14 @@ Do not add classified, leaked, or operationally sensitive data. If a parameter i
 - Chaff: background reference only; not implemented in the current sim
 - AN/SLQ-32 SEWIP: background reference only; not implemented in the current sim
 
+### Aircraft (player airframes — public approximations only)
+- F-22 Raptor: public USAF / Lockheed materials — Mach ~2.25 class dash, supercruise, ~9 g, AN/APG-77-class AESA, internal AAM carriage, very low observability (aspect-averaged flight RCS for sim, not single-ship frontal "marble" estimates)
+- F-35A / F-35C Lightning II: public JSF programme materials — Mach ~1.6, ~7 g (A) / lower for C, AN/APG-81, LO; C has larger wing/fuel for carrier ops
+- F-15C Eagle / F-15E Strike Eagle: public USAF fact sheets — Mach 2.5 class, large non-stealth RCS, deep external load (E)
+- F-15EX Eagle II: public USAF / Boeing programme materials — APG-82 AESA, EPAWSS, very large external magazine
+- F-16V (Block 70/72) Viper: public Lockheed / USAF materials — APG-83 AESA class, high agility, shorter combat radius than F-15 family
+- All speeds, RCS, radar reach, and loadouts in the sim are **open-source envelopes for sandbox play**, not classified or operationally authoritative data
+
 ### Sensors
 - Radar horizon: standard 4/3 Earth-radius atmospheric refraction model
 - ESM passive detection: background reference only; not implemented in the current sim
