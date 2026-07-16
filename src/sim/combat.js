@@ -994,20 +994,16 @@ export function isHypersonicOnlyInterceptor(spec) {
 // Returns null for cruise/aircraft threats so THAAD magazines are never wasted.
 function chooseHypersonicOnlyWeapon(ship, threat, rangeM, samOpen) {
   if (!samOpen || !isHighEnergyThreat(threat)) return null;
-  const hull = ship.hull || "DDG";
-  const baseLoad = defaultLoadout(hull);
   let best = null;
   const lo = ship.loadout;
   if (!lo) return null;
   for (const id of Object.keys(lo)) {
-    const n = lo[id];
-    if (!(n > 0)) continue;
+    if (!(lo[id] > 0)) continue;
     const spec = MISSILES[id];
     if (!spec || !isHypersonicOnlyInterceptor(spec)) continue;
     if (!missileCanTarget(spec, "missile")) continue;
     if (rangeM > spec.rangeM) continue;
-    // Hypersonic raids always release from reserve — survival layer (do not
-    // apply magazineReserveRatio for dedicated BMD interceptors).
+    // Hypersonic raids always release — survival layer (no magazine reserve).
     if (!best || spec.rangeM > MISSILES[best].rangeM || spec.speedMps > (MISSILES[best].speedMps || 0)) {
       best = id;
     }
