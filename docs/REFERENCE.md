@@ -38,7 +38,7 @@ desired.
 #### Terrain, maps, and ground forces
 - Selectable tactical maps: a border-less **Open Sea** and a projected global coastline layer (Natural Earth 1:50m).
 - Binary water/land terrain shared by the renderer and the simulation: coastal detour navigation, swept-segment land-collision guards, and placement validation.
-- Four fixed land-based emplacement types — **SAM** (coastal air defence), **CDB** (coastal anti-ship battery with an over-the-horizon targeting radar), **DEB** (Dark Eagle hypersonic strike battery), and **EWR** (long-range early-warning radar) — that sense, share, fire, and are targeted through the same pipeline as ships, but never move.
+- Fixed ground emplacements — **SAM**, **THAAD** (hypersonic/BM defense only), **CDB**, **DEB** (Dark Eagle), **EWR**, **AFB** — plus naval **CVN** (moving airfield). Same sense/share/fire pipeline as ships; fixed ground never moves.
 
 #### Sensors and information quality
 - Radar-generated tracks with quality, uncertainty, age, and source metadata.
@@ -104,43 +104,39 @@ Current hull catalog in `src/sim/ships.js`:
 | `CCG` | Ticonderoga-class cruiser approx. | 122 | 32.5 kn | heavier area air defense |
 | `BBG` | arsenal battleship concept approx. | 288 | 24 kn | extreme magazine depth |
 | `FFG` | Constellation-class frigate approx. | 32 | 26 kn | lighter, agile escort |
+| `CVN` | Nimitz/Ford-class approx. | 24 | 30 kn | carrier — moving airfield for carrier-capable air |
 
 Fixed ground emplacements (`domain: "ground"`, `isFixed: true`, speed 0):
 
 | Unit | Role | Radar | Weapons |
 | --- | --- | ---: | --- |
 | `SAM` | coastal surface-to-air battery | 160 nm | `SM-2MR`, `SM-6`, `ESSM` |
+| `THAAD` | hypersonic / BM defense only | 500 nm | `THAAD`×48 |
 | `CDB` | coastal anti-ship battery | 250 nm (OTH) | `MaritimeStrike`, `TomahawkBlockV` |
 | `DEB` | Dark Eagle hypersonic strike battery | 500 nm | `DarkEagle` |
 | `EWR` | early-warning radar (no weapons) | 400 nm | — |
+| `AFB` | airfield / rearm-refuel (land **or** water) | 180 nm | — |
 
-Ground units must be placed on land, never move, never act as the formation
-guide, and are never re-seated to water; they otherwise share the ship object
-shape, the CEC picture, and the engagement pipeline.
+Ground units must be placed on land (except `AFB`), never move as formation
+guides, and share the ship object shape, CEC picture, and engagement pipeline.
+`THAAD` never engages cruise missiles or aircraft — only high-energy threats.
 
-Air units (`domain: "air"`):
+Air units (`domain: "air"`) — rigid role loadouts; HP pool = plane count:
 
-| Unit | Role | Radar | Weapons |
-| --- | --- | ---: | --- |
-| `F22` | 5th-gen air-superiority-only squadron (F-22 approx.) | 120 nm | `AIM-120D`, `AIM-9X` |
-| `F35A` | 5th-gen anti-ground strike squadron (F-35A approx.) | 110 nm | `AIM-120D`, `AIM-9X`, `AGM-154` |
-| `F35C` | 5th-gen anti-ship strike squadron (F-35C approx.) | 110 nm | `AIM-120D`, `AIM-9X`, `AGM-84` |
-| `F15E` | 4.5-gen anti-ground strike squadron (F-15E approx.) | 90 nm | `AIM-120C`, `AIM-9X`, `AGM-154` |
-| `F15N` | 4.5-gen anti-ship strike squadron (fictional) | 90 nm | `AIM-120C`, `AIM-9X`, `AGM-84` |
-| `F15C` | 4.5-gen air-superiority-only squadron (F-15C approx.) | 95 nm | `AIM-120C`, `AIM-9X` |
-| `AFB` | airfield / rearm-refuel node (placeable on land **or** water) | 180 nm | — |
+| Unit | Role | Radar | Weapons | Carrier |
+| --- | --- | ---: | --- | --- |
+| `F22` | 5th A2A (Raptor approx.) | 130 nm | `AIM-120D`, `AIM-9X` | no |
+| `F35A` | 5th ground strike | 120 nm | `AIM-120D`, `AIM-9X`, `AGM-154` | no |
+| `F35C` | 5th anti-ship | 120 nm | `AIM-120D`, `AIM-9X`, `AGM-84` | yes |
+| `F15E` | 4th ground strike | 95 nm | `AIM-120C`, `AIM-9X`, `AGM-154` | no |
+| `F15N` | 4th anti-ship (fictional) | 95 nm | `AIM-120C`, `AIM-9X`, `AGM-84` | yes |
+| `F15C` | 4th A2A | 100 nm | `AIM-120C`, `AIM-9X` | no |
+| `F15EX` | multirole | 115 nm | `AIM-120D`, `AIM-9X`, JSOW, Harpoon | no |
+| `F16V` | light multirole | 85 nm | `AIM-120C`, `AIM-9X`, `AGM-154` | no |
+| `AWAC` | AEW&C command hub (E-2D approx.) | 350 nm | unarmed | yes |
 
-Each hull has a **rigid** default loadout that fixes its role: an
-air-superiority hull carries no strike weapon at all, an anti-ground hull
-carries `AGM-154` (JSOW) and no `AGM-84`, an anti-ship hull carries `AGM-84`
-and no `AGM-154`. A squadron is **one** entity whose hit-point pool equals its plane count, so each
-hit downs one aircraft and its combat power scales with the survivors. It flies a
-low-altitude stand-off strike (ingress → masked descent → release at the
-stand-off ring → egress), dogfights with radar BVR and infrared WVR missiles
-(evasive breaks + flares), and returns to a friendly airfield to rearm/refuel and
-relaunch. See `docs/SIMULATION_ASSUMPTIONS.md` for the full doctrine.
-Fighter fuel is modeled as combat radius with return reserve: about 600 nm for
-5th-gen fighters and 680 nm for 4.5-gen fighters.
+Squadrons RTB/rearm at friendly `AFB` or, if carrier-capable, at `CVN`. See
+`docs/SIMULATION_ASSUMPTIONS.md` for doctrine detail.
 
 Each ship instance includes:
 - kinematics,
@@ -159,6 +155,7 @@ Defined in `src/sim/missiles.js`:
 | --- | --- | --- | ---: |
 | `SM-2MR` | `SM2` | area air defense | 167 km |
 | `ESSM` | `ESSM` | point defense | 52 km |
+| `THAAD` | `THAAD` | high-alt BMD vs hypersonic only | 204 km |
 | `MaritimeStrike` | `MSTK` | anti-surface cruise strike | 222 km |
 | `TomahawkBlockV` | `TLAM` | long-range anti-surface strike | 1,204 km |
 | `DarkEagle` | `LRHW` | ground-launched hypersonic surface strike | 2,778 km |
@@ -186,7 +183,7 @@ transition, guidance style, reserve behavior, and (for air-to-air) the no-escape
 
 #### Setup mode
 - Left-click with `BLUE` or `RED` tool selected to place units.
-- Select the unit type from the class dropdown — **Naval** (`DDG`, `CCG`, `BBG`, `FFG`) or **Ground** (`SAM`, `CDB`, `DEB`, `EWR`). Sea units must be placed on water and ground units on land.
+- Select the unit type from the class dropdown — **Naval** (`DDG`/`CCG`/`BBG`/`FFG`/`CVN`), **Ground** (`SAM`/`THAAD`/`CDB`/`DEB`/`EWR`/`AFB`), or **Air**. Sea units (incl. CVN) on water; ground on land (`AFB` either).
 - Left-drag units to reposition them during setup (sea units stay on water, ground units stay on land).
 - Right-click ship to select it.
 - Right-drag/right-click selection supports additive detail-card selection.
@@ -254,7 +251,7 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 #### 地形、地图与陆基力量
 - 可选战术地图：无边界的**开放海域**，以及投影后的全球海岸线图层（Natural Earth 1:50m）。
 - 渲染与仿真共享“水/陆”二元地形：沿岸绕行导航、连续扫掠的陆地碰撞防护，以及部署校验。
-- 四种固定式陆基阵地——**SAM**（岸基防空）、**CDB**（带超视距目标雷达的岸基反舰）、**DEB**（“暗鹰”高超声速打击）、**EWR**（远程预警雷达）——与海上单位走同一套感知、共享、开火与被打击流程，但永不移动。
+- 固定陆基：`SAM`、`THAAD`（仅高超/弹道）、`CDB`、`DEB`（暗鹰）、`EWR`、`AFB`；海上另有 `CVN`（移动机场）。陆基固定阵地永不移动，其余流程与舰艇相同。
 
 #### 传感器与信息质量
 - 雷达生成的航迹包含质量、误差、不确定性、时效与来源信息。
@@ -263,13 +260,10 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - 已失效目标会被清理，旧航迹会随时间退化。
 
 #### 武器与战斗结算
-- 对地/对海武器：`MaritimeStrike`、`TomahawkBlockV`、`DarkEagle`。
-- 防空/反导武器：`SM-2MR`、`ESSM`。
-- 双用途武器：`SM-6`。
-- 支持发射队列、齐射间隔、发射冷却、以及“防御优先”的调度逻辑。
-- 使用速度前置截获引导、末段 seeker 转换、目标丢失自毁。
-- 分层防御包括区域防空、点防御和 CIWS。
-- 舰艇采用任务杀伤/子系统退化式损伤模型。
+- 对地/对海：`MaritimeStrike`、`TomahawkBlockV`、`DarkEagle`。
+- 防空/反导：`SM-2MR`、`ESSM`、`THAAD`（仅高超）。
+- 双用途：`SM-6`。
+- 发射队列、齐射间隔、冷却、防御优先调度；分层防空 + CIWS；任务杀伤/子系统损伤。
 
 #### 界面与操作流
 - 全屏战术地图画布。
@@ -300,86 +294,36 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 
 ### 4. 数据模型与主要实体
 
-#### 舰艇类别
-当前 `src/sim/ships.js` 内置 4 类舰体：
+#### 舰艇 / 陆基 / 空中（与 README 兵力表一致）
 
-| 舰体代号 | 近似原型 | VLS 单元 | 最高航速 | 主要定位 |
-| --- | --- | ---: | ---: | --- |
-| `DDG` | Arleigh Burke Flight IIA 近似型 | 96 | 31 节 | 平衡型驱逐舰 |
-| `CCG` | Ticonderoga 巡洋舰近似型 | 122 | 32.5 节 | 更强区域防空 |
-| `BBG` | Arsenal Battleship 概念近似型 | 288 | 24 节 | 超大弹药深度 |
-| `FFG` | Constellation 护卫舰近似型 | 32 | 26 节 | 轻型灵活护航 |
+| 舰体 | 近似原型 | VLS | 航速 | 定位 |
+| --- | ---: | ---: | ---: | --- |
+| `DDG` / `CCG` / `BBG` / `FFG` | 见英文表 | 96–288 | 24–32.5 节 | 驱逐/巡洋/武库/护卫 |
+| `CVN` | 尼米兹/福特近似 | 24 | 30 节 | 航母·移动机场 |
 
-固定式陆基阵地（`domain: "ground"`、`isFixed: true`、航速为 0）：
-
-| 单位 | 定位 | 雷达 | 武器 |
+| 陆基 | 定位 | 雷达 | 武器 |
 | --- | --- | ---: | --- |
-| `SAM` | 岸基防空阵地 | 160 海里 | `SM-2MR`、`SM-6`、`ESSM` |
-| `CDB` | 岸基反舰阵地 | 250 海里（超视距） | `MaritimeStrike`、`TomahawkBlockV` |
-| `DEB` | “暗鹰”高超声速打击阵地 | 500 海里 | `DarkEagle` |
-| `EWR` | 预警雷达（无武器） | 400 海里 | — |
+| `SAM` | 岸基防空 | 160 nm | SM-2 / SM-6 / ESSM |
+| `THAAD` | **仅高超/弹道** | 500 nm | THAAD×48 |
+| `CDB` / `DEB` / `EWR` / `AFB` | 岸基打击 / 暗鹰 / 预警 / 机场 | 见英文表 | 见英文表 |
 
-陆基单位必须部署在陆地，永不移动、不担任编队指挥、也不会被重置到水面；其余方面与
-舰艇共享对象结构、CEC 态势图与交战流程。
+| 空中 | 定位 | 舰载 |
+| --- | --- | --- |
+| `F22` `F35A` `F35C` | 5 代空优/对地/反舰 | 仅 F35C |
+| `F15C` `F15E` `F15N` `F15EX` `F16V` | 4 代空优/打击/多用途 | F15N |
+| `AWAC` | 预警指挥节点 | 是 |
 
-空中单位（`domain: "air"`）：
+机队在 `AFB` 或（舰载型）`CVN` 再装挂。完整条令见 `docs/SIMULATION_ASSUMPTIONS.md`。
 
-| 单位 | 定位 | 雷达 | 武器 |
-| --- | --- | ---: | --- |
-| `F22` | 5 代纯空优中队（F-22 近似型） | 120 海里 | `AIM-120D`、`AIM-9X` |
-| `F35A` | 5 代对地打击中队（F-35A 近似型） | 110 海里 | `AIM-120D`、`AIM-9X`、`AGM-154` |
-| `F35C` | 5 代反舰打击中队（F-35C 近似型） | 110 海里 | `AIM-120D`、`AIM-9X`、`AGM-84` |
-| `F15E` | 4.5 代对地打击中队（F-15E 近似型） | 90 海里 | `AIM-120C`、`AIM-9X`、`AGM-154` |
-| `F15N` | 4.5 代反舰打击中队（虚构型号） | 90 海里 | `AIM-120C`、`AIM-9X`、`AGM-84` |
-| `F15C` | 4.5 代纯空优中队（F-15C 近似型） | 95 海里 | `AIM-120C`、`AIM-9X` |
-| `AFB` | 机场 / 再装挂-加油节点（可部署于陆地**或**水面） | 180 海里 | — |
+#### 导弹集合（摘要）
 
-每型飞机都有**固定**的默认装载，直接决定其定位：纯空优机型完全不携带对面武器，
-对地机型携带 `AGM-154`（JSOW）且不携带 `AGM-84`，反舰机型携带 `AGM-84` 且不携带
-`AGM-154`。一个中队是**单个**实体，其生命值池即为存活飞机数，每次命中击落一架，
-战斗力随存活数量下降。它执行低空防区外打击（突防 → 下降规避 → 环绕发射 → 脱
-离），使用雷达超视距与红外近距导弹格斗（机动规避 + 红外诱饵），并返回友方机场
-再装挂、加油后重新出击。完整条令见 `docs/SIMULATION_ASSUMPTIONS.md`。
-战斗机燃油按带返航余量的作战半径建模：5 代机约 600 海里，4.5 代机约 680 海里。
-
-每个舰艇对象都包含：
-- 机动参数；
-- 雷达状态；
-- 导弹装载；
-- doctrine 与 ROE；
-- 航迹表；
-- 发射队列与冷却；
-- 子系统健康；
-- 编队角色与防空扇区。
-
-#### 导弹集合
-定义于 `src/sim/missiles.js`：
-
-| 导弹 | 地图短标 | 角色 | 射程 |
-| --- | --- | --- | ---: |
-| `SM-2MR` | `SM2` | 区域防空 | 167 公里 |
-| `ESSM` | `ESSM` | 点防御 | 52 公里 |
-| `MaritimeStrike` | `MSTK` | 对海巡航打击 | 222 公里 |
-| `TomahawkBlockV` | `TLAM` | 远程对海打击 | 1,204 公里 |
-| `DarkEagle` | `LRHW` | 陆基高超声速对地/对海打击 | 2,778 公里 |
-| `SM-6` | `SM6` | 防空/对海双用途 | 370 公里 |
-| `AIM-120C` | `120C` | 超视距主动雷达空空导弹 | 102 公里 |
-| `AIM-120D` | `120D` | 扩展包线超视距主动雷达空空导弹 | 152 公里 |
-| `AIM-9X` | `AIM9` | 近距红外空空导弹（可被诱饵弹欺骗） | 33 公里 |
-| `AGM-84` | `HPN` | 机载海面掠飞反舰导弹 | 124 公里 |
-| `AGM-154` | `JSOW` | 机载防区外对地打击武器 | 130 公里 |
-
-武器定义中包含射程、速度、Pk、齐射规模、发射间隔、末段 seeker 距离、制导方式与保留比例等参数。
+`SM-2MR` / `ESSM` / `SM-6` / **`THAAD`（仅高超）** / `MaritimeStrike` / `TomahawkBlockV` /
+`DarkEagle` / `AIM-120C`·`D` / `AIM-9X` / `AGM-84` / `AGM-154`。射程与角色见 README 武器表。
 
 ### 5. 重要仿真概念
 
-- **非完美信息：** 舰艇决策基于航迹，不基于敌方真实坐标。
-- **CEC 式协同图景：** 同阵营单位可融合航迹并实现类似 engage-on-remote 的行为。
-- **编队指挥：** 仿真会指定 OTC/AAWC 类角色并划分防空责任扇区。AAWC 的中文标签为 `防空指挥`。
-- **分层防御：** 远程拦截、近程点防御、最后由 CIWS 兜底。
-- **协同饱和打击：** 多个平台可以对齐释放窗口形成战术波次。
-- **确定性：** 相同 seed 与输入将走同一规则路径。
-- **可序列化：** 保存/恢复不会丢失关键状态，如航迹、发射队列和冷却时间。
+- **非完美信息 / CEC / OTC·AAWC / 分层防空 / 饱和打击 / 确定性 / 可序列化** — 同英文节。
+- **终局：** 一方全灭，或双方进攻弹药耗尽后的**和局**。
 
 ### 6. UI 控制与操作方式
 
