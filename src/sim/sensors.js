@@ -130,6 +130,10 @@ export function missileDetectionEnvelope(observer, missile) {
       targetHeightM = missile.terminal ? 1400 : 7000;
       baseChance = 0.92;
       break;
+    case "THAAD": // high-altitude hit-to-kill BMD interceptor
+      targetHeightM = missile.terminal ? 25000 : 50000;
+      baseChance = 0.94;
+      break;
     case "SM-2MR":
       targetHeightM = missile.terminal ? 900 : 5000;
       baseChance = 0.88;

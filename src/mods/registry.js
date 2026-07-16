@@ -34,7 +34,7 @@ export const UNIT_KIND_DOMAIN = { naval: "sea", ground: "ground", aircraft: "air
 
 const BUILTIN_PREFIX_ZH = {
   DDG: "驱逐舰", CCG: "巡洋舰", BBG: "战列舰", FFG: "护卫舰",
-  SAM: "防空", CDB: "岸舰", DEB: "鹰击", EWR: "预警",
+  SAM: "防空", THAAD: "萨德", CDB: "岸舰", DEB: "鹰击", EWR: "预警",
   F22: "F-22", F35A: "F-35A", F35C: "F-35C",
   F15E: "F-15E", F15N: "F-15N", F15C: "F-15C",
   F15EX: "F-15EX", F16V: "F-16V",
@@ -170,6 +170,11 @@ function toMissileSpec(u) {
   }
   if (strategic === true) spec.strategic = true;
   if (strategic === false) spec.strategic = false;
+  // THAAD-class: only engage high-energy threats (see chooseDefensiveWeapon).
+  if (u.hypersonicOnly === true) {
+    spec.hypersonicOnly = true;
+    spec.engageProfile = "high_energy_only";
+  }
   return spec;
 }
 
@@ -311,6 +316,7 @@ function fromMissileSpec(id, s) {
     cruiseAltitudeM: Number.isFinite(s.cruiseAltitudeM) ? s.cruiseAltitudeM : 0,
     terminalAltitudeM: Number.isFinite(s.terminalAltitudeM) ? s.terminalAltitudeM : 0,
     strategic: !!strategic,
+    hypersonicOnly: !!(s.hypersonicOnly || s.engageProfile === "high_energy_only"),
     retargetable: !!s.retargetable, selfDestructOnLoss: !!s.selfDestructOnLoss
   };
 }

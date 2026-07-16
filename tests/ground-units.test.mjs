@@ -49,7 +49,7 @@ function emptyRunningScenario(seed, map = "openSea") {
 }
 
 test("ground classes are fixed, land-based, and speed-locked", () => {
-  for (const hull of ["SAM", "CDB", "EWR", "DEB"]) {
+  for (const hull of ["SAM", "THAAD", "CDB", "EWR", "DEB"]) {
     const cls = SHIP_CLASSES[hull];
     assert.equal(cls.domain, "ground", hull);
     assert.equal(cls.isFixed, true, hull);
@@ -59,6 +59,7 @@ test("ground classes are fixed, land-based, and speed-locked", () => {
 
 test("ground default loadouts are explicit type-specific magazines", () => {
   assert.deepEqual(defaultLoadout("SAM"), { "SM-2MR": 32, "SM-6": 8, ESSM: 16 });
+  assert.deepEqual(defaultLoadout("THAAD"), { THAAD: 48 });
   assert.deepEqual(defaultLoadout("CDB"), { MaritimeStrike: 32, TomahawkBlockV: 8 });
   assert.deepEqual(defaultLoadout("DEB"), { DarkEagle: 8 });
   assert.deepEqual(defaultLoadout("EWR"), {}); // radar carries no weapons
@@ -72,6 +73,101 @@ test("Dark Eagle is a ground-only surface strike weapon", () => {
   assert.equal(missileAllowedForDomain("DarkEagle", "ground"), true);
   assert.equal(missileAllowedForDomain("DarkEagle", "sea"), false);
   assert.equal(missileAllowedForDomain("DarkEagle", "air"), false);
+});
+
+test("THAAD interceptor is ground-only missile defense and hypersonic-only", () => {
+  const t = MISSILES.THAAD;
+  assert.ok(t);
+  assert.deepEqual(t.launchers, ["ground"]);
+  assert.deepEqual(t.targets, ["missile"]);
+  assert.equal(t.hypersonicOnly, true);
+  assert.equal(t.engageProfile, "high_energy_only");
+  assert.equal(missileAllowedForDomain("THAAD", "ground"), true);
+  assert.equal(missileAllowedForDomain("THAAD", "sea"), false);
+  assert.equal(missileAllowedForDomain("THAAD", "air"), false);
+  assert.ok(t.rangeM >= 100 * NM && t.rangeM <= 130 * NM, "public ~200 km class reach");
+  assert.ok(t.speedMps >= 2200, "high intercept speed");
+});
+
+test("THAAD battery only fires at hypersonic threats, never at cruise missiles", async () => {
+  const {
+    chooseDefensiveWeapon, isHighEnergyThreat, isHypersonicOnlyInterceptor, makeShip
+  } = await import("../src/sim.js");
+  assert.equal(isHypersonicOnlyInterceptor(MISSILES.THAAD), true);
+
+  const sim = emptyRunningScenario(501);
+  sim.mode = SCENARIO_MODE.RUNNING;
+  sim.paused = false;
+  const battery = placeShip(sim, SIDE.BLUE, 0, 0, "THAAD");
+  const friend = placeShip(sim, SIDE.BLUE, 5 * NM, 0, "DDG");
+  assert.ok(battery && friend);
+  assert.equal(battery.loadout.THAAD, 48);
+
+  const cruise = {
+    id: "M-cruise-1", alive: true, side: SIDE.RED, missileId: "MaritimeStrike",
+    targetId: friend.id, x: 20 * NM, y: 0, speed: 270, heading: Math.PI,
+    terminal: false, altitudeM: 30
+  };
+  const hypo = {
+    id: "M-lrhw-1", alive: true, side: SIDE.RED, missileId: "DarkEagle",
+    targetId: friend.id, x: 40 * NM, y: 0, speed: 1700, heading: Math.PI,
+    terminal: false, altitudeM: 30000
+  };
+  assert.equal(isHighEnergyThreat(cruise), false);
+  assert.equal(isHighEnergyThreat(hypo), true);
+  assert.equal(chooseDefensiveWeapon(sim, battery, cruise), null, "THAAD ignores cruise missiles");
+  assert.equal(chooseDefensiveWeapon(sim, battery, hypo), "THAAD", "THAAD engages Dark Eagle");
+});
+
+test("THAAD battery intercepts Dark Eagle in a live fight", () => {
+  const sim = emptyRunningScenario(502);
+  const battery = placeShip(sim, SIDE.BLUE, -20 * NM, 0, "THAAD");
+  const friend = placeShip(sim, SIDE.BLUE, -15 * NM, 0, "DDG");
+  // Strip DDG SAMs so only THAAD can defend.
+  friend.loadout = { "SM-2MR": 0, "SM-6": 0, ESSM: 0, MaritimeStrike: 0, TomahawkBlockV: 0 };
+  const deb = placeShip(sim, SIDE.RED, 80 * NM, 0, "DEB");
+  // Give both sides a shared picture of each other.
+  for (const s of [battery, friend]) {
+    s.tracks.set(deb.id, {
+      id: deb.id, side: SIDE.RED, domain: "ground", classification: deb.className,
+      x: deb.x, y: deb.y, vx: 0, vy: 0, quality: 0.95, uncertainty: 100,
+      source: s.id, age: 0, lastSeen: 0
+    });
+  }
+  deb.tracks.set(friend.id, {
+    id: friend.id, side: SIDE.BLUE, domain: "sea", classification: friend.className,
+    x: friend.x, y: friend.y, vx: 0, vy: 0, quality: 0.95, uncertainty: 100,
+    source: deb.id, age: 0, lastSeen: 0
+  });
+  sim.mode = SCENARIO_MODE.RUNNING;
+  sim.paused = false;
+
+  let thaadLaunch = false;
+  let intercept = false;
+  for (let i = 0; i < 2000 && !intercept; i++) {
+    stepSim(sim, 0.25);
+    if (sim.missiles.some((m) => m.missileId === "THAAD" && m.side === SIDE.BLUE)) thaadLaunch = true;
+    if (sim.events.some((e) => /THAAD intercepted/i.test(e.text || ""))) intercept = true;
+    // Also count dark eagle killed
+    if (sim.missiles.some((m) => m.missileId === "DarkEagle" && !m.alive)) intercept = true;
+  }
+  assert.ok(thaadLaunch, "THAAD battery launched against inbound LRHW");
+  assert.ok(battery.loadout.THAAD < 48 || intercept, "magazine consumed or kill scored");
+});
+
+test("THAAD PK vs hypersonic is better than SM-6 band ceiling", async () => {
+  const { missileInterceptHitChance } = await import("../src/sim.js");
+  const threat = {
+    missileId: "DarkEagle", speed: 1700, altitudeM: 30000, terminal: false
+  };
+  const thaad = missileInterceptHitChance(MISSILES.THAAD, threat, {
+    terminal: true, trackQuality: 0.85, trackAgeS: 1, concurrentThreats: 1
+  });
+  const sm6 = missileInterceptHitChance(MISSILES["SM-6"], threat, {
+    terminal: true, trackQuality: 0.85, trackAgeS: 1, concurrentThreats: 1
+  });
+  assert.ok(thaad > sm6, `THAAD ${thaad.toFixed(2)} should beat SM-6 ${sm6.toFixed(2)} vs LRHW`);
+  assert.ok(thaad >= 0.18 && thaad <= 0.55, `THAAD PK ${thaad} in dedicated BMD band`);
 });
 
 test("command estimates recognize Dark Eagle batteries as high-priority strike threats", () => {

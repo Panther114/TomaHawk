@@ -104,6 +104,7 @@ const strings = {
 
   // Ground unit class labels / descriptions
   "ground.sam": { en: "SAM", zh: "防空" },
+  "ground.thaad": { en: "THAAD", zh: "萨德" },
   "ground.cdb": { en: "Coast Strike", zh: "岸基打击" },
   "ground.deb": { en: "Dark Eagle", zh: "暗鹰" },
   "ground.ewr": { en: "EW Radar", zh: "预警雷达" },
@@ -111,6 +112,7 @@ const strings = {
   "naval.group":  { en: "Naval",  zh: "海上" },
   "air.group":    { en: "Air",    zh: "空中" },
   "ship.sam":  { en: "SAM", zh: "防空" },
+  "ship.thaad":{ en: "THAAD", zh: "萨德" },
   "ship.cdb":  { en: "Coast Strike", zh: "岸基打击" },
   "ship.deb":  { en: "Dark Eagle", zh: "暗鹰" },
   "ship.ewr":  { en: "EW Radar", zh: "预警雷达" },

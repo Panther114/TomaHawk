@@ -175,6 +175,49 @@ export const MISSILES = {
     retargetable: false,
     selfDestructOnLoss: true
   },
+  // THAAD interceptor (public envelope): hit-to-kill, high-altitude ballistic /
+  // hypersonic defense. ~200 km class reach, very high intercept speed. It is
+  // NOT a cruise-missile or aircraft weapon — engageProfile high_energy_only
+  // gates fire planning to isHighEnergyThreat only (see chooseDefensiveWeapon).
+  "THAAD": {
+    name: "THAAD",
+    displayName: "THAAD Interceptor",
+    shortLabel: "THAAD",
+    role: "high-altitude hypersonic / ballistic missile defense approx.",
+    category: "ship_sam",
+    platforms: ["ground"],
+    launchers: ["ground"],
+    targets: ["missile"],
+    rcsM2: 0.12,
+    symbol: "triangle",
+    // Public open-source envelope ~200 km (~108 NM); use 110 NM sim reach.
+    rangeM: 110 * NM,
+    // Interceptor ~Mach 8 class (~2.7 km/s) public-approx; model 2600 m/s.
+    speedMps: 2600,
+    cellCost: 1,
+    // Base PK before track/saturation/high-energy terms; designed for BM/LRHW.
+    pk: 0.72,
+    salvo: 1,
+    target: "missile",
+    preferredMinRangeM: 15 * NM,
+    preferredMaxRangeM: 110 * NM,
+    interceptorsPerThreat: 1,
+    magazineReserveRatio: 0.08,
+    launchIntervalS: 3.5,
+    salvoSpacingS: 4.0,
+    ringStyle: "dotted",
+    maxTurnRateDps: 28,
+    seekerRangeM: 20 * NM,
+    cruiseAltitudeM: 50000,
+    terminalAltitudeM: 30000,
+    terminalSeaSkimming: false,
+    // Only fire at Mach-5+ / strategic / boost-glide threats.
+    hypersonicOnly: true,
+    engageProfile: "high_energy_only",
+    guidance: "command_inertial_active",
+    retargetable: false,
+    selfDestructOnLoss: true
+  },
   "AIM-120C": {
     name: "AIM-120C",
     displayName: "AIM-120C AMRAAM",

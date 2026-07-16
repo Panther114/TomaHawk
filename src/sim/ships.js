@@ -138,6 +138,12 @@ const SHIP_CLASSES = {
   // sensor/CEC/engagement pipeline unchanged. They are placed on land, never
   // re-seated to water, and never maneuver. Each is a distinct unit type.
   SAM: { hull:"SAM",className:"Coastal SAM Battery approx.",prefix:"SAM",domain:"ground",isFixed:true,glyph:"sam",lengthM:55,beamM:55,draftM:12,displacementT:6000,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:160,radarIntervalS:3.5,vlsCells:64,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:7,ciws:0},damageResist:2,damageDegrade:0.30,baseLoadout:{ "SM-2MR":32,"SM-6":8,ESSM:16 } },
+  // THAAD battery (public envelope): AN/TPY-2 class search + hit-to-kill
+  // interceptors that ONLY engage high-energy / hypersonic threats (Dark Eagle
+  // class). Not a cruise-missile or aircraft weapon — see THAAD interceptor
+  // hypersonicOnly flag and chooseDefensiveWeapon. Typical battery ~48 rounds
+  // (6 launchers × 8); fire-control channels limited vs multi-threat raids.
+  THAAD: { hull:"THAAD",className:"THAAD Battery approx.",prefix:"THAAD",domain:"ground",isFixed:true,glyph:"sam",lengthM:60,beamM:50,draftM:12,displacementT:5500,cruiseSpeedKt:0,maxSpeedKt:0,accelMps2:0,decelMps2:0,turnRateDps:0,turnRateFlankDps:0,radarRangeNm:500,radarIntervalS:2.5,vlsCells:48,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:3,ciws:0},rcsM2:8000,damageResist:2,damageDegrade:0.28,baseLoadout:{ THAAD:48 } },
   // Coastal battery carries an over-the-horizon targeting radar so its long
   // anti-ship missiles are usable at range rather than blind beyond a short
   // radar (its own radar must out-reach its primary MaritimeStrike envelope).

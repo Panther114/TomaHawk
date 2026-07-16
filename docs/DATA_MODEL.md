@@ -298,6 +298,7 @@ Four fixed ground emplacement classes share the same object shape but set `domai
 | CDB | coastal strike battery (OTH radar) | Coast Strike | 250 nm | MaritimeStrike×32, TomahawkBlockV×8 |
 | DEB | Dark Eagle hypersonic strike battery | Dark Eagle | 500 nm | DarkEagle×8 |
 | EWR | early-warning radar (no weapons) | EW Radar | 400 nm | — |
+| THAAD | THAAD battery (hypersonic/BM defense only) | THAAD | 500 nm | THAAD×48 |
 
 Seven air-unit classes set `domain: "air"`: a squadron is one entity whose
 `damageResist` (hit-point pool) **is** its aircraft count, so each hit downs one

@@ -143,6 +143,9 @@ export function interceptDifficultyVsThreat(threat, interceptorSpec, { ciws = fa
 
   // Layer match: short-range / gun systems lack the kinematics against high-energy
   // threats; long-reach high-speed interceptors (SM-6 class) are the least-bad option.
+  // THAAD-class (hypersonicOnly / high_energy_only) is purpose-built for BM/LRHW.
+  const thaadClass = !!(interceptorSpec
+    && (interceptorSpec.hypersonicOnly === true || interceptorSpec.engageProfile === "high_energy_only"));
   let layerPenalty = 0;
   if (ciws) {
     if (highEnergy || mach >= 3.5) layerPenalty = 0.22;
@@ -158,19 +161,29 @@ export function interceptDifficultyVsThreat(threat, interceptorSpec, { ciws = fa
     else if (iRange < 100 * NM) layerPenalty += 0.03;
     // High-end extended-range interceptor credit (SM-6-class).
     if (iRange >= 150 * NM && iSpeed >= 1100) layerPenalty = Math.max(0, layerPenalty - 0.10);
+    // THAAD: hit-to-kill designed for high-altitude high-energy intercepts —
+    // better kinematics than a dual-role fleet SAM against LRHW profiles.
+    if (thaadClass) {
+      // Wipe residual layer mismatch; BMD interceptors are the right layer.
+      layerPenalty = 0;
+      // Reduce profile/speed drag slightly (high-altitude geometry is their job).
+      profilePenalty = Math.max(0, profilePenalty - 0.08);
+      speedPenalty = Math.max(0, speedPenalty - 0.06);
+    }
   }
 
   const total = speedPenalty + profilePenalty + layerPenalty;
-  // Cap band: SM-6 vs LRHW ~25–38% (layered shoot-shoot works; not a coin-flip).
-  // ESSM/CIWS stay clearly worse without being decorative.
+  // Cap band: SM-6 vs LRHW ~25–38%; THAAD class higher (~40–58%) as a dedicated
+  // high-altitude BMD layer. ESSM/CIWS stay clearly worse without being decorative.
   let pkFloor = 0.10;
   let pkCeil = 0.90;
   if (highEnergy || mach >= 5) {
-    pkFloor = ciws ? 0.03 : 0.10;
+    pkFloor = ciws ? 0.03 : (thaadClass ? 0.22 : 0.10);
     pkCeil = ciws ? 0.14
-      : (interceptorSpec && interceptorSpec.rangeM >= 150 * NM && interceptorSpec.speedMps >= 1100)
-        ? 0.38
-        : 0.28;
+      : thaadClass ? 0.58
+        : (interceptorSpec && interceptorSpec.rangeM >= 150 * NM && interceptorSpec.speedMps >= 1100)
+          ? 0.38
+          : 0.28;
   } else if (mach >= 3) {
     pkFloor = ciws ? 0.05 : 0.08;
     pkCeil = ciws ? 0.28 : 0.58;
@@ -972,6 +985,36 @@ function chooseAirInterceptWeapon(ship, threat) {
   return best;
 }
 
+/** True for THAAD-class interceptors: only high-energy / hypersonic threats. */
+export function isHypersonicOnlyInterceptor(spec) {
+  return !!(spec && (spec.hypersonicOnly === true || spec.engageProfile === "high_energy_only"));
+}
+
+// Best specialized BMD interceptor (THAAD etc.) still aboard and in range.
+// Returns null for cruise/aircraft threats so THAAD magazines are never wasted.
+function chooseHypersonicOnlyWeapon(ship, threat, rangeM, samOpen) {
+  if (!samOpen || !isHighEnergyThreat(threat)) return null;
+  const hull = ship.hull || "DDG";
+  const baseLoad = defaultLoadout(hull);
+  let best = null;
+  const lo = ship.loadout;
+  if (!lo) return null;
+  for (const id of Object.keys(lo)) {
+    const n = lo[id];
+    if (!(n > 0)) continue;
+    const spec = MISSILES[id];
+    if (!spec || !isHypersonicOnlyInterceptor(spec)) continue;
+    if (!missileCanTarget(spec, "missile")) continue;
+    if (rangeM > spec.rangeM) continue;
+    // Hypersonic raids always release from reserve — survival layer (do not
+    // apply magazineReserveRatio for dedicated BMD interceptors).
+    if (!best || spec.rangeM > MISSILES[best].rangeM || spec.speedMps > (MISSILES[best].speedMps || 0)) {
+      best = id;
+    }
+  }
+  return best;
+}
+
 export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   const target = aliveShipById(sim, threat.targetId);
   const rangeM = distance(ship, threat);
@@ -982,19 +1025,39 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   const essm = MISSILES.ESSM;
   const hull = ship.hull || "DDG";
   const baseLoad = defaultLoadout(hull);
-  const sm2Reserve = Math.ceil(baseLoad["SM-2MR"] * sm2.magazineReserveRatio);
-  const sm6Reserve = Math.ceil(baseLoad["SM-6"] * sm6.magazineReserveRatio);
-  const essmReserve = Math.ceil(baseLoad.ESSM * essm.magazineReserveRatio);
+  const sm2Reserve = Math.ceil((baseLoad["SM-2MR"] ?? 0) * (sm2?.magazineReserveRatio || 0));
+  const sm6Reserve = Math.ceil((baseLoad["SM-6"] ?? 0) * (sm6?.magazineReserveRatio || 0));
+  const essmReserve = Math.ceil((baseLoad.ESSM ?? 0) * (essm?.magazineReserveRatio || 0));
   const sm2Count = availableCount(ship, "SM-2MR");
   const sm6Count = availableCount(ship, "SM-6");
   const essmCount = availableCount(ship, "ESSM");
   const blockedChannels = options.blockedChannels ?? new Set();
   const samOpen = !blockedChannels.has("sam");
   const highEnergy = isHighEnergyThreat(threat);
+  // THAAD / BMD layer first for hypersonic threats (better PK, purpose-built).
+  const specialized = chooseHypersonicOnlyWeapon(ship, threat, rangeM, samOpen);
+  if (specialized) return specialized;
+  // Batteries that only carry hypersonic-only interceptors never engage cruise
+  // missiles or aircraft (realistic THAAD employment).
+  const hasOnlyHypersonicSams = (() => {
+    const lo = ship.loadout;
+    if (!lo) return false;
+    let anySam = false;
+    for (const id of Object.keys(lo)) {
+      if (!(lo[id] > 0)) continue;
+      const spec = MISSILES[id];
+      if (!spec || !missileCanTarget(spec, "missile")) continue;
+      anySam = true;
+      if (!isHypersonicOnlyInterceptor(spec)) return false;
+    }
+    return anySam;
+  })();
+  if (hasOnlyHypersonicSams && !highEnergy) return null;
+
   const survivalRisk = threat.terminal || tti < 35 || raidCount >= ship.defenseDoctrine.saturationThreshold || highEnergy;
-  const sm2Available = samOpen && (survivalRisk ? sm2Count > 0 : sm2Count > sm2Reserve) && rangeM <= sm2.rangeM;
-  const sm6Available = samOpen && (survivalRisk ? sm6Count > 0 : sm6Count > sm6Reserve) && rangeM <= sm6.rangeM;
-  const essmAvailable = samOpen && (survivalRisk ? essmCount > 0 : essmCount > essmReserve) && rangeM <= essm.rangeM;
+  const sm2Available = samOpen && sm2 && (survivalRisk ? sm2Count > 0 : sm2Count > sm2Reserve) && rangeM <= sm2.rangeM;
+  const sm6Available = samOpen && sm6 && (survivalRisk ? sm6Count > 0 : sm6Count > sm6Reserve) && rangeM <= sm6.rangeM;
+  const essmAvailable = samOpen && essm && (survivalRisk ? essmCount > 0 : essmCount > essmReserve) && rangeM <= essm.rangeM;
   const cheapFollowupPreferred = options.preferCheapFollowup === true && !highEnergy;
   const urgent = options.urgent === true;
   // High-energy / hypersonic: commit the longest-reach high-energy interceptor
@@ -1003,9 +1066,9 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
     if (sm6Available) return "SM-6";
     if (sm2Available) return "SM-2MR";
     if (essmAvailable) return "ESSM";
-    if (samOpen && sm6Count > 0 && rangeM <= sm6.rangeM) return "SM-6";
-    if (samOpen && sm2Count > 0 && rangeM <= sm2.rangeM) return "SM-2MR";
-    if (samOpen && essmCount > 0 && rangeM <= essm.rangeM) return "ESSM";
+    if (samOpen && sm6Count > 0 && sm6 && rangeM <= sm6.rangeM) return "SM-6";
+    if (samOpen && sm2Count > 0 && sm2 && rangeM <= sm2.rangeM) return "SM-2MR";
+    if (samOpen && essmCount > 0 && essm && rangeM <= essm.rangeM) return "ESSM";
     return null;
   }
   if (cheapFollowupPreferred && essmAvailable) return "ESSM";
@@ -1018,9 +1081,9 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   if (sm2Available) return "SM-2MR";
   if (sm6Available) return "SM-6";
   if (essmAvailable) return "ESSM";
-  if (samOpen && essmCount > 0 && rangeM <= essm.rangeM) return "ESSM";
-  if (samOpen && sm2Count > 0 && rangeM <= sm2.rangeM) return "SM-2MR";
-  if (samOpen && sm6Count > 0 && rangeM <= sm6.rangeM) return "SM-6";
+  if (samOpen && essmCount > 0 && essm && rangeM <= essm.rangeM) return "ESSM";
+  if (samOpen && sm2Count > 0 && sm2 && rangeM <= sm2.rangeM) return "SM-2MR";
+  if (samOpen && sm6Count > 0 && sm6 && rangeM <= sm6.rangeM) return "SM-6";
   return null;
 }
 

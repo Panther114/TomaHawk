@@ -232,6 +232,7 @@ function trackHullEstimate(track) {
   }
   // Ground emplacements first — their class strings contain words ("battery",
   // "coastal") that would otherwise mis-match naval patterns.
+  if (/\bthaad\b/.test(text)) return "THAAD";
   if (/\bsam\b|coastal sam/.test(text)) return "SAM";
   if (/early.?warn|\bewr\b|radar|ground contact/.test(text)) return "EWR";
   if (/dark eagle|\bdeb\b/.test(text)) return "DEB";

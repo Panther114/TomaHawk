@@ -42,6 +42,7 @@ Do not add classified, leaked, or operationally sensitive data. If a parameter i
 - AIM-120 AMRAAM: U.S. Air Force fact sheet (`https://www.af.mil/About-Us/Fact-Sheets/Display/Article/104576/aim-120-amraam/`) and NAVAIR AMRAAM public product page (`https://www.navair.navy.mil/product/AMRAAM`) for all-weather BVR active-radar guidance context
 - AIM-120C-8 / AIM-120D-3: RTX/Raytheon AMRAAM pages (`https://www.rtx.com/raytheon/what-we-do/air/amraam-missile`, `https://raytheon.mediaroom.com/2023-09-01-US-Air-Force%2C-RTX-complete-first-flight-test-of-AIM-120C-8`) for modern variant and F3R context
 - SM-6 (RIM-174 ERAM): public Raytheon factsheets, ~200 NM range, Mach 3.5, active radar seeker, dual-role
+- THAAD (Terminal High Altitude Area Defense): public MDA / Lockheed Martin programme materials — hit-to-kill interceptor, ~200 km class engagement envelope, high-altitude endo/exo-atmospheric intercept of ballistic (and by sandbox extension high-energy boost-glide) threats; **not** a cruise-missile or aircraft weapon. Battery magazine and AN/TPY-2 association are open-source approximations for play
 - Nulka decoy: background reference only; not implemented in the current sim
 - Chaff: background reference only; not implemented in the current sim
 - AN/SLQ-32 SEWIP: background reference only; not implemented in the current sim

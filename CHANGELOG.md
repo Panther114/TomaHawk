@@ -5,6 +5,11 @@ All notable changes to this repository will be documented in this file.
 
 ## Unreleased
 
+### Added — THAAD hypersonic defense battery / 萨德高超防空电池
+- **THAAD ground battery** + **THAAD interceptor**: public-approx ~110 NM reach, ~Mach 8 class interceptor, high-altitude hit-to-kill profile. Magazine 48 (6×8 envelope). AN/TPY-2-class long search radar.
+- **Hypersonic-only engagement:** interceptors carry `hypersonicOnly` / `engageProfile: high_energy_only` and fire planning never releases them against cruise missiles or aircraft — only `isHighEnergyThreat` (Mach 5+ / strategic / boost-glide). Better PK band vs LRHW than SM-6 (~40–55% ceiling after penalties).
+- 新增 THAAD 阵地与拦截弹：仅拦截高超/弹道类威胁，不对巡航弹或飞机开火。
+
 ### Added — Carrier basing (moving airfield) / 航母基地（移动机场）
 - **CVN hull** (Nimitz/Ford approx.): sea-domain combatant with `isAirfield:true` — steams, fights, and serves as a rearm/refuel deck for friendly squadrons.
 - **Carrier-capable airframes only** recover on CVN (`F-35C`, `AWAC`/E-2, fictional `F15N`); land-based types still need an AFB. Workshop exposes `carrierCapable` and naval **Carrier deck**.

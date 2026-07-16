@@ -272,6 +272,10 @@ const AMMO_SCHEMA = {
         en: "Strategic / deep-strike (reserved raid quota after general ASCMs fill)",
         zh: "战略/纵深打击（通用反舰弹配额用尽后仍可占用战略配额）"
       } },
+      { key: "hypersonicOnly", type: "checkbox", label: {
+        en: "Hypersonic/BM only (THAAD-class — never fires at cruise missiles or aircraft)",
+        zh: "仅高超/弹道（萨德类 — 不对巡航弹或飞机开火）"
+      } },
       { key: "retargetable", type: "checkbox", label: { en: "Retargetable", zh: "可重新瞄准" } },
       { key: "selfDestructOnLoss", type: "checkbox", label: { en: "Self-destruct on loss", zh: "失标自毁" } }
     ] }
@@ -322,7 +326,7 @@ export const DEFAULTS = {
     speedMps: 1000, maxTurnRateDps: 30, cellCost: 1, pk: 0.45, salvo: 2,
     interceptorsPerThreat: 1, nezFraction: 0.5, magazineReserveRatio: 0.18, launchIntervalS: 2.2, salvoSpacingS: 2.8,
     ringStyle: "dotted", guidance: "command_inertial", terminalProfile: "", cruiseAltitudeM: 0, terminalAltitudeM: 0,
-    strategic: false, retargetable: false, selfDestructOnLoss: true
+    strategic: false, hypersonicOnly: false, retargetable: false, selfDestructOnLoss: true
   })
 };
 
