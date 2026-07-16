@@ -34,10 +34,10 @@
 - Known-seed end-to-end battle regression test.
 - Event log and compact fleet inventory panel.
 - CCG, BBG, and FFG ship classes alongside DDG.
-- Three fixed land emplacements — SAM (coastal air defence), CDB (coastal anti-ship with over-the-horizon radar), and EWR (early-warning radar) — that sense, share, fire, and are targeted through the ship pipeline but never move.
+- Fixed land emplacements — SAM, THAAD (hypersonic/BM only), CDB, DEB (Dark Eagle), EWR, AFB — plus naval CVN as a moving airfield; all share the ship pipeline for sense/share/fire/damage.
 - Selectable tactical maps (Open Sea, projected global coastline) with kilometre coordinates, a 20 km grid, and a dynamic scale bar.
-- Terrain-aware navigation: coastal detours and swept-segment land-collision guards; domain-aware placement (sea units on water, ground units on land).
-- Force Inventory split into per-faction naval and ground sub-tables with unique unit tags and distinct map glyphs.
+- Terrain-aware navigation: coastal detours and swept-segment land-collision guards; domain-aware placement (sea on water, ground on land, AFB land/water, air anywhere).
+- Force Inventory split into naval / ground / air sub-tables with unique unit tags and distinct map glyphs.
 - Overlapping same-type, same-faction weapon-range rings merged into a single coverage outline.
 - Full English/中文 UI with a one-click language toggle; one-click Railway deployment.
 - SM-6 dual-role missile support in offensive and defensive planning.
@@ -47,11 +47,12 @@
 - Pre-computed indexes for hot-path functions.
 - Machine-independent complexity-score performance-regression guard in the test suite.
 - Large-battle performance headroom with thousands of ticks/sec on multi-ship seeds.
-- **Air units (aircraft squadrons):** one entity per flight with attrition = plane count; six fixed-identity fighter hulls with a rigid, role-defining default loadout across two generations (5th-gen low-observable `F22`/`F35A`/`F35C`, 4.5-gen `F15E`/`F15N`/`F15C`) and three roles (air-superiority-only, dedicated anti-ground, dedicated anti-ship); low-altitude stand-off strike doctrine with ingress/egress, radar-air-to-air and infrared dogfighting (a facing/launch-aspect cone gates every aircraft AAM shot — ship/ground VLS is unaffected), evasive breaks, and flares; **airfields** (placeable on land or water) with a return-to-base / rearm / refuel / relaunch cycle. A seventh, unarmed `AWAC` (AEW&C) hull is the longest-ranged mobile radar in the roster and never fights (it orbits behind the formation instead of screening forward); while alive and airborne it **acts as a fleet command hub**, tightening its side's CEC track-sharing latency — any custom aircraft can opt in via the Unit Workshop's `commandHub` flag.
+- **Air units (aircraft squadrons):** one entity per flight; HP = plane count. Real-name approximations: LO `F22`/`F35A`/`F35C`, non-stealth `F15C`/`F15E`/`F15N`/`F15EX`/`F16V`, unarmed `AWAC` command hub. Rigid role loadouts; standoff/LO stand-in strike; A2A with launch-aspect cone; RTB/rearm at **AFB** or **carrier-capable** recovery on **CVN**.
 - **Detection realism:** radar-cross-section-limited detection range and an altitude / radar-horizon "shadow" model applied symmetrically to both the observer and the target (an aircraft's own altitude extends its look-down range, not just its visibility to others); per-missile cruise altitude with a bounded energy-bleed (drag) speed model; air-to-air no-escape-zone geometry; air weapons `AIM-120C`, `AIM-120D`, `AIM-9X`, `AGM-84`, `AGM-154`.
 - **Anti-overcommit fire planning:** dedicated anti-ship weapons preferred over the dual-role SM-6, raid size capped by target toughness outside a deliberate saturation doctrine.
-- **Unit Workshop:** browser-stored, schema-driven custom naval/ground/ammo units (IndexedDB; import/export; vanilla units locked).
-- **Debug logging:** read-only per-run performance trace (sim vs render attribution) and a tactical narrative log, written to `debug/` headless (`npm run debug:sim`) or from the browser.
+- **Unit Workshop:** browser-stored, schema-driven custom naval/ground/aircraft/ammo units (IndexedDB; import/export; vanilla locked; carrier deck, LO, hypersonic-only ammo).
+- **End conditions:** wipeout win or mutual magazine-exhaustion **draw**.
+- **Debug logging:** read-only per-run performance / tactical traces (`npm run debug:sim` or browser).
 
 ## Current Defaults
 

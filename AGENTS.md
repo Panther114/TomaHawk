@@ -25,13 +25,14 @@ Use this file to route yourself to the smallest relevant part of the repository 
 - `math.js` — geometry, kinematics, `interceptPoint`, `Rng`.
 - `events.js` — event-log append/severity, `formatTime`/`formatLogLines`.
 - `missiles.js` — `MISSILES` catalogue, `missileSymbol`/`missileDisplayRole`, `battleSummaryCounts`.
-- `ships.js` — `SHIP_CLASSES` (four naval hulls + three fixed ground emplacements SAM/CDB/EWR with `domain`/`isFixed`/`glyph`), ship factory, loadout/ROE helpers, hull-id counter. `SHIP_CLASSES`/`MISSILES` are **live registries** (not frozen): the modding system extends them via `register*`/`unregister*`; built-ins (captured at load) can never be removed.
+- `ships.js` — `SHIP_CLASSES` live registry (naval DDG/CCG/BBG/FFG/CVN; ground SAM/THAAD/CDB/DEB/EWR/AFB; air F22…F16V/AWAC; flags `domain`/`isFixed`/`isAirfield`/`carrierCapable`/`hypersonicOnly` loadouts/`glyph`), ship factory, loadout/ROE helpers. Extended by Unit Workshop via `register*`/`unregister*`; built-ins never removed.
+- `aircraft.js` — air squadron lifecycle (RTB/rearm/fuel), `decideAircraft`, CAP/strike/A2A doctrine, carrier deck parking.
 - `sensors.js` — radar detection, `missileDetectionEnvelope`, track ageing/pruning/sharing.
 - `command.js` — fused force picture (`buildForcePicture`/`forceTrack`) + fleet command posture.
-- `movement.js` — `moveShips`, `decideShip`.
-- `combat.js` — launch queues, `planEngagements`, `chooseDefensiveWeapon`, `updateMissiles`, `pointDefense`.
+- `movement.js` — `moveShips`, `decideShip`, air movement / deck pin.
+- `combat.js` — launch queues, `planEngagements`, `chooseDefensiveWeapon` (incl. THAAD hypersonic-only), `updateMissiles`, `pointDefense`.
 - `scenario.js` — `createScenario`, serialize/restore, export, place/duplicate/delete/clear.
-- `step.js` — `stepSim` (the deterministic tick orchestrator).
+- `step.js` — `stepSim` (tick orchestrator; wipeout win + mutual-exhaustion draw).
 
 ## Start here by task
 
@@ -170,7 +171,8 @@ change you happened to make this session**.
 | Command posture / AI aggression | `src/sim/command.js` | `tests/sim.test.mjs`, `docs/SIMULATION_ASSUMPTIONS.md` |
 | Missile or ship catalogue/stats | `src/sim/missiles.js`, `src/sim/ships.js` | `docs/DATA_MODEL.md` |
 | Modding / Unit Workshop (custom units, editor, import/storage) | `src/mods/schema.js`, `src/mods/editor.js` | `src/mods/registry.js`, `src/mods/store.js`, `tests/mods.test.mjs`, `docs/MODDING.md` |
-| Ground emplacements (SAM/CDB/EWR), `isFixed`/`domain` units | `src/sim/ships.js`, `src/sim/scenario.js` | `tests/ground-units.test.mjs`, `src/sim/command.js`, `src/sim/movement.js` |
+| Ground emplacements (SAM/THAAD/CDB/DEB/EWR/AFB), `isFixed`/`domain` units | `src/sim/ships.js`, `src/sim/scenario.js` | `tests/ground-units.test.mjs`, `src/sim/command.js`, `src/sim/combat.js` |
+| Air / carrier basing (RTB, CVN, LO stand-in) | `src/sim/aircraft.js`, `src/sim/ships.js` | `src/sim/movement.js`, `src/sim/step.js`, sim tests |
 | Terrain, maps, land/water placement, coastal navigation | `src/world/terrain.js`, `src/sim/scenario.js`, `src/sim/movement.js` | `docs/MAP_DATA.md`, `src/world/map-spec.js` |
 | Performance / complexity score | `scripts/perf-harness.mjs`, `tests/performance-regressions.test.mjs` | `scripts/bench.mjs` |
 | Save/load/AAR/log export | `src/sim/scenario.js`, `src/sim/events.js` | `src/app.js`, tests |

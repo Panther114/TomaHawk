@@ -24,6 +24,8 @@ The current missile set is intentionally abstract:
 - `MaritimeStrike` / `MSTK`: public-approximate maritime strike missile abstraction, fired in paced four-round salvos for the playable sandbox.
 - `TomahawkBlockV` / `TLAM`: long-range surface strike abstraction, fired in paced four-round salvos for the playable sandbox.
 - `DarkEagle` / `LRHW`: ground-launched LRHW / Dark Eagle hypersonic boost-glide abstraction. It is ground-only, uses a high-altitude profile, and attacks surface targets (ships and fixed ground units), not aircraft.
+- `THAAD`: ground-launched high-altitude BMD interceptor. Magazine and kinematics are open-source envelopes; it only engages high-energy / hypersonic-profile threats (`hypersonicOnly` / `engageProfile: "high_energy_only"`), never cruise missiles or aircraft.
+- Air weapons: `AIM-120C` / `AIM-120D` (BVR radar AAM), `AIM-9X` (WVR IR), `AGM-84` (air anti-ship), `AGM-154` (air anti-ground stand-off).
 
 Ranges, speeds, and kill probabilities are gameplay/simulation envelopes. They should be refined only with public sources and explicit uncertainty notes.
 
@@ -76,7 +78,8 @@ Defensive missile selection uses one SAM engagement-channel pool plus weapon kin
 - ESSM is preferred for closer inbound threats when it can reasonably cover the threat.
 - Survival overrides magazine conservation: if ESSM is depleted or the raid is saturated, SM-2 can be used even when conservation would otherwise be preferred.
 - CIWS is the terminal last-ditch layer only.
-- Missile defense respects each unit's `defenseChannels.sam` count. SM-2MR, SM-6, and ESSM all consume the same SAM channel until intercept, miss, abort, or timeout. CIWS remains governed by mount count, ammunition, and cycle time.
+- Missile defense respects each unit's `defenseChannels.sam` count. SM-2MR, SM-6, ESSM, and THAAD all consume the same SAM channel until intercept, miss, abort, or timeout. CIWS remains governed by mount count, ammunition, and cycle time.
+- **THAAD hypersonic-only filter.** A battery or weapon marked `hypersonicOnly` / `high_energy_only` is skipped for ordinary cruise or aircraft threats in `chooseDefensiveWeapon`. Against `terminalProfile: "hypersonic_glide"` / `strategic` threats it receives a purpose-built PK credit over general-purpose SAMs; fighters do **not** waste AAMs on those same hypersonic profiles.
 - Clean single midcourse tracks can receive one interceptor, but raid pressure, terminal threats, weak or stale tracks, late time-to-impact, a late first solution, or a leaker that would kill the target can drive shoot-shoot. Third shots are allowed for terminal or late high-pressure cases if magazines and channels allow it.
 - Defensive missile PK keeps the per-shot weapon values but applies modest penalties for stale or low-quality tracks in addition to the existing speed, sea-skimming, and local saturation penalties. Misses therefore come from bad cueing, late engagements, and saturation instead of a global interceptor nerf.
 
@@ -229,16 +232,17 @@ This is a plausible simulation abstraction, not a real-world tactical procedure.
 ## Current Additions
 
 ### Ship Classes
-Four naval ship classes are now modelled (see DATA_MODEL.md for full table): DDG (Burke destroyer), CCG (Ticonderoga cruiser), BBG (Trump arsenal battleship), FFG (Constellation frigate). Each has per-class kinematics (max speed, acceleration, turn rate, turnRateFlank), sensor fit (radar range, scan interval), magazine capacity (a single VLS-cell pool shared by every missile via its cell cost), CIWS mounts/ammo/cycle parameters, defence channels, damage resilience, and damage degradation. The compact setup rail includes a class selector (Naval / Ground groups) for newly placed Blue and Red units.
+Five naval hulls are modelled (see DATA_MODEL.md): DDG (Burke destroyer), CCG (Ticonderoga cruiser), BBG (Trump arsenal battleship), FFG (Constellation frigate), and **CVN** (Nimitz/Ford-class carrier approx. — a moving airfield with a small self-defence magazine). Each has per-class kinematics, sensor fit, a single VLS/cell pool, CIWS parameters, `defenseChannels: { sam, ciws }`, damage resilience, and degradation. The setup rail groups Naval / Ground / Air for placement.
 
 ### Ground Emplacements
-Four fixed land-based unit types extend the same ship model with `domain: "ground"`, `isFixed: true`, and zero speed: SAM (coastal surface-to-air battery), CDB (coastal anti-ship battery), DEB (Dark Eagle hypersonic strike battery), and EWR (early-warning radar, no weapons). They are deliberately implemented as stationary ship-entities so they reuse the existing sensor, cooperative-engagement, fire-planning, damage, and win-condition logic rather than a parallel system:
+Fixed land-based types use `domain: "ground"`, `isFixed: true`, and zero speed: **SAM**, **THAAD**, **CDB**, **DEB**, **EWR**, and **AFB** (airfield). They are stationary ship-entities so they reuse sensors, CEC, fire planning, damage, and win logic rather than a parallel system:
 
-- **Placement.** Ground units must be placed on land (and are rejected on water on terrain maps); they never move, are never assigned a formation station or the OTC role, and are never re-seated to water on restore or map change.
-- **Cross-domain behaviour.** A ground radar (especially the EWR) contributes to the side's cooperative force picture, so ships can engage on a ground unit's remote track and vice versa; naval anti-ship fire targets and destroys enemy ground units, and a coastal SAM can defend nearby friendly ships.
-- **CDB targeting radar.** The coastal anti-ship battery is given a long, over-the-horizon targeting radar (≈250 NM) so its long-range missiles are usable at standoff; a battery whose radar is shorter than its weapons would otherwise sit blind and passive. Beyond its own radar it still depends on external cueing (e.g. an EWR) through CEC.
-- **DEB remote cueing.** The Dark Eagle battery has a long-range surface-search abstraction so it can participate in the sandbox, but its 1,500 NM LRHW shots can also use shared tracks from EWR, aircraft, or ships (engage-on-remote + mid-course CEC). The missile flies high and fast, so it can be detected earlier than a sea-skimmer but gives defenders less engagement time. Force planning treats DEB as a strike specialist with a strategic-weapon quota so short-range naval ASCMs do not monopolise every raid slot.
-- **Win condition.** Unchanged — a side is eliminated when all of its units (sea and ground) are destroyed.
+- **Placement.** Non-airfield ground units must sit on land (rejected on water on terrain maps). **AFB** may sit on land or water. Fixed units never move, are never OTC, and are not re-seated to water on restore or map change.
+- **Cross-domain behaviour.** Ground radars (especially EWR) feed the cooperative force picture; ships can engage-on-remote from ground tracks and vice versa; naval strike destroys ground sites; coastal SAMs defend nearby friendly ships.
+- **THAAD.** Long-range high-altitude BMD battery (≈500 NM search abstraction, 48 interceptors). Only engages hypersonic / high-energy threats (Dark Eagle and Workshop equivalents). Does not fire on cruise missiles or aircraft.
+- **CDB targeting radar.** ≈250 NM OTH so long-range coastal ASCMs are usable at standoff; beyond own radar it still needs external CEC cueing.
+- **DEB remote cueing.** Long-range surface search plus engage-on-remote for 1,500 NM LRHW shots. High/fast profile is seen earlier than a sea-skimmer but leaves less engagement time. Treated as a strike specialist with a strategic-weapon quota.
+- **Win condition.** A side is eliminated when all of its units (sea, ground, and air) are destroyed. In-flight missiles are not units. See also mutual-exhaustion draw below.
 
 ### SM-6 Dual-Role
 SM-6 (RIM-174 ERAM) fills the gap between long-range fleet air defense and anti-surface strike. It has 200 NM range, Mach 3.5 speed, PK 0.74, and `targets: ["missile", "air", "sea", "ground"]`. Its launch order permanently assigns either the anti-surface profile and square icon or the interceptor profile and triangle icon. SM-6 is preferred for long-range/high-threat defensive engagements and can be used offensively when magazine depth permits (>12 rounds).
@@ -268,6 +272,8 @@ hypersonic threats** more realistically than a flat speed step:
 - **Layer suitability**: short-range point-defence (ESSM-class) and CIWS are a
   poorer match for hypersonic kinematics; long-reach high-speed interceptors
   (SM-6-class) get a credit and a higher ceiling (~0.38 single-shot vs LRHW).
+  **THAAD-class** (`hypersonicOnly` / `high_energy_only`) is purpose-built for
+  this profile and receives a stronger PK credit than SM-6 against LRHW.
   Typical good-cue SM-6 vs Dark Eagle lands around the mid-20s–low-30s percent —
   harder than a cruise missile, not hopeless; shoot-shoot doctrine matters.
 - Sea-skimming (−0.14 SAM / −0.18 CIWS), stale or low-quality track cueing, and
@@ -372,54 +378,31 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   rather than ~1. When a missile closes inside the reaction envelope the flight
   performs an **evasive break** (notches perpendicular to the threat at max speed)
   and pops **flares**; infrared seekers (e.g. Sidewinder) can be decoyed outright.
-- **Six fixed-identity airframes, two generations × three roles.** Each hull has
-  a **rigid** default loadout that defines its role — `vlsCells` is sized to
-  exactly fit it, so a squadron spawns as (and stays) purpose-built rather than
-  a generic hardpoint budget a player reconfigures. `AGM-154` (JSOW) is the
-  dedicated anti-ground stand-off weapon and `AGM-84` (Harpoon) the dedicated
-  anti-ship weapon — a strike airframe never carries both, and an
-  air-superiority airframe carries neither: `F22` and `F15C` are air-to-air
-  only, `F35A`/`F15E` carry JSOW, `F35C`/`F15N` carry Harpoon. The 5th-gen trio
-  (`F22`, `F35A`, `F35C`) has a tiny `rcsM2` so hostile radars only see them
-  deep inside their nominal reach (they shoot first and absorb far fewer SAM
-  shots) plus an intrinsic `airEvasionBonus`; the 4.5-gen trio (`F15E`, `F15N`,
-  `F15C`) is non-stealth — a larger radar cross-section and no evasion bonus,
-  but the biggest magazines of the roster (they survive by stand-off and
-  terrain masking, not signature). All six are tunable `SHIP_CLASSES` entries
-  (the internal hull ids — `F22`, `F35A`, etc. — are unchanged and still what
-  `placeShip`/scenarios reference; only the *displayed* unit tag and class name
-  changed, see below).
-- **Concise unit tags and class names, uniform hardpoints per generation.**
-  Displayed names used to read as a real-airframe name plus a parenthetical
-  ("F-22 Raptor Squadron (5th-gen air-superiority) approx."). Tags now follow
-  a Generation × Role scheme — `G5`/`G4` × `AA` (air-superiority) / `AG`
-  (anti-ground, matching this project's own `AGM-`-prefixed weapon naming) /
-  `AS` (anti-ship) — paired with a short class name ("5th Gen Air Supremacy",
-  "5th Gen Strike", "5th Gen Naval Strike", and the 4.5-gen equivalents
-  rounded to "4th Gen" for the same brevity already used in the Chinese
-  labels). Every 5th-gen hull shares the same hardpoint count (8) and every
-  4.5-gen hull shares its own (14) — a deliberate uniform gameplay number, not
-  a claim about real internal-bay capacity (a real 5th-gen internal bay is
-  smaller; external carriage's RCS penalty is a future refinement, not
-  modeled yet) — with each loadout rebalanced to fill its cap exactly.
-- **A seventh, unarmed hull: AWAC (AEW&C) as a command hub.** `AWAC` carries no
-  weapons at all (`baseLoadout: {}`) and models a single, high-value, moving
-  radar (`damageResist: 1` — one aircraft, not a 4-ship flight; any hit is a
-  mission kill, matching the real vulnerability of an unescorted AEW&C
-  aircraft), with the longest radar (`radarRangeNm: 350`) and slowest, least
-  manoeuvrable airframe (`maxGLoad: 3`) of the roster. Because every combat
-  branch in `decideAircraft` is gated on carrying a strike or air-to-air
-  weapon, an unarmed flight falls through to the fallback branch automatically
-  — no aircraft-specific code path was needed to make it never fight. That
-  fallback itself distinguishes armed from unarmed: an armed flight screens
-  *ahead* of the formation guide on the threat axis (a combat air patrol); an
-  unarmed one orbits *behind* it, on the side away from the threat
-  (`supportOrbitM`). The `commandHub` flag (any hull can set it, not just
-  `AWAC`) is the "acts as a command hub when present" behaviour: while a
-  commandHub unit is alive and on-mission (not RTB/rearming), its side's CEC
-  track-sharing latency in `shareTracks` tightens from the baseline 1.8s to
-  0.6s, representing a centralized high-bandwidth relay/correlation node
-  instead of every ship pair propagating and merging tracks independently.
+- **Fixed-identity airframes (real-name approximations).** Each hull has a
+  **rigid** default loadout that defines its role — `vlsCells` is sized to fit
+  that loadout, so a squadron spawns purpose-built rather than as a free-form
+  hardpoint budget. Internal hull ids (`F22`, `F35A`, …) are what
+  `placeShip`/scenarios use; **displayed** class names and tags are the public
+  airframe names (F-22 Raptor, F-35A Lightning II, …), not a G5/G4 shorthand.
+  Role split:
+  - A2A only: `F22`, `F15C`
+  - Anti-ground (JSOW `AGM-154`, no Harpoon): `F35A`, `F15E`, and light
+    multirole `F16V`
+  - Anti-ship (Harpoon `AGM-84`, no JSOW): `F35C`, `F15N`
+  - Multirole (both surface weapons): `F15EX`
+  LO 5th-gen (`F22`, `F35A`, `F35C`) use tiny `rcsM2` plus `airEvasionBonus` /
+  `lowObservable` stand-in release for F-35 strike profiles. Non-stealth 4th/4.5-gen
+  airframes use larger RCS and survive by standoff and numbers. Hardpoint counts
+  are **per airframe** (e.g. 8 for F-22/F-35, 14–18 for F-15 family, 10 for
+  F-16V) — not a single uniform number per generation.
+- **Unarmed AEW&C hub: `AWAC`.** Empty loadout, `damageResist: 1` (one airframe —
+  any hit is a mission kill), longest mobile radar (`radarRangeNm: 350`), low
+  manoeuvre limit (`maxGLoad: 3`), `carrierCapable: true`. Unarmed flights fall
+  through combat branches to CAP fallback automatically: armed flights screen
+  *ahead* of the OTC on the threat axis; unarmed orbits *behind*
+  (`supportOrbitM`). `commandHub: true` (any Workshop aircraft may set it)
+  tightens that side's CEC share latency from 1.8 s to 0.6 s while the hub is
+  alive and on-mission (not RTB/rearming).
 - **Mission doctrine (vectored on the fleet picture).** A squadron prosecutes the
   fused **CEC force picture** — the same picture the ships fire on — so it is
   cued onto targets by the fleet's long-range radars/datalink instead of only the
@@ -494,17 +477,20 @@ pipelines rather than a parallel system (see `src/sim/aircraft.js`). Everything 
   its surviving aircraft, and its relaunch cadence scales with them (one shooter
   per plane), so a four-ship flight throws a fast alpha-strike while a lone
   survivor fires slowly.
-- **Return to base / fuel.** A squadron flies its mission until it is Winchester,
-  has spent its strike load (anti-ship `AGM-84` or anti-ground `AGM-154`,
-  whichever it carries), or is low on fuel, then returns to the
-  nearest friendly **airfield** to rearm/refuel (a flat timer) and relaunch. With
-  no airfield reachable it limps toward friendly territory and splashes when fuel
-  runs out. Fighter endurance is tuned as combat radius with return reserve:
-  roughly 600 nm for the 5th-gen set and 680 nm for the 4.5-gen set. A flight
-  will not rearm on a destroyed airfield. Carriers, sortie generation, and
-  per-airframe fuel are out of scope for now.
-- **Airfields.** An airfield (`AFB`, or any ground unit with `isAirfield`) is a
-  fixed unit placeable on land **or** water that rearms/refuels friendly flights.
+- **Return to base / fuel.** A squadron flies until Winchester, strike-empty
+  (spent `AGM-84` / `AGM-154` when that is its employment), or low on fuel, then
+  RTBs to the nearest friendly **airfield** for a flat rearm/refuel timer and
+  relaunch. No reachable base → limp toward friendly territory and splash on
+  fuel exhaustion. Endurance is combat radius with return reserve (~600 nm class
+  5th-gen, ~680 nm class heavy 4.5-gen; exact `enduranceS` per hull). A flight
+  will not rearm on a destroyed base. Per-airframe fuel accounting and full
+  carrier sortie-generation modelling remain out of scope; deck recovery is
+  implemented (below).
+- **Airfields and carriers.** Any unit with `isAirfield: true` rearms friendly
+  flights: ground **AFB** (land or water, `maxParkedSquadrons: 12`) accepts all
+  squadrons; sea **CVN** (and Workshop naval hulls with **Carrier deck**) only
+  recover `carrierCapable` airframes and pin rearming flights to the deck while
+  the ship moves (`maxParkedSquadrons: 6` on vanilla CVN).
 - **UI.** The force inventory has an air sub-table (flight strength / lifecycle
   state / AAW / ASUW), and a selected squadron's detail card shows flight readouts
   (aircraft, fuel, flares, state, AAW/ASUW) instead of ship subsystems. Rendering
@@ -572,10 +558,23 @@ which POSTs them to the server (`POST /debug/save`) on every run.
 - `SM-2MR` / `SM2`: fleet interceptor (90 NM, Mach 3.1, PK 0.64)
 - `SM-6` / `SM6`: dual-role fleet AAW and anti-surface (200 NM, Mach 3.5, PK 0.74)
 - `ESSM`: short-range interceptor, quad-packable (28 NM, Mach 2.9, PK 0.60)
+- `THAAD`: high-altitude hypersonic/BM defense only (~110 NM class, ~Mach 7+ envelope, PK 0.72 base; hypersonic-only filter)
 - `MaritimeStrike` / `MSTK`: subsonic anti-ship cruise missile (120 NM, Mach 0.8, PK 0.48)
 - `TomahawkBlockV` / `TLAM`: long-range surface strike (650 NM, Mach 0.7, PK 0.40)
 - `DarkEagle` / `LRHW`: ground-launched hypersonic surface strike (1,500 NM, Mach 5+, PK 0.58)
-- `AIM-120C` / `120C`: BVR active-radar air-to-air missile for 4.5-gen aircraft (55 NM, PK 0.72, `targets: ["air"]`)
-- `AIM-120D` / `120D`: extended-envelope BVR active-radar air-to-air missile for 5th-gen aircraft (82 NM, PK 0.76, `targets: ["air"]`)
-- `AIM-9X` / `AIM9`: WVR infrared air-to-air missile (18 NM, PK 0.78, flare-decoyable)
-- `AGM-84` / `HPN`: air-launched anti-ship missile (67 NM, subsonic, PK 0.52)
+- `AIM-120C` / `120C`: BVR active-radar air-to-air for non-LO fighters (55 NM, PK 0.72, `targets: ["air"]`)
+- `AIM-120D` / `120D`: extended-envelope BVR AAM for LO/multirole fighters (82 NM, PK 0.76, `targets: ["air"]`)
+- `AIM-9X` / `AIM9`: WVR infrared air-to-air (18 NM, PK 0.78, flare-decoyable)
+- `AGM-84` / `HPN`: air-launched anti-ship (67 NM, subsonic, PK 0.52)
+- `AGM-154` / `JSOW`: air-launched stand-off anti-ground (70 NM class, subsonic, PK 0.58)
+
+### End-of-battle (win and draw)
+
+- **Wipeout win.** When only one side still has living units, that side wins
+  (`sim.ended = "BLUE"` or `"RED"`). In-flight missiles are not units.
+- **Mutual exhaustion draw.** If both sides still have living units but neither
+  retains usable offensive munitions (and remaining air cannot rearm — no
+  friendly airfield/base path that would regenerate strike), `stepSim` ends the
+  scenario as `sim.ended = "draw"` rather than hanging forever on two
+  Winchester surface groups. Air still aloft without a rearm base is allowed to
+  finish; pure surface WINCHESTER pairs draw.

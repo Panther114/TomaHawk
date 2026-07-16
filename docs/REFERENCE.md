@@ -29,9 +29,9 @@ desired.
 
 #### Simulation and doctrine
 - Deterministic simulation loop with seeded RNG.
-- Scenario modes: `setup`, `running`, `ended`.
+- Scenario modes: `setup`, `running`, `ended` (wipeout win or mutual-exhaustion **draw**).
 - Real-scale ship motion (`SHIP_SPEED_MULTIPLIER = 1`) with acceleration, deceleration, and turn-rate limits.
-- Autonomous doctrine for both sides.
+- Autonomous doctrine for both sides (surface, air, coastal, carrier basing).
 - Force-level command posture, offensive fire planning, and defensive fire allocation.
 - Rules of engagement (`free`, `tight`, `hold`) with self-defense always permitted.
 
@@ -242,9 +242,9 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 
 #### 仿真与决策
 - 基于种子的确定性仿真循环。
-- `setup`、`running`、`ended` 三种场景状态。
+- `setup`、`running`、`ended` 三种场景状态（全灭获胜或弹药耗尽**和局**）。
 - 按真实比例建模的舰艇运动、加减速和转向限制。
-- 蓝红双方均由自主 doctrine 驱动。
+- 蓝红双方均由自主 doctrine 驱动（水面、空中、岸基、航母再装挂）。
 - 力量级别的进攻规划、空防规划与指挥姿态评估。
 - 支持 `free`、`tight`、`hold` 三级交战规则，且始终允许自卫。
 
@@ -329,8 +329,8 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 
 #### 场景准备阶段
 - 选中 `BLUE` 或 `RED` 后左键点击地图放置单位。
-- 通过类别下拉框选择**海上**（`DDG`、`CCG`、`BBG`、`FFG`）或**陆基**（`SAM`、`CDB`、`DEB`、`EWR`）单位；海上单位必须放在水面，陆基单位必须放在陆地。
-- 在 `setup` 模式下可左键拖动单位调整初始位置（海上单位保持在水面，陆基单位保持在陆地）。
+- 通过类别下拉框选择**海上**（`DDG`/`CCG`/`BBG`/`FFG`/`CVN`）、**陆基**（`SAM`/`THAAD`/`CDB`/`DEB`/`EWR`/`AFB`）或**空中**单位；舰艇（含航母）在水面，固定陆基在陆地，机场水陆皆可，飞机任意位置。
+- 在 `setup` 模式下可左键拖动单位调整初始位置（按域保持合法地形）。
 - 右键舰艇进行选择。
 - 右键拖动/右键选择可叠加详情卡选择。
 - 在空白区域右键拖动可框选。

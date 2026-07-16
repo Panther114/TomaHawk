@@ -26,18 +26,18 @@ to the language toggle (top-left).
 
 ## Unit types
 
-There are three types. The second field in the form (**Type**) selects which, and
+There are four types. The second field in the form (**Type**) selects which, and
 changing it re-renders the lower fields.
 
 | Type | Deployable? | Registers into | Notes |
 | --- | --- | --- | --- |
-| `naval` | Yes (placement dropdown) | `SHIP_CLASSES` (`domain:"sea"`) | a moving warship |
-| `ground` | Yes (placement dropdown) | `SHIP_CLASSES` (`domain:"ground"`, `isFixed:true`) | a fixed land emplacement, placed on land |
-| `ammo` | **No** | `MISSILES` | a weapon; appears only in the loadout pickers of naval/ground units |
+| `naval` | Yes (placement dropdown) | `SHIP_CLASSES` (`domain:"sea"`) | moving warship; optional **Carrier deck** (`isAirfield`) |
+| `ground` | Yes (placement dropdown) | `SHIP_CLASSES` (`domain:"ground"`, `isFixed:true`) | fixed emplacement on land; optional **Airfield** (land or water) |
+| `aircraft` | Yes (placement dropdown) | `SHIP_CLASSES` (`domain:"air"`) | squadron entity (HP = plane count); optional carrier-capable / LO / command hub |
+| `ammo` | **No** | `MISSILES` | weapon; appears in loadout pickers for platforms whose `launchers` match |
 
 Custom units flow through the same sensor / CEC / engagement / win pipeline as
-vanilla units — naval units can target ground units and vice-versa, and the win
-condition is unchanged.
+vanilla units — cross-domain targeting works, and the win condition is unchanged.
 
 ## Curated parameters
 
@@ -46,11 +46,12 @@ objects, draft for ground, etc.) are filled from sensible defaults. Ranges shown
 the form are in **nautical miles (NM)** and stored internally in metres.
 
 ### Naval
-Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`);
-Mobility (`cruise`, `max`, `accel`, `decel`,
-`turn`, `flank turn`); Sensors (`radar range`, `radar interval`); Magazine
-(`VLS cells`, `loadout`); Survivability (`hit points`, `degrade`);
-Defense channels (`SAM`, `ciws`); Doctrine (**strike specialist**).
+Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`,
+optional **Carrier deck** checkbox); Mobility (`cruise`, `max`, `accel`, `decel`,
+`turn`, `flank turn`); Sensors (`radar range`, `radar interval`, **RCS**);
+Magazine (`VLS cells`, `loadout`); Survivability (`hit points`, `degrade`);
+Defense channels (`SAM`, `ciws`); Doctrine (**strike specialist**). Optional
+**max parked squadrons** when Carrier deck is enabled.
 
 - **Mobility auto-derivation:** editing **cruise speed** recomputes max speed,
   acceleration, deceleration, and turn rates (higher cruise ⇒ faster and more
@@ -60,7 +61,9 @@ Defense channels (`SAM`, `ciws`); Doctrine (**strike specialist**).
 - **CIWS hardware** is not editable — a single default mount is used. The
   **CIWS** field under *Defense channels* controls how many incoming missiles
   the close-in layer can engage at once.
-- **Strike specialist.** Check this for arsenal ships / dedicated long-range
+- **Carrier deck.** Marks the hull as a moving airfield (`isAirfield`). Only
+  airframes with **Carrier capable** may recover here (vanilla `CVN` behaviour).
+- **Strike specialist.** Check for arsenal ships / dedicated long-range
   strikers so force fire planning allocates them in the specialist first pass
   (same priority as coastal batteries and strike aircraft). Ordinary multi-role
   destroyers leave it unchecked.
@@ -69,62 +72,56 @@ Defense channels (`SAM`, `ciws`); Doctrine (**strike specialist**).
 Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`,
 **map glyph** = `sam`/`radar`/`bunker`/`airfield`, optional **airfield** and
 **strike specialist** checkboxes);
-Footprint (`length`, `width`); Sensors (`radar range`, `radar interval`); Magazine
-(`cells`, `loadout` — leave empty for a pure radar site); Survivability (`hit points`,
-`degrade`); Defense channel (`SAM`). Speed and CIWS are forced to zero.
+Footprint (`length`, `width`); Sensors (`radar range`, `radar interval`, **RCS**);
+Magazine (`cells`, `loadout` — leave empty for a pure radar site); Survivability
+(`hit points`, `degrade`); Defense channel (`SAM`). Speed and CIWS are forced to zero.
 For an anti-ship coastal battery, set the radar range above the weapon's range so it
 can engage over the horizon. Tick **Strike specialist** for purpose-built strike
-sites (like the vanilla CDB/DEB) so they receive a first-pass offensive allocation
-and are not starved by nearby destroyers; fixed ground units with dedicated
-surface munitions also get that pass by default even if the box is left unchecked.
+sites (like the vanilla CDB/DEB). Tick **Airfield** for a rearm node placeable on
+land or water (vanilla `AFB`). A THAAD-style battery is a ground unit whose
+loadout only contains a **hypersonic-only** ammo type (see Ammo).
 
 ### Aircraft
 Identity (`name`, English unit tag `prefix`, optional Chinese unit tag `prefixZh`,
-**command hub** and **strike specialist** checkboxes); Squadron
-(`aircraft in flight` — the hit-point pool: each hit downs one plane);
+**command hub**, **strike specialist**, **low-observable**, and **carrier capable**
+checkboxes); Squadron (`aircraft in flight` — HP pool: each hit downs one plane);
 Mobility (`cruise`, `max`, `accel`, `decel`, `turn`, `flank turn`); Sensors
-(`radar range`, `radar interval`); Hardpoints (`hardpoints` — sized like naval
-VLS cells, to fit the `loadout`); Endurance (`endurance`, `rearm time`);
+(`radar range`, `radar interval`, **RCS**); Hardpoints (`hardpoints` — sized like
+naval VLS cells, to fit the `loadout`); Endurance (`endurance`, `rearm time`);
 Survivability (`speed loss per plane lost`, `flares`).
-Squadrons carrying dedicated surface munitions (Harpoon/JSOW-class) already act as
-strike specialists by default; the checkbox forces the same priority for unusual
-loadouts if needed.
+Squadrons carrying dedicated surface munitions already act as strike specialists
+by default; the checkbox forces the same priority for unusual loadouts.
 
-- **Unarmed = never fights.** Leave the `loadout` empty and the squadron
-  automatically falls through every combat branch (no strike weapon, no
-  air-to-air missile) to the non-combat fallback: it orbits behind the
-  formation guide instead of screening ahead of it, exactly like the built-in
-  `AWAC`. No other field needs to change to get this behaviour.
-- **Command hub.** Check this box (or leave it unchecked — it defaults off) to
-  make the squadron tighten its whole side's CEC track-sharing latency while
-  it's alive and airborne (not down for fuel). Any aircraft can carry it, not
-  just an AEW&C-styled one — it stacks with, and is independent of, a strike
-  or air-superiority loadout.
-- **`maxGLoad`** (the airframe's combat turn-rate ceiling) is not yet exposed
-  in the editor; custom aircraft inherit a default. It only affects an
-  evasive break or an air-to-air merge — routine navigation always flies a
-  gentle standard-rate turn regardless of hull.
+- **Unarmed = never fights.** Empty `loadout` → CAP fallback behind the guide
+  (vanilla `AWAC`), not a combat screen.
+- **Command hub.** Tightens side CEC share latency while alive and airborne.
+- **Low-observable.** Stand-in strike release profile (vanilla F-35 family).
+- **Carrier capable.** May recover on a naval Carrier-deck unit (`CVN`).
+- **`maxGLoad`** is not yet exposed; custom aircraft inherit a default. It only
+  affects combat turns — routine navigation uses a standard-rate turn.
 
 ### Ammo
-Identity (`ID` only — the loadout key; it also serves as the weapon's map/inventory
-label); Classification (`launchers`, `targets`, `symbol`, `rcs`); Ranges (`max range`, `pref. min`, `pref. max`, `seeker`);
-Kinematics (`speed`, `max turn`); Effect (`cell cost`, `pk`, `salvo`,
-`per threat`, `reserve`); Timing (`launch interval`, `salvo spacing`); Behavior
-(`ring style`, `guidance`, **flight profile**, **cruise / terminal altitude**,
-**strategic / deep-strike**, `retargetable`, `self-destruct on loss`).
+Identity (`ID` only — the loadout key; also the map/inventory label);
+Classification (`launchers`, `targets`, `symbol`, `rcs`); Ranges (`max range`,
+`pref. min`, `pref. max`, `seeker`); Kinematics (`speed`, `max turn`); Effect
+(`cell cost`, `pk`, `salvo`, `per threat`, `reserve`); Timing (`launch interval`,
+`salvo spacing`); Behavior (`ring style`, `guidance`, **flight profile**,
+**cruise / terminal altitude**, **strategic / deep-strike**, **hypersonic-only
+(BMD)**, `retargetable`, `self-destruct on loss`).
 
 `launchers` may include naval, ground, and air. `targets` may include missiles,
 aircraft, ships, and ground units. `pk` is the base per-shot success chance
 before track quality, geometry, speed, saturation, and countermeasure modifiers.
+Loadout pickers only offer ammo whose `launchers` match the platform domain.
 
-- **Strategic / deep-strike.** When checked, the weapon may use the reserved
-  strategic raid quota after general ASCMs have filled a target's normal
-  allocation — so a custom LRHW is not starved by nearby destroyers dumping
-  shorter-range munitions. Also auto-inferred when flight profile is
-  *Hypersonic glide* or max range is ≥ 800 NM (vanilla Dark Eagle).
-- **Flight profile → Hypersonic glide** sets a high cruise/terminal altitude
-  (defaults 30 km / 5 km if you leave altitudes at 0) and a non-sea-skim
-  terminal dive, matching the Dark Eagle abstraction.
+- **Strategic / deep-strike.** Reserved raid quota after general ASCMs fill a
+  target (also auto-inferred for hypersonic-glide profile or range ≥ 800 NM —
+  vanilla Dark Eagle).
+- **Flight profile → Hypersonic glide** sets high cruise/terminal altitudes
+  (defaults 30 km / 5 km if left at 0) and a non-sea-skim dive.
+- **Hypersonic-only (BMD).** Interceptor engages only high-energy /
+  hypersonic-profile threats (vanilla `THAAD`). Leave unchecked for ordinary
+  SAM/AAM behaviour.
 
 ## For developers
 

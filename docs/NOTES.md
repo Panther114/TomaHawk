@@ -1,7 +1,8 @@
 # Development Notes
 
-> Historical development scratch notes. Not authoritative for current behavior —
-> see `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, and the tests for that.
+> Historical development scratch notes. **Not authoritative** for current
+> behavior — use `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`,
+> `docs/SIMULATION_ASSUMPTIONS.md`, `docs/REFERENCE.md`, and the tests.
 
 ## Fleet strategy pass
 

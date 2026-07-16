@@ -6,13 +6,18 @@ The current implementation keeps data as plain JavaScript objects defined across
 
 Important fields:
 
-- `id`, `name`, `side`, `className`
-- `domain` (`"sea"` or `"ground"`) and `isFixed` (true for stationary land emplacements)
+- `id`, `name`, `side`, `className`, `hull`
+- `domain` (`"sea"`, `"ground"`, or `"air"`) and `isFixed` (true for stationary ground emplacements)
+- `isAirfield` (rearm/refuel node — ground `AFB` or naval `CVN`), `isCarrier` (sea airfield)
+- `carrierCapable` / `lowObservable` / `commandHub` / `strikeSpecialist` (air and workshop flags)
 - `x`, `y`, `heading`, `speed`, `desiredSpeed`
+- `altitudeM`, `targetAltitudeM` (air units; physical altitude for horizon/drag, not a map axis)
 - `cruiseSpeed`, `maxSpeed`, `accel`, `decel`, `turnRate`
 - `radarRangeM`, `radarInterval`, `radarActive`
+- `rcsM2` (optional class override; else domain/displacement default)
 - `editable`
 - `loadout`
+- air lifecycle when `domain === "air"`: `airState` (`mission` / `rtb` / `rearming`), `fuelS`, `flares`, `homeBaseId`, `enduranceS`, `rearmTimeS` (HP pool = `damageResist` plane count)
 - `launchQueue`
 - `nextLaunchAt`
 - `nextDefensiveLaunchAt`
@@ -52,8 +57,9 @@ Important fields:
 - `shortLabel`
 - `role`
 - `category`
-- `launchers`
-- `targets`
+- `launchers` (`sea` / `ground` / `air`)
+- `targets` (`missile` / `air` / `sea` / `ground`)
+- `rcsM2` (munitions RCS for radar pickup scaling)
 - `symbol`
 - `rangeM`
 - `speedMps`
@@ -69,8 +75,12 @@ Important fields:
 - `ringStyle`
 - `maxTurnRateDps` (airframe turn-rate limit for the guidance law, deg/s)
 - `seekerRangeM` (range at which the onboard seeker takes the terminal lock)
-- `guidance` (`command_inertial` for datalink/mid-course interceptors, `inertial_active` for strike)
+- `cruiseAltitudeM`, `terminalAltitudeM`, `terminalSeaSkimming`
+- `terminalProfile` (`"hypersonic_glide"` for LRHW-class), `strategic` (raid overflow quota)
+- `hypersonicOnly` / `engageProfile: "high_energy_only"` (THAAD-class: only engage high-energy threats)
+- `guidance` (`command_inertial` / `command_inertial_active` for interceptors, `inertial_active` for strike)
 - `retargetable` [legacy, currently false], `selfDestructOnLoss` (target-loss policy defaults)
+- air-to-air: `nezFraction` (no-escape-zone fraction of max range)
 
 Radar detection is not generic across all missiles. The simulation derives a per-missile
 detection envelope from an approximate flight profile: higher-flying air-defense
@@ -153,7 +163,7 @@ Important fields:
 
 - `mode`: `setup`, `running`, or `ended`
 - `paused`
-- `ended`
+- `ended` — `null` while live; winning side string (`"BLUE"` / `"RED"`) on wipeout; `"draw"` on mutual magazine exhaustion (see `stepSim`)
 - `mapId` (`openSea` or `eastChinaSea`)
 - `ships`
 - `missiles`
@@ -161,7 +171,7 @@ Important fields:
 - `nextFirePlanAt`
 - `nextForcePictureAt`
 
-New scenarios begin in `setup`. The app's default scenario is an empty East China Sea setup, centred on the tactical-map coordinate 13,900 km east and 3,600 km south. The lower-level `createScenario` helper remains available for compact 1v1 setup tests and custom starts. The simulation-core default map is `openSea`; the app selects the UI's current tactical map when creating or resetting a scenario. Setup mode allows adding units, dragging starting positions, right-click selection, box selection, and keyboard deletion. Placement is domain-aware: **sea units require water and fixed ground emplacements require land** (the terrain-less open-sea map accepts ground units anywhere). Dragging keeps the last valid position for the unit's domain, sea-unit duplication/restores normalize into open water while ground units stay on land, and setup-only map changes reseat the **sea** forces onto deterministic water starts while leaving fixed emplacements in place. The simulation can run only when at least one alive Blue and one alive Red unit exist. Imported scenarios are capped at 200 ships, 5,000 missiles, and 500 events; browser-file imports are limited to 5 MB.
+New scenarios begin in `setup`. The app's default scenario is an empty East China Sea setup, centred on the tactical-map coordinate 13,900 km east and 3,600 km south. The lower-level `createScenario` helper remains available for compact 1v1 setup tests and custom starts. The simulation-core default map is `openSea`; the app selects the UI's current tactical map when creating or resetting a scenario. Setup mode allows adding units, dragging starting positions, right-click selection, box selection, and keyboard deletion. Placement is domain-aware: **sea units require water**; **fixed ground emplacements require land** except **airfields** (`isAirfield` ground units / `AFB`) which may sit on land or water; **carriers** are sea units and stay on water. Dragging keeps the last valid position for the unit's domain, sea-unit duplication/restores normalize into open water while fixed ground units stay on land, and setup-only map changes reseat the **sea** forces onto deterministic water starts while leaving fixed emplacements in place. The simulation can run only when at least one alive Blue and one alive Red unit exist. Imported scenarios are capped at 200 ships, 5,000 missiles, and 500 events; browser-file imports are limited to 5 MB.
 
 ## Visual Config
 
@@ -281,70 +291,99 @@ false; `selfDestructOnTargetLoss` sets the in-flight target-loss policy;
 
 ## Ship Classes
 
-Four naval hull classes are modelled, each with per-class physics, sensors, magazine capacity, damage resilience, and combat systems:
+Live catalogues live in `src/sim/ships.js` (`SHIP_CLASSES`) and are extended at
+runtime by the Unit Workshop. Built-ins below match the code defaults.
 
-| Hull | Class | Prefix | VLS | Speed | Turn | DR | CIWS | AAW Channels |
-|------|-------|--------|-----|-------|------|-----|------|-------------|
-| DDG | Burke Flight IIA | DDG | 96 | 31kn | 2.6°/s | 2 | 1× Phalanx | 2/2/1 |
-| CCG | Ticonderoga Cruiser | CG | 122 | 32.5kn | 2.2°/s | 3 | 2× Phalanx | 4/3/2 |
-| BBG | Trump Arsenal Battleship | BBG | 288 | 24kn | 1.2°/s | 5 | 5× CIWS | 6/4/4 |
-| FFG | Constellation Frigate | FFG | 32 | 26kn | 3.2°/s | 1 | 1× SeaRAM | 1/1/1 |
+### Naval (`domain: "sea"`, not fixed)
 
-Four fixed ground emplacement classes share the same object shape but set `domain: "ground"`, `isFixed: true`, and zero speed. They are placed on land, never move, and carry an explicit type-specific magazine rather than a VLS-scaled loadout:
+`defenseChannels` is `{ sam, ciws }` — one SAM engagement-channel pool plus CIWS
+mount concurrency (legacy `area`/`point` fields are normalized into `sam` on load).
+
+| Hull | Class | Prefix | VLS | Speed | Turn | DR | CIWS | `sam` / `ciws` |
+|------|-------|--------|-----|-------|------|-----|------|----------------|
+| DDG | Burke Flight IIA | DDG | 96 | 31 kn | 2.6°/s | 2 | 1 | 4 / 1 |
+| CCG | Ticonderoga Cruiser | CG | 122 | 32.5 kn | 2.2°/s | 3 | 2 | 7 / 2 |
+| BBG | Trump Arsenal Battleship | BBG | 288 | 24 kn | 1.2°/s | 5 | 5 | 10 / 4 |
+| FFG | Constellation Frigate | FFG | 32 | 26 kn | 3.2°/s | 1 | 1 | 2 / 1 |
+| CVN | Nimitz/Ford-class carrier approx. | CVN | 24 | 30 kn | 0.9°/s | 6 | 3 | 4 / 3 |
+
+`CVN` sets `isAirfield: true`, `isCarrier: true`, `maxParkedSquadrons: 6`, and
+defaults to `SM-2MR`×8 + `ESSM`×64. It is a **moving rearm deck**, not a fixed
+ground site.
+
+### Ground emplacements (`domain: "ground"`, `isFixed: true`, speed 0)
+
+Placed on **land** (except airfields). Same object shape as ships; never move;
+explicit type magazines via `baseLoadout`.
 
 | Hull | Role | Prefix | Radar | Default loadout |
 |------|------|--------|------:|-----------------|
 | SAM | coastal surface-to-air battery | SAM | 160 nm | SM-2MR×32, SM-6×8, ESSM×16 |
+| THAAD | hypersonic / BM defense only | THAAD | 500 nm | THAAD×48 |
 | CDB | coastal strike battery (OTH radar) | Coast Strike | 250 nm | MaritimeStrike×32, TomahawkBlockV×8 |
 | DEB | Dark Eagle hypersonic strike battery | Dark Eagle | 500 nm | DarkEagle×8 |
 | EWR | early-warning radar (no weapons) | EW Radar | 400 nm | — |
-| THAAD | THAAD battery (hypersonic/BM defense only) | THAAD | 500 nm | THAAD×48 |
+| AFB | airfield / rearm-refuel node | Airfield | 180 nm | — |
 
-Seven air-unit classes set `domain: "air"`: a squadron is one entity whose
-`damageResist` (hit-point pool) **is** its aircraft count, so each hit downs one
-plane. They are placeable anywhere, overfly terrain, and rearm at an airfield.
-Six are fixed-identity fighters, each with a **rigid** default loadout —
-`vlsCells` is sized to exactly fit it — that fixes its role: an air-superiority
-hull carries no strike weapon at all, an anti-ground hull carries `AGM-154`
-(JSOW) and no `AGM-84`, an anti-ship hull carries `AGM-84` and no `AGM-154`. Two
-generations (5th-gen low-observable, 4.5-gen non-stealth) cross the three
-roles. The seventh, `AWAC`, is unarmed (empty loadout, `damageResist: 1` — one
-irreplaceable aircraft, not a 4-ship flight) and carries `commandHub: true` (see
-below). `AFB` is an airfield (a ground unit with `isAirfield: true`) placeable
-on land or water that serves as the rearm/refuel node:
+`AFB`: `isAirfield: true`, `maxParkedSquadrons: 12`, placeable on land **or**
+water. `THAAD` fires only the `THAAD` interceptor (`hypersonicOnly` /
+`engageProfile: "high_energy_only"`) — cruise missiles and aircraft are ignored.
 
-| Hull | Role | Prefix | Radar | Default loadout |
-|------|------|--------|------:|-----------------|
-| F22 | F-22 Raptor approx. (A2A, LO) | F22 | 130 nm | AIM-120D×6, AIM-9X×2 |
-| F35A | F-35A Lightning II approx. (anti-ground, LO) | F35A | 120 nm | AIM-120D×2, AIM-9X×2, AGM-154×4 |
-| F35C | F-35C Lightning II approx. (anti-ship, LO) | F35C | 120 nm | AIM-120D×2, AIM-9X×2, AGM-84×4 |
-| F15E | F-15E Strike Eagle approx. (anti-ground) | F15E | 95 nm | AIM-120C×4, AIM-9X×2, AGM-154×10 |
-| F15N | F-15 Sea Strike approx. (fictional anti-ship sibling) | F15N | 95 nm | AIM-120C×4, AIM-9X×2, AGM-84×10 |
-| F15C | F-15C Eagle approx. (A2A) | F15C | 100 nm | AIM-120C×10, AIM-9X×4 |
-| F15EX | F-15EX Eagle II approx. (multirole) | F15EX | 115 nm | AIM-120D×8, AIM-9X×2, AGM-154×4, AGM-84×4 |
-| F16V | F-16V Viper approx. (light multirole) | F16V | 85 nm | AIM-120C×4, AIM-9X×2, AGM-154×4 |
-| AWAC | AEW&C — unarmed, command hub (E-2D approx.), carrier-capable | AWAC | 350 nm | — |
-| AFB | airfield / rearm-refuel node (land or water) | Airfield | 180 nm | — |
-| CVN | Nimitz/Ford-class carrier approx. (moving airfield) | CVN | 160 nm | SM-2MR×8, ESSM×64 |
+### Air squadrons (`domain: "air"`)
 
-**Carrier basing:** any unit with `isAirfield:true` is a rearm node. Ground AFBs accept every squadron. Sea carriers (`CVN`, or any naval Workshop hull with **Carrier deck**) only recover airframes with `carrierCapable:true`. While `airState === "rearming"`, the squadron is pinned to the base position each movement tick (so a steaming CVN carries parked flights). `maxParkedSquadrons` caps concurrent deck slots; overflow flights hold a pattern nearby.
+One entity per flight; `damageResist` is the plane count (each hit downs one
+aircraft). Placeable anywhere; overfly terrain; rearm at a friendly airfield.
+Displayed names are real-airframe approximations (F-22, F-35A, …); internal hull
+ids remain `F22`, `F35A`, etc. Hardpoint budgets (`vlsCells`) follow each
+airframe’s rigid default loadout — they are **not** a single generation-wide
+constant.
 
-Fighter endurance is tuned as combat radius with return reserve, not ferry range: the 5th-gen set has about 600 nm radius, and the 4.5-gen set has about 680 nm radius.
+| Hull | Role | Prefix | Radar | HP | Hardpoints | Default loadout | Carrier |
+|------|------|--------|------:|---:|-----------:|-----------------|:-------:|
+| F22 | F-22 Raptor approx. (A2A, LO) | F22 | 130 nm | 4 | 8 | AIM-120D×6, AIM-9X×2 | no |
+| F35A | F-35A Lightning II approx. (anti-ground, LO) | F35A | 120 nm | 4 | 8 | AIM-120D×2, AIM-9X×2, AGM-154×4 | no |
+| F35C | F-35C Lightning II approx. (anti-ship, LO) | F35C | 120 nm | 4 | 8 | AIM-120D×2, AIM-9X×2, AGM-84×4 | yes |
+| F15E | F-15E Strike Eagle approx. (anti-ground) | F15E | 95 nm | 4 | 16 | AIM-120C×4, AIM-9X×2, AGM-154×10 | no |
+| F15N | F-15 Sea Strike approx. (fictional anti-ship) | F15N | 95 nm | 4 | 16 | AIM-120C×4, AIM-9X×2, AGM-84×10 | yes |
+| F15C | F-15C Eagle approx. (A2A) | F15C | 100 nm | 4 | 14 | AIM-120C×10, AIM-9X×4 | no |
+| F15EX | F-15EX Eagle II approx. (multirole) | F15EX | 115 nm | 4 | 18 | AIM-120D×8, AIM-9X×2, AGM-154×4, AGM-84×4 | no |
+| F16V | F-16V Viper approx. (light multirole) | F16V | 85 nm | 4 | 10 | AIM-120C×4, AIM-9X×2, AGM-154×4 | no |
+| AWAC | E-2D Hawkeye approx. (AEW&C, unarmed hub) | AWAC | 350 nm | 1 | 0 | — | yes |
 
-Key per-class fields on every ship object:
-- `hull` — class key (`"DDG"`, `"CCG"`, `"BBG"`, `"FFG"`, `"SAM"`, `"CDB"`, `"DEB"`, `"EWR"`, `"F22"`, `"F35A"`, `"F35C"`, `"F15E"`, `"F15N"`, `"F15C"`, `"AWAC"`, `"AFB"`)
-- `domain` / `isFixed` — `"ground"` + `true` for stationary land emplacements; `"air"` for aircraft squadrons
-- `vlsCells` — total VLS capacity; every missile draws from this one pool by its `cellCost`
-- `damageResist` — whole-hit damage points before mission-kill
-- `damageDegrade` — speed/manoeuvre penalty per damage point
-- `turnRateFlank` — reduced turn rate at >75% flank speed, for **naval hulls only**; aircraft steer via a physically-modelled turn rate instead (`maxGLoad` — the airframe's combat G-limit, used only for an evasive break or an air-to-air merge; routine navigation flies a much gentler standard-rate turn regardless of hull — see `aircraftTurnRateRadPerS` in `movement.js`)
-- `commandHub` — aircraft-only; while an alive, on-mission (not RTB/rearming) unit with this flag exists on a side, that side's CEC track-sharing latency tightens (see `shareTracks` in `sensors.js`). Any custom aircraft can set it via the Unit Workshop.
-- `ciwsCount` / `ciwsBurstRounds` / `ciwsBurstS` / `ciwsCycleS` — per-class CIWS parameters
-- `displacementT` / `draftM` — used for radar horizon and hit-chance size bonus (aircraft use `altitudeM` instead of `draftM` for their radar horizon — see `docs/SIMULATION_ASSUMPTIONS.md`)
+**Carrier basing:** any unit with `isAirfield: true` is a rearm node. Ground
+AFBs accept every squadron. Sea carriers (`CVN`, or any naval Workshop hull with
+**Carrier deck**) only recover airframes with `carrierCapable: true`. While
+`airState === "rearming"`, the squadron is pinned to the base position each
+movement tick (a steaming CVN carries parked flights). `maxParkedSquadrons`
+caps concurrent deck slots; overflow flights hold a pattern nearby.
 
-Ships spawn with a full default magazine for their hull class, with the loadout filling the available VLS cells at setup time.
+Fighter endurance is combat radius with return reserve (not ferry range): roughly
+600 nm class for the 5th-gen set and ~680 nm class for the heavy 4.5-gen set
+(exact `enduranceS` values live on each class).
 
-Surface-strike ammo declares `targets: ["sea", "ground"]`. Legacy custom ammo using `category: "anti_ship"` / `target: "ship"` is interpreted the same way. `DarkEagle` is ground-launched and explicitly targets sea and ground units, not aircraft or in-flight missiles.
+Key per-class fields:
+- `hull` — class key (`DDG`…`FFG`, `CVN`, `SAM`, `THAAD`, `CDB`, `DEB`, `EWR`,
+  `AFB`, `F22`…`F16V`, `AWAC`, plus Workshop ids)
+- `domain` / `isFixed` / `isAirfield` / `isCarrier`
+- `vlsCells` — magazine / hardpoint pool; every munition draws by `cellCost`
+- `damageResist` / `damageDegrade`
+- `turnRateFlank` — naval hulls only at >75% flank; aircraft use `maxGLoad` for
+  combat turns (see `aircraftTurnRateRadPerS` in `movement.js`)
+- `commandHub` — while alive and on-mission, tightens side CEC latency
+- `lowObservable` — LO stand-in strike release profile (vanilla F-35 family)
+- `carrierCapable` — may recover on a sea airfield
+- `maxParkedSquadrons` — concurrent rearm slots on an airfield
+- `ciwsCount` / burst / cycle parameters
+- `displacementT` / `draftM` / `rcsM2` — size, horizon, and detection scaling
+  (air uses `altitudeM` for horizon — see `docs/SIMULATION_ASSUMPTIONS.md`)
+
+Ships spawn with a full default magazine for their hull class.
+
+Surface-strike ammo declares `targets: ["sea", "ground"]`. Legacy custom ammo
+using `category: "anti_ship"` / `target: "ship"` is interpreted the same way.
+`DarkEagle` is ground-launched surface strike only. `THAAD` is ground-launched
+missile defense only and refuses non-hypersonic targets in
+`chooseDefensiveWeapon`.
 
 ## SM-6 Dual-Role Missile
 

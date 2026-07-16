@@ -22,10 +22,12 @@ Terrain is no longer presentation-only. `src/world/terrain.js` exposes the
 shared binary water/land queries used by both rendering and the simulation:
 setup placement checks, setup-only map resets, direct-path tests, coastal
 detours, and final swept-segment movement guards all use the same projected
-Natural Earth geometry. The same query is domain-aware for placement: sea units
-must sit on water, while fixed ground emplacements (SAM/CDB/DEB/EWR) must sit on land
-(`isLandPoint`). There is still no shallow/deep-water concept; the navigability
-rule is simply water vs not-water.
+Natural Earth geometry. Placement is domain-aware: **sea** units (including
+`CVN`) must sit on water; **fixed ground** emplacements (SAM, THAAD, CDB, DEB,
+EWR) must sit on land (`isLandPoint`); **airfields** (`AFB` / ground
+`isAirfield`) may sit on land or water; **air** squadrons may be placed
+anywhere and overfly terrain. There is still no shallow/deep-water concept; the
+navigability rule is simply water vs not-water.
 
 Runtime terrain queries do not scan every Natural Earth vertex. A lazy 0.5 NM
 water mask identifies cells whose expanded bounds contain no land, while 24 NM

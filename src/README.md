@@ -13,8 +13,8 @@ as-is and run as native ES modules in the browser and in Node.
   HTML builders, per-ship derived state). No DOM/canvas/global access, so it is
   unit-tested directly in `tests/ui.test.mjs`. `app.js` imports from here.
 - `mods/` — the **Unit Workshop** modding system (browser): custom naval/ground/
-  ammo unit types stored as self-contained JSON in IndexedDB and registered into
-  the live `MISSILES`/`SHIP_CLASSES` catalogues at boot. See the table below.
+  aircraft/ammo unit types stored as self-contained JSON in IndexedDB and
+  registered into the live `MISSILES`/`SHIP_CLASSES` catalogues at boot.
 - `styles.css` — tactical UI layout and styling.
 - `sim.js` — **barrel only**. Re-exports the simulation core from `sim/`.
   Consumers (`app.js`, `ui/`, tests) import from here; do not move logic into it.
@@ -27,13 +27,14 @@ as-is and run as native ES modules in the browser and in Node.
 | `math.js` | geometry, kinematics, `interceptPoint`, `Rng` |
 | `events.js` | event-log append, severity, time formatting |
 | `missiles.js` | `MISSILES` catalogue, display helpers, `battleSummaryCounts` |
-| `ships.js` | `SHIP_CLASSES` (four naval hulls + four fixed ground emplacements SAM/CDB/DEB/EWR via `domain`/`isFixed`), ship factory, loadout/ROE, hull-id counter |
+| `ships.js` | `SHIP_CLASSES` live registry (naval incl. CVN; ground SAM/THAAD/CDB/DEB/EWR/AFB; air F22…F16V/AWAC), factory, loadout/ROE |
+| `aircraft.js` | squadron lifecycle (RTB/rearm/fuel), `decideAircraft`, CAP/strike/A2A, carrier deck parking |
 | `sensors.js` | hostile radar detection, lazy track ageing/pruning, centralized CEC sharing, adaptive spatial scan index |
 | `command.js` | fused force picture + fleet command posture (OTC/AAWC, modes) |
-| `movement.js` | ship motion integration, terrain-aware detours, per-unit movement decisions |
-| `combat.js` | launch queues, fire planning, missile flight, damage, CIWS |
+| `movement.js` | ship/air motion, terrain detours, deck-pin for rearming flights |
+| `combat.js` | launch queues, fire planning, THAAD/hypersonic defense filters, missile flight, damage, CIWS |
 | `scenario.js` | create/serialize/restore/export, map state, setup-mode editing |
-| `step.js` | `stepSim` — the deterministic top-level tick |
+| `step.js` | `stepSim` — deterministic tick; wipeout win + mutual-exhaustion draw |
 
 ## `mods/` — the Unit Workshop (browser only; never imported by `sim/`)
 
@@ -55,13 +56,11 @@ captured at module load and can never be removed.
   because they execute at runtime, after all modules load.
 - **Add a new public symbol** → export it from its module, then add the module
   to the `export *` list in `sim.js` if it is a new file.
-- **Where things go:** new missile → `missiles.js`; new hull or ground
-  emplacement → `ships.js`; new sensor/track rule → `sensors.js`; AI posture →
-  `command.js`; weapon logic/guidance → `combat.js`; save-format field or
-  placement/terrain rule → `scenario.js`; map geometry / water-land query →
-  `world/terrain.js`; a moddable parameter, editor field, or import/storage rule
-  → `mods/` (`schema.js` for fields, `registry.js` for conversion, `store.js` for
-  persistence, `editor.js` for the UI).
+- **Where things go:** new missile → `missiles.js`; new hull / ground / air class
+  → `ships.js`; air doctrine/lifecycle → `aircraft.js`; sensor/track →
+  `sensors.js`; AI posture → `command.js`; weapon/guidance → `combat.js`;
+  save-format / placement → `scenario.js`; terrain → `world/terrain.js`;
+  Workshop fields → `mods/` (`schema` / `registry` / `store` / `editor`).
 - **Keep it deterministic.** Same seed + inputs ⇒ same result. Route all
   randomness through `sim.rng` (the seeded `Rng`), never `Math.random()`.
 - **Verify with `npm test`** after any change to `sim/` or `ui/`.
