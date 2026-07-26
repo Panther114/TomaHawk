@@ -4,6 +4,11 @@
 import { NM } from "./constants.js";
 import { clamp, distance } from "./math.js";
 import { MISSILES } from "./missiles.js";
+import {
+  electronicAttackPressure,
+  electronicSupportObservation,
+  radarJammingPenalty
+} from "./ew.js";
 
 const radarHeightCache = new WeakMap();
 const TRACK_MAX_AGE_S = 160;
@@ -73,8 +78,8 @@ function unclassifiedContactLabel(domain) {
 // platform version (RCS only shortens detection, it never extends a radar
 // beyond its rated reach).
 const MISSILE_REF_RCS_M2 = 0.6;
-function missileRcsRangeFactor(rcsM2) {
-  return clamp(Math.pow((rcsM2 ?? MISSILE_REF_RCS_M2) / MISSILE_REF_RCS_M2, 0.25), 0.35, 1.0);
+export function missileRcsRangeFactor(rcsM2) {
+  return clamp(Math.pow((rcsM2 ?? MISSILE_REF_RCS_M2) / MISSILE_REF_RCS_M2, 0.25), 0.18, 1.0);
 }
 
 // Radar-reflective height for the geometric horizon: a flying entity uses its
@@ -165,6 +170,11 @@ export function missileDetectionEnvelope(observer, missile) {
         baseChance = 0.78;
       }
       break;
+  }
+  // A live weapon's actual altitude overrides its catalogue profile, including
+  // gradual terminal descent. Profile-only queries still use the values above.
+  if (Number.isFinite(missile.altitudeM)) {
+    targetHeightM = Math.max(1, missile.altitudeM);
   }
   const visibilityFactor = missileRcsRangeFactor(spec.rcsM2);
   const horizonM = radarHorizonM(scatterHeightM(observer), targetHeightM);
@@ -315,7 +325,7 @@ function indexTrack(sim, map, id, track, ship = null) {
   }
 }
 
-function setLocalTrack(sim, ship, id, track) {
+export function setLocalTrack(sim, ship, id, track) {
   const isNew = !ship.tracks.has(id);
   ship.tracks.set(id, track);
   indexTrack(sim, ship.tracks, id, track, ship);
@@ -380,13 +390,14 @@ export function scanSensors(sim, dt) {
     observer.radarCooldown = observer.radarInterval;
     observers.push(observer);
   }
-  if (!observers.length) return false;
   const maxRadarRangeM = observers.reduce((range, observer) => Math.max(range, observer.radarRangeM), 0);
-  const ships = sensorGrid(sim.ships, maxRadarRangeM);
-  const missiles = sensorGrid(sim._aliveMissiles ?? sim.missiles, maxRadarRangeM);
+  const ships = observers.length ? sensorGrid(sim.ships, maxRadarRangeM) : null;
+  const missiles = observers.length ? sensorGrid(sim._aliveMissiles ?? sim.missiles, maxRadarRangeM) : null;
   for (const observer of observers) {
+    const eaPressure = electronicAttackPressure(observer, sim.ships);
     for (const target of sensorCandidates(ships, observer, observer.radarRangeM)) {
       if (target.id === observer.id || target.side === observer.side || !target.alive) continue;
+      if (target.domain === "subsurface") continue;
       // RCS-limited detection range (replaces the rigid radar range): a small or
       // low-observable target is only seen well inside the radar's nominal reach.
       const targetDomain = target.domain ?? "sea";
@@ -399,11 +410,18 @@ export function scanSensors(sim, dt) {
       // sea-skimmer) is masked beyond the geometric horizon (the radar shadow).
       const horizon = radarHorizonM(scatterHeightM(observer), scatterHeightM(target));
       const horizonFactor = rangeM > horizon ? clamp(1.0 - (rangeM - horizon) / (120 * NM), 0.20, 1.0) : 1.0;
-      const chance = radarDetectionChance(rangeM, effectiveRangeM, target) * horizonFactor;
+      const jammingPenalty = radarJammingPenalty(eaPressure, rangeM, observer.radarRangeM);
+      const chance = radarDetectionChance(rangeM, effectiveRangeM, target) * horizonFactor * (1 - jammingPenalty);
       if (sim.rng.next() <= chance) {
         const radarHealth = observer.subsystems?.radar ?? 1.0;
-        const quality = clamp((1 - rangeM / effectiveRangeM + sim.rng.range(-0.08, 0.08)) * radarHealth, 0.05, 0.98);
-        const uncertainty = (1 - quality) * 5 * NM + sim.rng.range(0, 0.5 * NM);
+        const quality = clamp(
+          (1 - rangeM / effectiveRangeM + sim.rng.range(-0.08, 0.08))
+            * radarHealth
+            * (1 - jammingPenalty * 0.78),
+          0.05,
+          0.98
+        );
+        const uncertainty = (1 - quality) * 5 * NM + jammingPenalty * 4 * NM + sim.rng.range(0, 0.5 * NM);
         setLocalTrack(sim, observer, target.id, {
           id: target.id,
           side: target.side,
@@ -416,6 +434,7 @@ export function scanSensors(sim, dt) {
           quality,
           uncertainty,
           source: observer.id,
+          emitterActive: target.radarActive || target.jammerActive,
           age: 0,
           lastSeen: sim.time
         });
@@ -424,6 +443,7 @@ export function scanSensors(sim, dt) {
     }
     for (const missile of sensorCandidates(missiles, observer, observer.radarRangeM)) {
       if (missile.side === observer.side) continue;
+      if (missile.medium?.startsWith("underwater") || MISSILES[missile.missileId]?.medium === "underwater") continue;
       const profile = missileDetectionEnvelope(observer, missile);
       const detectRangeM = profile.detectRangeM;
       const dx = observer.x - missile.x;
@@ -432,7 +452,10 @@ export function scanSensors(sim, dt) {
       const rangeM = distance(observer, missile);
       const horizon = profile.horizonM;
       const horizonFactor = rangeM > horizon ? clamp(1.0 - (rangeM - horizon) / (70 * NM), 0.15, 1.0) : 1.0;
-      const chance = missileRadarDetectionChance(rangeM, detectRangeM, missile, profile) * horizonFactor;
+      const jammingPenalty = radarJammingPenalty(eaPressure, rangeM, observer.radarRangeM);
+      const chance = missileRadarDetectionChance(rangeM, detectRangeM, missile, profile)
+        * horizonFactor
+        * (1 - jammingPenalty);
       if (sim.rng.next() <= chance) {
         const quality = clamp(
           0.16
@@ -459,6 +482,37 @@ export function scanSensors(sim, dt) {
         });
         changed = true;
       }
+    }
+  }
+  // Electronic support is passive and independent of radar state. It provides a
+  // noisy emitter track and makes active jamming a useful but detectable choice.
+  for (const observer of sim.ships) {
+    if (!observer.alive || !((observer.esmRangeM ?? 0) > 0)) continue;
+    observer.ewCooldown = (observer.ewCooldown ?? 0) - dt;
+    if (observer.ewCooldown > 0) continue;
+    observer.ewCooldown = 4;
+    for (const emitter of sim.ships) {
+      if (!emitter.alive || emitter.side === observer.side || emitter.id === observer.id) continue;
+      const observation = electronicSupportObservation(observer, emitter, sim.rng);
+      if (!observation) continue;
+      const uncertainty = observation.uncertainty;
+      setLocalTrack(sim, observer, emitter.id, {
+        id: emitter.id,
+        side: emitter.side,
+        domain: emitter.domain ?? "sea",
+        classification: observation.classification,
+        x: emitter.x + sim.rng.range(-uncertainty, uncertainty),
+        y: emitter.y + sim.rng.range(-uncertainty, uncertainty),
+        vx: Math.cos(emitter.heading ?? 0) * (emitter.speed ?? 0),
+        vy: Math.sin(emitter.heading ?? 0) * (emitter.speed ?? 0),
+        quality: observation.quality,
+        uncertainty,
+        source: `${observer.id} ESM`,
+        emitterActive: true,
+        age: 0,
+        lastSeen: sim.time
+      });
+      changed = true;
     }
   }
   return changed;

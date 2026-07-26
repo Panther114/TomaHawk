@@ -469,6 +469,7 @@ function aircraftDetailCardHtml(s, cardWidth) {
   const size = squadronSize(s);
   const fuelFrac = s.enduranceS ? (s.fuelS ?? 0) / s.enduranceS : 0;
   const flareFrac = s.flaresMax ? (s.flares ?? 0) / s.flaresMax : 0;
+  const radarDecoyFrac = s.radarDecoysMax ? (s.radarDecoys ?? 0) / s.radarDecoysMax : 0;
   const vls = vlsLoadState(s);
   const { aaw, aawBase, asuw, asuwBase } = aawAsuwAggregate(s);
   const state = ({ mission: "MSN", rtb: "RTB", rearming: "RRM" })[s.airState] ?? "MSN";
@@ -480,6 +481,8 @@ function aircraftDetailCardHtml(s, cardWidth) {
     <div class="ship-detail-grid">
       ${detailRow(t("detail.fuel"), fuelFrac, "load")}
       ${detailRow(t("detail.flares"), flareFrac, "load")}
+      ${s.radarDecoysMax ? detailRow(t("detail.decoy"), radarDecoyFrac, "load") : ""}
+      ${s.jammerStrength > 0 ? detailTextRow(t("detail.jam"), s.jammerActive ? "ON" : "EMCON") : ""}
       ${detailRow(t("detail.load"), vls.fill, "load")}
       ${detailTextRow(t("detail.state"), state + (s.evading ? " !" : ""))}
       ${detailTextRow(t("detail.alt"), `${((s.altitudeM ?? 0) / 1000).toFixed(1)} km`)}
@@ -533,6 +536,8 @@ function navalDetailCardHtml(s, cardWidth) {
   const cic = s.subsystems?.cic ?? 1.0;
   const hp = shipHpState(s);
   const vls = vlsLoadState(s);
+  const ew = s.subsystems?.electronicWarfare ?? 1.0;
+  const radarDecoyFrac = s.radarDecoysMax ? (s.radarDecoys ?? 0) / s.radarDecoysMax : 0;
   const color = sideColor(s.side);
   return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
     <div class="ship-detail-heading">
@@ -546,6 +551,37 @@ function navalDetailCardHtml(s, cardWidth) {
       ${detailRow(t("detail.fcs"), fc)}
       ${detailRow(t("detail.ciws"), ciws)}
       ${detailRow(t("detail.cic"), cic)}
+      ${(s.esmRangeM > 0 || s.jammerStrength > 0) ? detailRow(t("detail.esm"), ew) : ""}
+      ${s.radarDecoysMax ? detailRow(t("detail.decoy"), radarDecoyFrac, "load") : ""}
+    </div>
+  </div>`;
+}
+
+function submarineDetailCardHtml(s, cardWidth) {
+  const hp = shipHpState(s);
+  const prop = s.subsystems?.propulsion ?? 1.0;
+  const fc = s.subsystems?.fireControl ?? 1.0;
+  const cic = s.subsystems?.cic ?? 1.0;
+  const vls = vlsLoadState(s);
+  const sonar = s.subsystems?.sonar ?? 1;
+  const ew = s.subsystems?.electronicWarfare ?? 1;
+  const decoyBase = s.acousticDecoysMax ?? s.acousticDecoys ?? 0;
+  const decoys = decoyBase > 0 ? (s.acousticDecoys ?? 0) / decoyBase : 0;
+  const color = sideColor(s.side);
+  return `<div class="ship-detail-card" style="--ship-accent:${color};--ship-card-width:${cardWidth}px">
+    <div class="ship-detail-heading">
+      <b>${escapeHtml(shipDisplayName(s, ""))}</b>
+      <span style="color:${hp.currentHp < hp.maxHp ? "#f7b955" : ""}">HP ${hp.currentHp}/${hp.maxHp}</span>
+    </div>
+    <div class="ship-detail-grid">
+      ${detailTextRow(t("detail.depth"), `${Math.round(s.depthM ?? 0)} m`)}
+      ${detailRow(t("detail.sonar"), sonar)}
+      ${s.esmRangeM > 0 ? detailRow(t("detail.esm"), ew) : ""}
+      ${detailRow(t("detail.prop"), prop)}
+      ${detailRow(t("detail.vls"), vls.fill, "load")}
+      ${detailRow(t("detail.fcs"), fc)}
+      ${detailRow(t("detail.cic"), cic)}
+      ${detailRow(t("detail.decoy"), decoys, "load")}
     </div>
   </div>`;
 }
@@ -553,6 +589,7 @@ function navalDetailCardHtml(s, cardWidth) {
 // Dispatch by unit TYPE (domain / isFixed), never by hull name.
 export function shipDetailCardHtml(s, cardWidth = 120) {
   if (s.domain === "air") return aircraftDetailCardHtml(s, cardWidth);
+  if (s.domain === "subsurface") return submarineDetailCardHtml(s, cardWidth);
   if (s.isFixed) return groundDetailCardHtml(s, cardWidth);
   return navalDetailCardHtml(s, cardWidth);
 }

@@ -10,6 +10,15 @@ import { addEvent } from "./events.js";
 import { currentTrack, markContactDead } from "./sensors.js";
 import { AIRCRAFT_TEMP_CONFIG, aliveAircraftCount } from "./aircraft.js";
 import {
+  applySubsystemDamage,
+  ciwsEffectiveness,
+  commandDelayScale,
+  effectiveDefenseChannelCapacity,
+  vlsCadenceScale
+} from "./damage.js";
+import { isElectromagneticEmitter, reactToAntiRadiationThreat, tryRadarSoftKill } from "./ew.js";
+import { tryAcousticSoftKill } from "./sonar.js";
+import {
   forceTrack,
   inSector,
   computeFleetCommand,
@@ -86,7 +95,7 @@ function countNearbyMissiles(grid, x, y, radiusM, match) {
 // flight relaunches a type ~4x faster than a lone survivor. Ships are unchanged
 // (returns the raw spec interval), so the surface launch path is byte-identical.
 function effectiveLaunchIntervalS(launcher, spec) {
-  if (launcher.domain !== "air") return spec.launchIntervalS;
+  if (launcher.domain !== "air") return spec.launchIntervalS * vlsCadenceScale(launcher);
   return spec.launchIntervalS / Math.max(1, aliveAircraftCount(launcher));
 }
 
@@ -344,7 +353,7 @@ function channelCapacity(ship, channel) {
     if (Number.isFinite(area) || Number.isFinite(point)) return (Number(area) || 0) + (Number(point) || 0);
   }
   const cap = ship.defenseChannels?.[channel];
-  return Number.isFinite(cap) ? cap : Infinity;
+  return Number.isFinite(cap) ? effectiveDefenseChannelCapacity(ship, cap) : Infinity;
 }
 
 function defensiveChannelUse(sim, ship, channel) {
@@ -485,6 +494,24 @@ function launchMissile(sim, launcher, order) {
     launchSequence: order.launchSequence ?? 0,
     laneOffset
   };
+  const submergedAirLaunch = launcher.domain === "subsurface" && spec.medium !== "underwater";
+  missile.medium = spec.medium === "underwater"
+    ? "underwater"
+    : submergedAirLaunch ? "underwater_to_air" : "air";
+  if (missile.medium === "underwater") {
+    missile.altitudeM = 0;
+    missile.launchAltitudeM = 0;
+    missile.cruiseAltitudeM = 0;
+  } else if (submergedAirLaunch) {
+    // Encapsulated submerged launch: the weapon first travels a short water
+    // column before booster ignition and normal airborne cruise.
+    missile.altitudeM = 0;
+    missile.launchAltitudeM = 0;
+    missile.speed = 45;
+    missile.launchSpeedMps = 45;
+    missile.waterExitDistanceM = 300;
+    missile.phase = "submerged launch";
+  }
   Object.defineProperty(missile, "_spec", { value: spec, writable: true, configurable: true });
   sim.missiles.push(missile);
   sim._missileById?.set(missile.id, missile);
@@ -704,6 +731,7 @@ function buildEngagementIndex(sim) {
     const byId = bestLocalMissileTracks.get(side);
     for (const missile of liveMissiles) {
       if (!missile.alive || missile.side === side) continue;
+      if (missile.medium?.startsWith("underwater") || MISSILES[missile.missileId]?.medium === "underwater") continue;
       let best = null;
       for (const ship of ships) {
         const raw = ship.tracks.get(missile.id);
@@ -894,6 +922,7 @@ function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.
     const reserve = allowReserve ? 0 : dualRole ? Math.ceil((baseLoad[id] ?? ship.loadout[id]) * (spec.magazineReserveRatio || 0)) : 0;
     if (!ship.loadout[id] || ship.loadout[id] <= reserve) return false;
     if (rangeM > spec.rangeM) return false;
+    if (spec.requiresEmitter && !track.emitterActive) return false;
     // Dual-role (e.g. SM-6): conserve for area air defence unless plentiful.
     if (dualRole && !allowReserve && ship.loadout[id] < (aggression > 0.72 ? 6 : 10)) return false;
     return true;
@@ -1168,6 +1197,10 @@ function planDefensiveFires(sim) {
     const liveMissiles = sim._aliveMissiles || sim.missiles;
     for (const missile of liveMissiles) {
       if (!missile.alive || missile.side === side) continue;
+      // Torpedoes and the submerged phase of ASROC are below the engagement
+      // medium of shipboard SAMs and fighter AAMs. They remain sonar tracks for
+      // maneuver/soft-kill decisions, but never enter the air-defense planner.
+      if (missile.medium?.startsWith("underwater") || MISSILES[missile.missileId]?.medium === "underwater") continue;
       const target = aliveShipById(sim, missile.targetId);
       if (!target || target.side !== side) continue;
       const track = bestMissileTrackForSide(sim, side, missile.id);
@@ -1259,8 +1292,24 @@ function bestTrackForShip(sim, ship, target) {
 
 function unresolvedOffensiveWaveCount(sim, side, targetId) {
   let count = 0;
+  for (const launcher of sim.ships) {
+    if (!launcher.alive || launcher.side !== side) continue;
+    for (const order of launcher.launchQueue ?? []) {
+      if (order.targetId !== targetId) continue;
+      const queuedSpec = MISSILES[order.missileId];
+      // Existing surface-raid allocation intentionally lets multiple shooters
+      // coordinate orders in one planning pass. Only serialize slow underwater
+      // attacks here, where duplicate queued rounds caused unrealistic dumps.
+      if (queuedSpec && (queuedSpec.medium === "underwater" || queuedSpec.medium === "air_to_underwater")) count++;
+    }
+  }
   for (const missile of missilesTargeting(sim, targetId)) {
-    if (!missile.alive || missile.side !== side || missile.terminal) continue;
+    if (!missile.alive || missile.side !== side) continue;
+    // Air-breathing weapons can be topped up once the first wave commits to
+    // terminal attack. A torpedo remains a slow, unresolved threat throughout
+    // its terminal homing run; treating it as resolved caused submarines to
+    // dump most of a 26-round war load at one target.
+    if (missile.terminal && missile.medium !== "underwater") continue;
     if (missileHasSurfaceTarget(MISSILES[missile.missileId]) || missile.launchRole === "anti_ship") count++;
   }
   return count;
@@ -1559,7 +1608,10 @@ function planOffensiveFires(sim) {
               // longer cadence so they don't dump the whole DEB magazine in one
               // planning burst, but they do get *a* shot.
               const cadenceScale = strategic ? 1.15 : isStrikeSpecialist(shooter) ? 1.05 : 1;
-              shooter.reactionAvailableAt = sim.time + (baseWindow + sim.rng.range(0, baseWindow * 0.45)) * cadenceScale;
+              shooter.reactionAvailableAt = sim.time
+                + (baseWindow + sim.rng.range(0, baseWindow * 0.45))
+                  * cadenceScale
+                  * commandDelayScale(shooter);
               state.assigned += count;
               if (strategic && generalFull) state.strategicAssigned += count;
               launchedThisPass = true;
@@ -1596,34 +1648,6 @@ export function planEngagements(sim) {
   }
   sim._engagementIndex = null;
   sim._raidCountCache = null;
-}
-
-// Subsystem damage model: each hit degrades random subsystems, affecting combat capability.
-function applySubsystemDamage(sim, ship) {
-  const subs = ship.subsystems;
-  if (!subs) return;
-  // Each hit damages 2-3 subsystems (random selection weighted by vulnerability)
-  const count = 2 + Math.floor(sim.rng.next() * 2); // 2 or 3
-  const candidates = ["radar", "vls", "propulsion", "fireControl", "ciws", "cic"];
-  // Shuffle and pick first `count`
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const j = Math.floor(sim.rng.next() * (i + 1));
-    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-  }
-  const messages = [];
-  for (let i = 0; i < count; i++) {
-    const key = candidates[i];
-    const degradation = 0.15 + sim.rng.next() * 0.30; // 15-45% damage per subsystem hit
-    subs[key] = Math.max(0, subs[key] - degradation);
-    if (subs[key] <= 0.05) {
-      messages.push(`${key} destroyed`);
-    } else if (subs[key] < 0.5) {
-      messages.push(`${key} heavily damaged`);
-    }
-  }
-  if (messages.length) {
-    addEvent(sim, `${ship.name} subsystem damage: ${messages.join(", ")}.`, ship.side);
-  }
 }
 
 // Target destroyed in flight: no re-vectoring is allowed.
@@ -1716,6 +1740,39 @@ const MISSILE_TURN_DRAG_K = 0.5;
 // transition below): fraction of speed gained per 1000m of altitude dropped.
 const TERMINAL_DIVE_BOOST_K = 0.008;
 const TERMINAL_DIVE_BOOST_CAP = 0.05;
+
+export function missileManeuverAuthority(missile) {
+  const flownFrac = clamp((missile.flownM ?? 0) / Math.max(1, missile.maxRangeM), 0, 1);
+  const postBurnout = clamp((flownFrac - 0.35) / 0.65, 0, 1);
+  return 1 - 0.45 * postBurnout;
+}
+
+function terminalAltitudeFor(spec, missileId) {
+  if (Number.isFinite(spec.terminalAltitudeM)) return spec.terminalAltitudeM;
+  if (missileId === "AGM-154") return 300;
+  return 12;
+}
+
+function updateTerminalAltitude(missile, distToTarget) {
+  if (!Number.isFinite(missile.terminalStartAltitudeM)
+    || !Number.isFinite(missile.terminalStartDistanceM)
+    || !Number.isFinite(missile.terminalTargetAltitudeM)) return;
+  const progress = clamp(
+    1 - distToTarget / Math.max(1, missile.terminalStartDistanceM),
+    0,
+    1
+  );
+  const smoothProgress = progress * progress * (3 - 2 * progress);
+  missile.altitudeM = missile.terminalStartAltitudeM
+    + (missile.terminalTargetAltitudeM - missile.terminalStartAltitudeM) * smoothProgress;
+  const droppedM = Math.max(0, missile.terminalStartAltitudeM - missile.altitudeM);
+  missile.terminalDiveBoost = clamp(
+    TERMINAL_DIVE_BOOST_K * (droppedM / 1000),
+    0,
+    TERMINAL_DIVE_BOOST_CAP
+  );
+}
+
 function missileManeuverDragFactor(headingDeltaRad, dt, baseTurnRadPerS) {
   if (baseTurnRadPerS <= 0) return 1;
   const turnRateRadPerS = Math.abs(headingDeltaRad) / Math.max(dt, 1e-3);
@@ -1752,42 +1809,48 @@ export function updateMissiles(sim, dt) {
 
     const distToTarget = distance(missile, target);
     missile.timeToImpactEstimate = timeToImpact(missile, target);
+    if (missile.medium === "underwater_to_air" && missile.flownM >= (missile.waterExitDistanceM ?? 300)) {
+      missile.medium = "air";
+      missile.launchSpeedMps = spec.speedMps;
+      missile.speed = spec.speedMps;
+      missile.altitudeM = spec.cruiseAltitudeM ?? 30;
+      missile.launchAltitudeM = missile.altitudeM;
+      missile.phase = "boost / cruise";
+    }
+    if (!targetIsInFlightMissile) reactToAntiRadiationThreat(sim, missile, spec, target);
     // Anti-surface strike vs a platform; otherwise (intercepting a missile, or a
     // SAM running down an aircraft) it is an air-intercept engagement.
     const isAntiShipTarget = !targetIsInFlightMissile && launchRole === "anti_ship";
+    if (spec.medium === "air_to_underwater"
+      && missile.medium !== "underwater"
+      && target.domain === "subsurface"
+      && distToTarget <= (spec.waterEntryRangeM ?? 2 * NM)) {
+      missile.medium = "underwater";
+      missile.altitudeM = 0;
+      missile.launchSpeedMps = spec.underwaterSpeedMps ?? 42;
+      missile.speed = missile.launchSpeedMps;
+      missile.phase = "underwater search";
+      missile.seaSkimming = false;
+    }
     if (targetIsInFlightMissile && distToTarget < 4 * NM) {
       missile.terminal = true;
       missile.phase = "terminal";
       missile.terminalReason = "intercept endgame";
     } else if (isAntiShipTarget && distToTarget < spec.seekerRangeM) {
       const enteringTerminal = !missile.terminal;
-      const priorAltitudeM = missile.altitudeM;
       missile.terminal = true;
       missile.phase = "terminal";
-      missile.terminalReason = "terminal attack phase";
-      if (Number.isFinite(spec.terminalAltitudeM)) {
-        missile.seaSkimming = spec.terminalSeaSkimming ?? false;
-        missile.altitudeM = spec.terminalAltitudeM;
-      } else if (missile.missileId === "AGM-154") {
-        missile.altitudeM = 300; // JSOW: terminal dive on its glide profile, not a sea-skim
-      } else {
-        missile.seaSkimming = true;
-        missile.altitudeM = 12; // drop to sea-skim for the terminal run-in
-      }
-      // GPE -> KE, once, at the moment of the dive: a controlled guided
-      // descent converts only a small, heavily-damped fraction of the
-      // altitude drop into forward speed (a real free-fall energy-conversion
-      // formula would be wildly excessive here -- a guided glide/cruise
-      // weapon bleeds most of that potential energy as drag maintaining
-      // stable flight, not literal free-fall) but it is a genuine, physically-
-      // motivated effect rather than the dive being energy-free. Folded into
-      // launchSpeedMps (the reference dragSpeedFactor scales from) so it
-      // persists through every later tick's recompute instead of being
-      // overwritten immediately.
-      if (enteringTerminal) {
-        const droppedM = Math.max(0, priorAltitudeM - missile.altitudeM);
-        const diveBoost = clamp(TERMINAL_DIVE_BOOST_K * (droppedM / 1000), 0, TERMINAL_DIVE_BOOST_CAP);
-        missile.launchSpeedMps = (missile.launchSpeedMps ?? spec.speedMps) * (1 + diveBoost);
+      missile.terminalReason = missile.medium === "underwater"
+        ? "acoustic homing"
+        : "terminal attack phase";
+      if (missile.medium !== "underwater") {
+        if (enteringTerminal) {
+          missile.seaSkimming = spec.terminalSeaSkimming ?? missile.missileId !== "AGM-154";
+          missile.terminalStartAltitudeM = missile.altitudeM;
+          missile.terminalStartDistanceM = distToTarget;
+          missile.terminalTargetAltitudeM = terminalAltitudeFor(spec, missile.missileId);
+        }
+        updateTerminalAltitude(missile, distToTarget);
       }
     } else if (!targetIsInFlightMissile && !isAntiShipTarget && distToTarget < spec.seekerRangeM) {
       // SAM/AAM closing on an aircraft squadron.
@@ -1851,16 +1914,21 @@ export function updateMissiles(sim, dt) {
     missile.losRate = wrapAngle(losAngle - (missile.losAngle ?? losAngle)) / Math.max(dt, 1e-3);
     missile.losAngle = losAngle;
     const baseTurn = (spec.maxTurnRateDps ?? 12) * Math.PI / 180;
-    const maxTurn = baseTurn * (missile.terminal ? 1.5 : 1) * dt;
+    const availableTurn = baseTurn * (missile.terminal ? 1.5 : 1) * missileManeuverAuthority(missile);
+    const maxTurn = availableTurn * dt;
     const headingDeltaRad = clamp(wrapAngle(losAngle - missile.heading), -maxTurn, maxTurn);
     missile.heading = wrapAngle(missile.heading + headingDeltaRad);
     // Energy bleed: recompute speed from the launch value and the drag model so
     // long-range / low-altitude shots arrive slower (deterministic; no RNG),
     // then apply the additional maneuver-induced bleed from how hard this tick's
     // turn actually was (see missileManeuverDragFactor above).
-    missile.speed = (missile.launchSpeedMps ?? spec.speedMps)
-      * dragSpeedFactor(missile)
-      * missileManeuverDragFactor(headingDeltaRad, dt, baseTurn * (missile.terminal ? 1.5 : 1));
+    missile.speed = missile.medium === "underwater"
+      ? (spec.underwaterSpeedMps ?? missile.launchSpeedMps ?? spec.speedMps)
+        * missileManeuverDragFactor(headingDeltaRad, dt, availableTurn)
+      : (missile.launchSpeedMps ?? spec.speedMps)
+        * dragSpeedFactor(missile)
+        * (1 + (missile.terminalDiveBoost ?? 0))
+        * missileManeuverDragFactor(headingDeltaRad, dt, availableTurn);
     const travel = missile.speed * dt;
     missile.x += Math.cos(missile.heading) * travel;
     missile.y += Math.sin(missile.heading) * travel;
@@ -1885,16 +1953,22 @@ export function updateMissiles(sim, dt) {
         addEvent(sim, `${missile.missileId} failed to intercept ${target.missileId}.`, missile.side);
       }
       deactivateMissile(sim, missile);
-    } else if (target && !targetIsInFlightMissile && distance(missile, target) < 420) {
+    } else if (target && !targetIsInFlightMissile && distance(missile, target) < (missile.medium === "underwater" ? 260 : 420)) {
       const isAir = target.domain === "air";
       let hitChance;
-      let decoyed = false;
+      let decoyed = missile.medium === "underwater"
+        ? tryAcousticSoftKill(sim, missile, target)
+        : tryRadarSoftKill(sim, missile, spec, target);
       if (isAir) {
         // Aircraft survivability: small, fast, hard-maneuvering target with IR
         // countermeasures — a far cry from a ship's near-certain terminal hit.
-        const air = airDefenseHitChance(sim, missile, spec, target);
-        hitChance = air.pk;
-        decoyed = air.decoyed;
+        if (decoyed) {
+          hitChance = 0;
+        } else {
+          const air = airDefenseHitChance(sim, missile, spec, target);
+          hitChance = air.pk;
+          decoyed = air.decoyed;
+        }
       } else {
         // Hit chance: base PK modified by terminal phase, sea state, target damage
         // Large ships (BBG) are easier to hit, fast/maneuvering ships harder
@@ -1904,11 +1978,12 @@ export function updateMissiles(sim, dt) {
           spec.pk + (missile.terminal ? 0.18 : 0) - target.damage * 0.03 + sizeBonus - maneuverPenalty,
           0.10, 0.88
         );
+        if (spec.requiresEmitter && !isElectromagneticEmitter(target)) hitChance = Math.max(0.12, hitChance - 0.3);
       }
       // No hit roll is drawn when a flare already spoofed the seeker.
       const hit = !decoyed && sim.rng.next() < hitChance;
       if (hit) {
-        target.damage += 1;
+        target.damage += Math.max(1, spec.damage ?? 1);
         // Subsystem damage applies to ships/emplacements, not aircraft flights
         // (a squadron has no radar/VLS/CIWS subsystems — a hit just downs a plane).
         if (!isAir) applySubsystemDamage(sim, target);
@@ -1998,7 +2073,7 @@ export function pointDefense(sim) {
     // CIWS against hypersonic / high-energy threats: almost no kinematic window.
     const diff = interceptDifficultyVsThreat(inbound, null, { ciws: true });
     const pKill = clamp(
-      basePk * saturationRatio - seaSkimPenalty - damagePenalty - diff.total,
+      basePk * ciwsEffectiveness(ship) * saturationRatio - seaSkimPenalty - damagePenalty - diff.total,
       diff.pkFloor,
       Math.min(0.72, diff.pkCeil)
     );

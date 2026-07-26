@@ -682,6 +682,9 @@ test("low-RCS aircraft are detected far closer than ships (RCS-based radar)", ()
     const sim = running(7);
     const obs = placeShip(sim, SIDE.BLUE, 0, 0, "DDG"); obs.desiredSpeed = 0;
     const tgt = placeShip(sim, SIDE.RED, rangeNm * NM, 0, targetHull);
+    // Isolate radar cross-section from the new passive ESM path: an emitting
+    // fighter can be detected as an emitter well beyond skin-paint range.
+    tgt.radarActive = false;
     if (tgt.fuelS !== undefined) { tgt.fuelS = 1e9; tgt.desiredSpeed = 0; }
     for (let i = 0; i < 160; i++) { stepSim(sim, 0.25); if (obs.tracks.has(tgt.id)) return true; }
     return false;

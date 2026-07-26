@@ -210,6 +210,7 @@ test("ground radar shares its picture so a radar-off friendly ship can engage on
   const sim = emptyRunningScenario(11);
   const blind = placeShip(sim, SIDE.BLUE, -60 * NM, 0, "DDG");
   blind.radarActive = false; // cannot detect for itself
+  blind.esmRangeM = 0; // isolate cooperative radar sharing from passive ESM
   placeShip(sim, SIDE.BLUE, 0, 0, "EWR"); // long-range search radar
   const red = placeShip(sim, SIDE.RED, 40 * NM, 0, "DDG");
   sim.mode = SCENARIO_MODE.RUNNING;
@@ -359,6 +360,7 @@ test("depleted ground combat units stay passive radar contributors", () => {
   depletedSam.loadout = { "SM-2MR": 0, "SM-6": 0, ESSM: 0 };
   const blind = placeShip(sim, SIDE.BLUE, -45 * NM, 0, "DDG");
   blind.radarActive = false;
+  blind.esmRangeM = 0; // isolate the ground radar's contribution from passive ESM
   blind.loadout = { "SM-2MR": 0, "SM-6": 0, ESSM: 0, MaritimeStrike: 0, TomahawkBlockV: 0 };
   const red = placeShip(sim, SIDE.RED, 30 * NM, 0, "DDG");
   sim.mode = SCENARIO_MODE.RUNNING;

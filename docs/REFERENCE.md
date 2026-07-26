@@ -13,7 +13,7 @@ and operator detail. 顶层 `README.md` 为简明概览，本文件提供完整�
 TomaHawk models a compact but technically structured modern battle simulator:
 
 - deterministic seeded simulation,
-- force-on-force Blue/Red combat across sea, ground, and air units,
+- force-on-force Blue/Red combat across sea, subsurface, ground, and air units,
 - unit placement and scenario editing in setup mode,
 - imperfect radar-derived tracks instead of omniscient targeting,
 - offensive and defensive missile planning at force level,
@@ -42,18 +42,26 @@ desired.
 
 #### Sensors and information quality
 - Radar-generated tracks with quality, uncertainty, age, and source metadata.
+- Passive/active sonar tracks whose range depends on speed, quieting, and active emissions.
+- Passive ESM, stand-off radar jamming with close-range burn-through, finite RF/acoustic decoys, and AGM-88/EMCON suppression.
 - Shared cooperative force picture rather than direct truth access.
 - Missile detection envelopes that vary by flight profile.
 - Dead-track pruning and age-based track degradation.
 
 #### Weapons and combat resolution
 - Surface-strike weapons: `MaritimeStrike`, `TomahawkBlockV`, `DarkEagle`.
+- Underwater warfare: Virginia Block V `SSN`, `Mk48`, and rocket-to-torpedo `VL-ASROC`.
 - Air/missile defense weapons: `SM-2MR`, `ESSM`.
 - Dual-role weapon: `SM-6`.
 - Paced launch queues, salvo spacing, launch cooldowns, and defensive-priority scheduling.
 - Velocity-lead guidance, terminal seeker behavior, and self-destruct on target loss.
 - Layered defense including area defense, point defense, and CIWS.
 - Mission-kill style ship damage with subsystem degradation.
+
+#### Deliberate scope exclusions
+- No mine warfare, logistics/resupply/UNREP, weather or sea state, or flooding/progressive buoyancy model.
+- EW is an efficient public-role abstraction, not a classified waveform/frequency/counter-countermeasure model.
+- The SSN is the only submarine type; undisclosed acoustic, depth, and torpedo performance values are gameplay envelopes.
 
 #### User interface and workflow
 - Full-screen tactical map canvas.
@@ -183,7 +191,7 @@ transition, guidance style, reserve behavior, and (for air-to-air) the no-escape
 
 #### Setup mode
 - Left-click with `BLUE` or `RED` tool selected to place units.
-- Select the unit type from the class dropdown — **Naval** (`DDG`/`CCG`/`BBG`/`FFG`/`CVN`), **Ground** (`SAM`/`THAAD`/`CDB`/`DEB`/`EWR`/`AFB`), or **Air**. Sea units (incl. CVN) on water; ground on land (`AFB` either).
+- Select the unit type from the class dropdown — **Naval** (`DDG`/`CCG`/`BBG`/`FFG`/`CVN`), **Subsurface** (`SSN`), **Ground** (`SAM`/`THAAD`/`CDB`/`DEB`/`EWR`/`AFB`), or **Air** (including `EA18G`). Sea/subsurface units on water; ground on land (`AFB` either).
 - Left-drag units to reposition them during setup (sea units stay on water, ground units stay on land).
 - Right-click ship to select it.
 - Right-drag/right-click selection supports additive detail-card selection.
@@ -277,6 +285,12 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 - 右键选中与多舰详情卡片。
 - 舰艇详情标题只显示一次本地化舰级前缀加舰号，详情行显示本地化子系统名称、居中的状态条和百分比。
 
+#### 潜艇、电子战与范围边界
+- 水下域采用单一 `SSN`：弗吉尼亚级 Block V 近似，包含主/被动声呐、静音航速、深度变化、Mk 48 与 VL-ASROC 的水下交战。
+- 电子战包含被动 ESM、远距雷达压制干扰、近距烧穿、有限射频/声学诱饵、EA-18G/AGM-88 及反辐射威胁下的电磁管制。
+- 明确不包括水雷战、后勤补给/海上补给、天气/海况，以及进水与渐进浮力损失。
+- 未公开的声学、潜深和鱼雷性能均为游戏包线，不代表真实作战参数；电子战是公开任务能力的高效抽象，不是波形级模型。
+
 ### 3. 技术架构
 
 #### 运行时拆分
@@ -329,7 +343,9 @@ TomaHawk 是仓库名，应用内部与运行时名称为 **战斧**。它是一
 
 #### 场景准备阶段
 - 选中 `BLUE` 或 `RED` 后左键点击地图放置单位。
-- 通过类别下拉框选择**海上**（`DDG`/`CCG`/`BBG`/`FFG`/`CVN`）、**陆基**（`SAM`/`THAAD`/`CDB`/`DEB`/`EWR`/`AFB`）或**空中**单位；舰艇（含航母）在水面，固定陆基在陆地，机场水陆皆可，飞机任意位置。
+- 通过类别下拉框选择**海上**（`DDG`/`CCG`/`BBG`/`FFG`/`CVN`）、**水下**（`SSN`）、**陆基**（`SAM`/`THAAD`/`CDB`/`DEB`/`EWR`/`AFB`）或**空中**单位（含 `EA18G`）；水面舰与潜艇部署在水域，固定陆基在陆地，机场水陆皆可，飞机任意位置。
+
+明确范围边界：本版本不包括水雷战、后勤补给、天气/海况与进水沉没模型。潜艇采用弗吉尼亚 Block V 单一类型，电子战采用高效的电子侦察、压制干扰、烧穿、反辐射与有限软杀伤抽象。
 - 在 `setup` 模式下可左键拖动单位调整初始位置（按域保持合法地形）。
 - 右键舰艇进行选择。
 - 右键拖动/右键选择可叠加详情卡选择。

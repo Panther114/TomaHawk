@@ -114,8 +114,8 @@ export const MISSILES = {
     shortLabel: "TLAM",
     role: "long-range surface strike approx.",
     category: "anti_ship",
-    platforms: ["sea", "ground"],
-    launchers: ["sea", "ground"],
+    platforms: ["sea", "ground", "subsurface"],
+    launchers: ["sea", "ground", "subsurface"],
     targets: ["sea", "ground"],
     rcsM2: 0.5,
     symbol: "square",
@@ -377,6 +377,103 @@ export const MISSILES = {
     retargetable: false,
     selfDestructOnLoss: true
   },
+  "Mk48": {
+    name: "Mk48",
+    displayName: "Mk 48 Mod 7 ADCAP",
+    shortLabel: "MK48",
+    role: "heavyweight acoustic-homing torpedo",
+    category: "anti_ship",
+    platforms: ["subsurface"],
+    launchers: ["subsurface"],
+    targets: ["sea", "subsurface"],
+    rcsM2: 0.01,
+    symbol: "circle",
+    medium: "underwater",
+    rangeM: 27 * NM,
+    speedMps: 55,
+    cellCost: 1,
+    damage: 2,
+    pk: 0.72,
+    salvo: 1,
+    target: "ship",
+    preferredMinRangeM: 2 * NM,
+    preferredMaxRangeM: 24 * NM,
+    interceptorsPerThreat: 0,
+    magazineReserveRatio: 0.1,
+    launchIntervalS: 8,
+    salvoSpacingS: 10,
+    ringStyle: "long_dash",
+    maxTurnRateDps: 7,
+    seekerRangeM: 6 * NM,
+    guidance: "wire_acoustic",
+    retargetable: false,
+    selfDestructOnLoss: true
+  },
+  "VL-ASROC": {
+    name: "VL-ASROC",
+    displayName: "RUM-139 VL-ASROC / Mk 54",
+    shortLabel: "ASROC",
+    role: "rocket-delivered lightweight ASW torpedo",
+    category: "anti_ship",
+    platforms: ["sea"],
+    launchers: ["sea"],
+    targets: ["subsurface"],
+    rcsM2: 0.08,
+    symbol: "circle",
+    medium: "air_to_underwater",
+    waterEntryRangeM: 2.2 * NM,
+    underwaterSpeedMps: 42,
+    rangeM: 12 * NM,
+    speedMps: 300,
+    cellCost: 1,
+    pk: 0.48,
+    salvo: 1,
+    target: "ship",
+    preferredMinRangeM: 1.5 * NM,
+    preferredMaxRangeM: 12 * NM,
+    interceptorsPerThreat: 0,
+    magazineReserveRatio: 0.15,
+    launchIntervalS: 6,
+    salvoSpacingS: 7,
+    ringStyle: "dotted",
+    maxTurnRateDps: 10,
+    seekerRangeM: 3.5 * NM,
+    guidance: "inertial_acoustic",
+    retargetable: false,
+    selfDestructOnLoss: true
+  },
+  "AGM-88": {
+    name: "AGM-88",
+    displayName: "AGM-88 HARM",
+    shortLabel: "HARM",
+    role: "anti-radiation / suppression of enemy air defenses",
+    category: "anti_ship",
+    platforms: ["air"],
+    launchers: ["air"],
+    targets: ["sea", "ground"],
+    rcsM2: 0.08,
+    symbol: "diamond",
+    rangeM: 80 * NM,
+    speedMps: 620,
+    cellCost: 1,
+    pk: 0.62,
+    salvo: 1,
+    target: "ship",
+    preferredMinRangeM: 8 * NM,
+    preferredMaxRangeM: 75 * NM,
+    interceptorsPerThreat: 0,
+    magazineReserveRatio: 0,
+    launchIntervalS: 2.5,
+    salvoSpacingS: 3,
+    ringStyle: "long_dash",
+    maxTurnRateDps: 14,
+    seekerRangeM: 20 * NM,
+    guidance: "passive_radar",
+    requiresEmitter: true,
+    homeOnJam: true,
+    retargetable: false,
+    selfDestructOnLoss: true
+  },
   "SM-6": {
     name: "SM-6",
     displayName: "Standard Missile 6 ERAM",
@@ -455,7 +552,7 @@ export function missileLaunchers(spec) {
   if (!spec) return [];
   if (Array.isArray(spec.launchers) && spec.launchers.length) return spec.launchers;
   if (Array.isArray(spec.platforms) && spec.platforms.length) return spec.platforms;
-  return ["sea", "ground", "air"];
+  return ["sea", "ground", "air", "subsurface"];
 }
 
 export function missileTargets(spec) {
@@ -463,7 +560,7 @@ export function missileTargets(spec) {
   if (Array.isArray(spec.targets) && spec.targets.length) return spec.targets;
   if (spec.target === "missile") return ["missile"];
   if (spec.target === "air") return ["air"];
-  if (spec.target === "dual") return ["missile", "air", "sea", "ground"];
+  if (spec.target === "dual") return ["missile", "air", "sea", "ground", "subsurface"];
   if (spec.target === "ship" || spec.category === "anti_ship") return ["sea", "ground"];
   return [];
 }

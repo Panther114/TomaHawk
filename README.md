@@ -11,12 +11,15 @@
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Lang](https://img.shields.io/badge/lang-EN%20%7C%20%E4%B8%AD%E6%96%87-informational)](#how-to-play--玩法)
 
-Place Blue/Red fleets — ships, coastal batteries, carriers, fighters — press play.
-Both sides run the same autonomous AI: radar tracks (not perfect truth), CEC, layered
-SAM/CIWS, air strikes, and dogfights. Same seed → same battle, every time.
+Place Blue/Red fleets — ships, one modern SSN type, coastal batteries, carriers,
+fighters, and EA-18G electronic attack — press play. Both sides run the same
+autonomous AI: radar/sonar/ESM tracks (not perfect truth), CEC, jamming and
+soft-kill decoys, layered defense, air strikes, and submarine warfare. Same seed
+→ same battle, every time.
 
-部署蓝/红双方（舰艇、岸基、航母、战机），按播放。双方同一套自主 AI：雷达航迹（非全知）、
-协同交战、分层防空、空中打击与格斗。相同种子 → 完全相同的一局。
+部署蓝/红双方（舰艇、现代攻击核潜艇、岸基、航母、战机与 EA-18G 电子战机），按播放。
+双方同一套自主 AI：雷达/声呐/电子侦察航迹（非全知）、协同交战、干扰与软杀伤诱饵、
+分层防御、空中打击和潜艇战。相同种子 → 完全相同的一局。
 
 [**Deploy**](https://railway.app/new/template?templateUrl=https://github.com/Panther114/TomaHawk) ·
 [Quick start](#quick-start--快速开始) ·
@@ -35,6 +38,8 @@ SAM/CIWS, air strikes, and dogfights. Same seed → same battle, every time.
 | --- | --- | --- |
 | AI | Both sides fully autonomous | 双方完全自主 |
 | Sensors | Tracks with quality/age; RCS + radar horizon | 带质量/时效的航迹；RCS + 雷达地平线 |
+| Subsurface | Virginia Block V SSN; passive/active sonar; Mk 48 + VL-ASROC | 弗吉尼亚 Block V 核潜艇；主/被动声呐；Mk 48 + VL-ASROC |
+| EW | ESM, stand-off jamming, burn-through, AGM-88/EMCON, finite RF decoys | 电子侦察、压制干扰、烧穿、AGM-88/电磁管制、有限诱饵 |
 | CEC | Shared force picture; engage-on-remote | 共享态势；可接战队友航迹 |
 | Defense | SAM channels + terminal CIWS; saturation leaks | 防空通道 + 末端近防；饱和可漏防 |
 | Air | Strike profile, A2A, RTB/rearm at AFB or **CVN** | 突防剖面、空战、返场/再装挂（机场或**航母**） |
@@ -48,7 +53,7 @@ SAM/CIWS, air strikes, and dogfights. Same seed → same battle, every time.
 
 ```bash
 npm start    # http://127.0.0.1:4172
-npm test     # 245 deterministic tests
+npm test     # deterministic regression and cross-domain tests
 ```
 
 Windows: double-click `quickrun.bat` (frees port 4172, opens browser).  
@@ -78,12 +83,16 @@ Win: last side with living units (in-flight missiles don't count).
 ### Setup / 部署
 
 1. **BLUE** / **RED** → class dropdown → left-click map.  
-2. **Naval** on water; **ground** on land; **AFB** land or water; **CVN** water only.  
+2. **Naval/subsurface** on water; **ground** on land; **AFB** land or water; **CVN** water only.
 3. Left-drag move · right-click select · box-select on empty water · `Del` delete.  
 4. Map: **East China Sea** (coastline) or **Open Sea**. Setup only.  
 5. **Unit Workshop** (folder icon): custom units/weapons as JSON.
 
-中文要点：蓝/红 → 选类型 → 左键放置；舰在水、陆基在陆、机场水陆皆可、航母仅水；工坊做自定义单位。
+中文要点：蓝/红 → 选类型 → 左键放置；水面舰与潜艇在水、陆基在陆、机场水陆皆可、航母仅水；工坊做自定义单位。
+
+Scope boundary / 范围边界：mine warfare, logistics/resupply, weather/sea state,
+and flooding are intentionally not modeled. / 本版本明确不建模水雷战、后勤补给、
+天气/海况及进水沉没过程。
 
 ### Controls / 操作
 

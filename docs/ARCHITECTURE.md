@@ -81,12 +81,15 @@ This is not a clone of DCS UI assets or icons.
 - `SHIP_CLASSES` / `makeShip(side, x, y, hull)` (`src/sim/ships.js`) — per-class parameter catalogue and the generic hull-parameterised ship factory
 - `usedCells()` / `vlsCapacity()` (`src/sim/ships.js`) — per-class VLS cell accounting
 - `scanSensors(sim, dt)` (`src/sim/sensors.js`) — radar detection with per-missile-profile detection envelopes so high-altitude air-defense missiles and low-altitude cruise missiles are not equally visible; also holds the 4/3 Earth-radius `radarHorizonM()`/`radarHeightM()` horizon model
+- `scanSonar(sim, dt)` (`src/sim/sonar.js`) — passive/active acoustic contacts for surface ships, submarines, and underwater weapons
+- electronic-warfare helpers (`src/sim/ew.js`) — passive ESM, stand-off noise jamming with close-range burn-through, RF decoys, and anti-radiation EMCON
+- `decideSubmarine` / `updateSubmarineDepth` (`src/sim/submarines.js`) — quiet patrol, contact approach, torpedo evasion, and bounded depth changes
 - `buildForcePicture(sim)` (`src/sim/command.js`) — fuses each side's tracks into one CEC composite picture
 - `computeFleetCommand(sim)` (`src/sim/command.js`) — side-wide command posture from the force picture; derives smoothed aggressiveness, persistent strike mode, target breadth, and raid depth from own surface-magazine depth (all strike munitions) versus observed enemy strength. Threat axis uses unit tracks only (missiles excluded). Peer fights open near half-aggression; empty/thin pictures are pulled toward neutral advantage rather than panic survive
 - `planOffensiveFires(sim)` (`src/sim/combat.js`) — force-level anti-surface planning that concentrates on the most valuable observed targets first, then allocates in two passes (strike specialists such as DEB/CDB/air, then general naval shooters). Strategic/hypersonic weapons may use a small overflow quota after the general raid cap. Domain-specialist target slots keep ground-only and sea-only magazines usable. Prefers dedicated anti-ship rounds over dual-role SM-6, caps raid size by target toughness outside `saturate` (anti-overcommit), and guarantees surface targets when air contacts would otherwise monopolise the plan
 - `decideAircraft(sim, ship)` (`src/sim/aircraft.js`) — per-squadron geometry state machine: vectors on the fused CEC picture with **weapon-domain-filtered** surface locks (JSOW→ground, Harpoon→sea), LO stand-in release for low-observable strikers, breaks to air-to-air only inside self-defence range, sweeps when it has no strike to fly, CAP/support orbits, and RTB/rearm at AFB or carrier-capable decks (`CVN`). Altitude (`altitudeM`) climbs/descends toward commanded targets for radar-horizon masking and energy, not as a third map axis
 - `chooseDefensiveWeapon` / interceptor PK (`src/sim/combat.js`) — SAM channel pool, THAAD hypersonic-only filter, high-energy PK shaping vs LRHW, AAM ban on hypersonic threats
-- `applySubsystemDamage(sim, ship)` (`src/sim/combat.js`) — random subsystem degradation on hit
+- `applySubsystemDamage(sim, ship)` and bounded subsystem-effect helpers (`src/sim/damage.js`) — random degradation plus VLS cadence, fire-control channel, CIWS, and CIC consequences
 - `PerfRecorder` / `BattleLogger` (`src/sim/debug.js`) — read-only per-run collectors (performance trace + tactical narrative) written by `scripts/sim-debug.mjs` / `scripts/validate-ai-fixes.mjs` (headless) and optionally by the browser app (`POST /debug/save` when `?debug=1` or `localStorage tomahawk.debug=1`); they draw no RNG and mutate no sim state, so determinism is unaffected
 
 ### Performance
@@ -112,5 +115,6 @@ This is not a clone of DCS UI assets or icons.
 - Alive ships show a subtle white center cross; sunk ships do not show waypoint/movement markers
 
 ### Ship Subsystem State
-- `subsystems: { radar, vls, propulsion, fireControl, ciws, cic }` — each 1.0 nominal
-- Degraded by `applySubsystemDamage()` on hit; affects combat functions
+
+- `subsystems: { radar, vls, propulsion, fireControl, ciws, cic, sonar, electronicWarfare }` — each 1.0 nominal
+- `damage.js` owns health normalization and bounded gameplay effects; `combat.js`, `sensors.js`, and `movement.js` consume them without adding scans or schedulers

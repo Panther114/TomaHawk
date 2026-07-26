@@ -68,6 +68,11 @@ const strings = {
   "detail.asuw":  { en: "ASUW",  zh: "反舰" },
   "detail.load":  { en: "LOAD",  zh: "弹药" },
   "detail.rdr":   { en: "RDR",   zh: "雷达距" },
+  "detail.depth": { en: "DEPTH", zh: "深度" },
+  "detail.sonar": { en: "SONAR", zh: "声呐" },
+  "detail.esm":   { en: "ESM",   zh: "电侦" },
+  "detail.jam":   { en: "JAM",   zh: "干扰" },
+  "detail.decoy": { en: "DECOY", zh: "诱饵" },
 
   // Ship class labels (for select and descriptions)
   "ship.ddg":  { en: "DDG", zh: "驱逐舰" },
@@ -110,6 +115,7 @@ const strings = {
   "ground.ewr": { en: "EW Radar", zh: "预警雷达" },
   "ground.group": { en: "Ground", zh: "陆基" },
   "naval.group":  { en: "Naval",  zh: "海上" },
+  "subsurface.group": { en: "Subsurface", zh: "水下" },
   "air.group":    { en: "Air",    zh: "空中" },
   "ship.sam":  { en: "SAM", zh: "防空" },
   "ship.thaad":{ en: "THAAD", zh: "萨德" },
@@ -125,6 +131,8 @@ const strings = {
   "ship.f15ex":{ en: "F-15EX", zh: "F-15EX" },
   "ship.f16v": { en: "F-16V", zh: "F-16V" },
   "ship.awac": { en: "AWAC", zh: "预警机" },
+  "ship.ea18g":{ en: "EA-18G", zh: "EA-18G 电子战机" },
+  "ship.ssn":  { en: "SSN", zh: "攻击型核潜艇" },
   "ship.afb":  { en: "Airfield", zh: "机场" },
   "ship.cvn":  { en: "CVN", zh: "航母" },
 

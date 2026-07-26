@@ -47,9 +47,13 @@ Do not add classified, leaked, or operationally sensitive data. If a parameter i
 - SM-6 (RIM-174 ERAM): public Raytheon factsheets, ~200 NM range, Mach 3.5, active radar seeker, dual-role
 - THAAD (Terminal High Altitude Area Defense): public MDA / Lockheed Martin programme materials — hit-to-kill interceptor, ~200 km class engagement envelope, high-altitude endo/exo-atmospheric intercept of ballistic (and by sandbox extension high-energy boost-glide) threats; **not** a cruise-missile or aircraft weapon. Battery magazine and AN/TPY-2 association are open-source approximations for play
 - Dark Eagle / LRHW: public U.S. Army programme materials for ground-launched boost-glide hypersonic surface strike; ranges and kinematics in-sim are sandbox envelopes only
-- Nulka decoy: background reference only; not implemented in the current sim
-- Chaff: background reference only; not implemented in the current sim
-- AN/SLQ-32 SEWIP: background reference only; not implemented in the current sim
+- Virginia-class attack submarine: U.S. Navy fact file (`https://www.navy.mil/Resources/Fact-Files/Display-FactFiles/Article/2169558/attack-submarines-ssn/`) for public Block V dimensions, 25+ knot class, four torpedo tubes, Tomahawk role, and VPM capacity
+- Virginia Block V / Acoustic Superiority: U.S. Navy contract release (`https://www.navy.mil/Press-Office/Press-Releases/display-pressreleases/Article/2032257/navy-awards-contract-for-nine-virginia-class-submarines/`) for VPM 12-to-40 Tomahawk capacity and Acoustic Superiority context
+- Mk 48: U.S. Navy fact file (`https://www.navy.mil/Resources/Fact-Files/Display-FactFiles/Article/2167907/mk-48-heavyweight-torpedo/`) for 21-inch heavyweight acoustic-homing ASW/ASuW role, dimensions, and warhead; operational range/speed remain undisclosed and are gameplay envelopes
+- Naval sonar: U.S. Navy public sonar overview (`https://www.nepa.navy.mil/SOTS/At-Sea-Policy/Sonar-101/`) for passive-listening and active-ping distinctions
+- AN/SLQ-32 SEWIP: U.S. Navy fact file (`https://www.navy.mil/Resources/Fact-Files/Display-FactFiles/Article/2167559/surface-electronic-warfare-improvement-program-sewip/`) for electronic-support and electronic-attack roles
+- EA-18G Growler: U.S. Navy fact file (`https://www.navy.mil/Resources/Fact-Files/Display-FactFiles/Article/2166036/ea-18g-growler-airborne-electronic-attack-aircraft/`) for airborne electronic attack, ALQ-218/ALQ-99, APG-79, AIM-120, and AGM-88 roles
+- Nulka active decoy: U.S. Navy fact file (`https://www.navy.mil/Resources/Fact-Files/Display-FactFiles/Article/2167877/mk-53-decoy-launching-system-nulka/`) for off-board active RF decoy purpose; the sim combines this role with chaff in a bounded `radarDecoys` store
 
 ### Aircraft (player airframes — public approximations only)
 - F-22 Raptor: public USAF / Lockheed materials — Mach ~2.25 class dash, supercruise, ~9 g, AN/APG-77-class AESA, internal AAM carriage, very low observability (aspect-averaged flight RCS for sim, not single-ship frontal "marble" estimates)
@@ -61,7 +65,7 @@ Do not add classified, leaked, or operationally sensitive data. If a parameter i
 
 ### Sensors
 - Radar horizon: standard 4/3 Earth-radius atmospheric refraction model
-- ESM passive detection: background reference only; not implemented in the current sim
+- ESM passive detection and noise jamming: implemented as public-role-informed range/quality abstractions, not claimed system performance
 - CEC (Cooperative Engagement Capability): public US Navy / Johns Hopkins APL references
 
 ### Performance

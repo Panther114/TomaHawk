@@ -26,6 +26,10 @@ as-is and run as native ES modules in the browser and in Node.
 | `constants.js` | units (`NM`, `KNOT`), side/role/mode enums, `VISUAL_CONFIG` |
 | `math.js` | geometry, kinematics, `interceptPoint`, `Rng` |
 | `events.js` | event-log append, severity, time formatting |
+| `damage.js` | subsystem damage plus bounded VLS, fire-control, CIWS, and CIC degradation |
+| `ew.js` | electronic support, stand-off jamming, radar burn-through, RF decoys, and anti-radiation EMCON |
+| `sonar.js` | passive/active acoustic detection, signatures, sonar tracks, and acoustic decoys |
+| `submarines.js` | SSN depth and quiet-speed/approach/evasion behavior |
 | `missiles.js` | `MISSILES` catalogue, display helpers, `battleSummaryCounts` |
 | `ships.js` | `SHIP_CLASSES` live registry (naval incl. CVN; ground SAM/THAAD/CDB/DEB/EWR/AFB; air F22…F16V/AWAC), factory, loadout/ROE |
 | `aircraft.js` | squadron lifecycle (RTB/rearm/fuel), `decideAircraft`, CAP/strike/A2A, carrier deck parking |
