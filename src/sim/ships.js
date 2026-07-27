@@ -6,6 +6,8 @@ import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE, WEAPON_STATE, FLEET_ROLE } from 
 import { MISSILES, missileCanTarget, missileHasSurfaceTarget } from "./missiles.js";
 import { clamp } from "./math.js";
 import { initialAircraftState } from "./aircraft.js";
+import { initialElectronicWarfareState } from "./ew.js";
+import { initialSonarState } from "./sonar.js";
 
 // Monotonic hull id counter. Shared with scenario.js so createScenario can
 // reset it and restoreScenario can fast-forward it past loaded hull ids.
@@ -31,6 +33,11 @@ export function defaultLoadout(hull = "DDG") {
   // can't leave a fractional missile count (e.g. FFG would otherwise show 15.5).
   const remaining = Math.max(0, Math.floor(cls.vlsCells - usedCells(loadout)));
   loadout["SM-2MR"] += remaining;
+  const aswRounds = Math.min(loadout["SM-2MR"], Math.max(0, Math.round(cls.aswRounds ?? 0)));
+  if (aswRounds > 0 && MISSILES["VL-ASROC"]) {
+    loadout["SM-2MR"] -= aswRounds;
+    loadout["VL-ASROC"] = aswRounds;
+  }
   return loadout;
 }
 
@@ -128,10 +135,15 @@ export function setLoadout(ship, missileId, count) {
 // entries are visible everywhere with no further wiring. Built-in ids are
 // captured below and can never be removed.
 const SHIP_CLASSES = {
-  DDG: { hull:"DDG",className:"Arleigh Burke Flight IIA approx.",prefix:"DDG",lengthM:155,beamM:20,draftM:9.3,displacementT:9200,cruiseSpeedKt:16,maxSpeedKt:31,accelMps2:0.12,decelMps2:0.22,turnRateDps:2.6,turnRateFlankDps:1.8,radarRangeNm:190,radarIntervalS:4,vlsCells:96,ciwsCount:1,ciwsAmmo:1550,ciwsBurstRounds:180,ciwsBurstS:1.4,ciwsCycleS:5.5,defenseChannels:{sam:4,ciws:1},damageResist:2,damageDegrade:0.30 },
-  CCG: { hull:"CCG",className:"Ticonderoga-class Cruiser approx.",prefix:"CG",lengthM:173,beamM:16.8,draftM:10.2,displacementT:9600,cruiseSpeedKt:18,maxSpeedKt:32.5,accelMps2:0.11,decelMps2:0.20,turnRateDps:2.2,turnRateFlankDps:1.5,radarRangeNm:210,radarIntervalS:3.5,vlsCells:122,ciwsCount:2,ciwsAmmo:3100,ciwsBurstRounds:200,ciwsBurstS:1.6,ciwsCycleS:4.8,defenseChannels:{sam:7,ciws:2},damageResist:3,damageDegrade:0.24 },
-  BBG: { hull:"BBG",className:"Trump-class Arsenal Battleship approx.",prefix:"BBG",lengthM:262,beamM:32,draftM:12.5,displacementT:28000,cruiseSpeedKt:16,maxSpeedKt:24,accelMps2:0.06,decelMps2:0.12,turnRateDps:1.2,turnRateFlankDps:0.7,radarRangeNm:250,radarIntervalS:3.0,vlsCells:288,ciwsCount:5,ciwsAmmo:6200,ciwsBurstRounds:300,ciwsBurstS:1.8,ciwsCycleS:3.5,defenseChannels:{sam:10,ciws:4},damageResist:5,damageDegrade:0.14 },
-  FFG: { hull:"FFG",className:"Constellation-class Frigate approx.",prefix:"FFG",lengthM:151,beamM:19.7,draftM:7.9,displacementT:7300,cruiseSpeedKt:16,maxSpeedKt:26,accelMps2:0.14,decelMps2:0.25,turnRateDps:3.2,turnRateFlankDps:2.4,radarRangeNm:150,radarIntervalS:5,vlsCells:32,ciwsCount:1,ciwsAmmo:800,ciwsBurstRounds:150,ciwsBurstS:1.2,ciwsCycleS:6.0,defenseChannels:{sam:2,ciws:1},damageResist:1,damageDegrade:0.45 },
+  DDG: { hull:"DDG",className:"Arleigh Burke Flight IIA approx.",prefix:"DDG",lengthM:155,beamM:20,draftM:9.3,displacementT:9200,cruiseSpeedKt:16,maxSpeedKt:31,accelMps2:0.12,decelMps2:0.22,turnRateDps:2.6,turnRateFlankDps:1.8,radarRangeNm:190,radarIntervalS:4,vlsCells:96,aswRounds:8,ciwsCount:1,ciwsAmmo:1550,ciwsBurstRounds:180,ciwsBurstS:1.4,ciwsCycleS:5.5,defenseChannels:{sam:4,ciws:1},passiveSonarRangeNm:42,activeSonarRangeNm:18,sonarIntervalS:5,esmRangeNm:260,jammerRangeNm:90,jammerStrength:0.48,jammerDefaultOn:true,radarDecoys:8,acousticDecoys:5,damageResist:2,damageDegrade:0.30 },
+  CCG: { hull:"CCG",className:"Ticonderoga-class Cruiser approx.",prefix:"CG",lengthM:173,beamM:16.8,draftM:10.2,displacementT:9600,cruiseSpeedKt:18,maxSpeedKt:32.5,accelMps2:0.11,decelMps2:0.20,turnRateDps:2.2,turnRateFlankDps:1.5,radarRangeNm:210,radarIntervalS:3.5,vlsCells:122,aswRounds:8,ciwsCount:2,ciwsAmmo:3100,ciwsBurstRounds:200,ciwsBurstS:1.6,ciwsCycleS:4.8,defenseChannels:{sam:7,ciws:2},passiveSonarRangeNm:40,activeSonarRangeNm:18,sonarIntervalS:5,esmRangeNm:280,jammerRangeNm:95,jammerStrength:0.5,jammerDefaultOn:true,radarDecoys:10,acousticDecoys:5,damageResist:3,damageDegrade:0.24 },
+  BBG: { hull:"BBG",className:"Trump-class Arsenal Battleship approx.",prefix:"BBG",lengthM:262,beamM:32,draftM:12.5,displacementT:28000,cruiseSpeedKt:16,maxSpeedKt:24,accelMps2:0.06,decelMps2:0.12,turnRateDps:1.2,turnRateFlankDps:0.7,radarRangeNm:250,radarIntervalS:3.0,vlsCells:288,aswRounds:4,ciwsCount:5,ciwsAmmo:6200,ciwsBurstRounds:300,ciwsBurstS:1.8,ciwsCycleS:3.5,defenseChannels:{sam:10,ciws:4},passiveSonarRangeNm:28,activeSonarRangeNm:15,sonarIntervalS:6,esmRangeNm:300,jammerRangeNm:105,jammerStrength:0.55,jammerDefaultOn:true,radarDecoys:14,acousticDecoys:6,damageResist:5,damageDegrade:0.14 },
+  FFG: { hull:"FFG",className:"Constellation-class Frigate approx.",prefix:"FFG",lengthM:151,beamM:19.7,draftM:7.9,displacementT:7300,cruiseSpeedKt:16,maxSpeedKt:26,accelMps2:0.14,decelMps2:0.25,turnRateDps:3.2,turnRateFlankDps:2.4,radarRangeNm:150,radarIntervalS:5,vlsCells:32,aswRounds:4,ciwsCount:1,ciwsAmmo:800,ciwsBurstRounds:150,ciwsBurstS:1.2,ciwsCycleS:6.0,defenseChannels:{sam:2,ciws:1},passiveSonarRangeNm:50,activeSonarRangeNm:22,sonarIntervalS:4.5,esmRangeNm:230,jammerRangeNm:75,jammerStrength:0.42,jammerDefaultOn:true,radarDecoys:6,acousticDecoys:6,damageResist:1,damageDegrade:0.45 },
+
+  // Latest in-production U.S. attack-submarine baseline: Virginia Block V with
+  // VPM. Public values only; classified depth/acoustic/weapon envelopes are
+  // deliberately represented by bounded gameplay approximations.
+  SSN: { hull:"SSN",className:"Virginia-class Block V SSN approx.",prefix:"SSN",domain:"subsurface",glyph:"submarine",lengthM:140.5,beamM:10.36,draftM:10.5,displacementT:10364,cruiseSpeedKt:8,maxSpeedKt:27,accelMps2:0.08,decelMps2:0.14,turnRateDps:1.8,turnRateFlankDps:1.2,radarRangeNm:0,radarIntervalS:8,radarDefaultOn:false,vlsCells:66,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:6,defenseChannels:{sam:0,ciws:0},passiveSonarRangeNm:70,activeSonarRangeNm:24,sonarIntervalS:4,sonarDefaultOn:false,acousticQuieting:0.78,acousticDecoys:8,esmRangeNm:45,jammerRangeNm:0,jammerStrength:0,radarDecoys:0,maxDepthM:450,depthRateMps:2.5,damageResist:3,damageDegrade:0.22,baseLoadout:{ "Mk48":26,TomahawkBlockV:40 } },
 
   // --- Fixed ground emplacements (domain:"ground", speed 0) ----------------
   // Modeled as stationary ship-entities so they flow through the existing
@@ -201,6 +213,7 @@ const SHIP_CLASSES = {
   // 4th-GEN — F-16V (Block 70/72) Viper. Lighter multirole: APG-83 AESA class,
   // high agility, shorter legs and smaller magazine than the F-15 family.
   F16V: { hull:"F16V",className:"F-16V Viper approx.",prefix:"F16V",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,carrierCapable:false,lengthM:15.1,beamM:9.5,draftM:5.1,displacementT:19,cruiseSpeedKt:420,maxSpeedKt:700,accelMps2:3.5,decelMps2:3.3,turnRateDps:10,turnRateFlankDps:8,maxGLoad:9.0,radarRangeNm:85,radarIntervalS:2.8,vlsCells:10,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:12,damageResist:4,damageDegrade:0.11,enduranceS:9800,rearmTimeS:80,flares:48,airEvasionBonus:0.05,baseLoadout:{ "AIM-120C":4,"AIM-9X":2,"AGM-154":4 } },
+  EA18G: { hull:"EA18G",className:"EA-18G Growler Squadron approx.",prefix:"EA18G",domain:"air",isFixed:false,glyph:"aircraft",strikeSpecialist:true,carrierCapable:true,lengthM:18.5,beamM:13.7,draftM:4.9,displacementT:24,cruiseSpeedKt:430,maxSpeedKt:650,accelMps2:3.0,decelMps2:3.0,turnRateDps:7.5,turnRateFlankDps:5.8,maxGLoad:7.5,radarRangeNm:110,radarIntervalS:2.5,vlsCells:4,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:18,esmRangeNm:320,jammerRangeNm:180,jammerStrength:0.82,jammerDefaultOn:true,radarDecoys:16,damageResist:4,damageDegrade:0.10,enduranceS:10200,rearmTimeS:95,flares:60,airEvasionBonus:0.03,baseLoadout:{ "AIM-120C":2,"AGM-88":2 } },
   // AEW&C — E-2D Hawkeye (carrier-based). Unarmed command-hub sensor; recovers
   // on CVN. damageResist:1 — one irreplaceable airframe.
   AWAC: { hull:"AWAC",className:"E-2D Hawkeye Squadron (AEW&C) approx.",prefix:"AWAC",domain:"air",isFixed:false,glyph:"aircraft",commandHub:true,carrierCapable:true,lengthM:17.6,beamM:24.6,draftM:5.6,displacementT:24,cruiseSpeedKt:300,maxSpeedKt:330,accelMps2:1.6,decelMps2:1.6,turnRateDps:5,turnRateFlankDps:4,maxGLoad:3.0,radarRangeNm:350,radarIntervalS:2,vlsCells:0,ciwsCount:0,ciwsAmmo:0,ciwsBurstRounds:0,ciwsBurstS:0,ciwsCycleS:5,defenseChannels:{sam:0,ciws:0},rcsM2:35,damageResist:1,damageDegrade:0.10,enduranceS:7200,rearmTimeS:60,flares:30,airEvasionBonus:0,baseLoadout:{} },
@@ -218,7 +231,7 @@ const SHIP_CLASSES = {
   // carrier-capable airframes recover here (F-35C, E-2, etc.); land-based
   // types still need an AFB. maxParkedSquadrons caps concurrent rearm slots
   // (overflow flights hold a pattern nearby — O(1) per decision tick).
-  CVN: { hull:"CVN",className:"Nimitz/Ford-class Carrier approx.",prefix:"CVN",domain:"sea",isFixed:false,isAirfield:true,isCarrier:true,glyph:"carrier",lengthM:333,beamM:78,draftM:12.5,displacementT:100000,cruiseSpeedKt:18,maxSpeedKt:30,accelMps2:0.05,decelMps2:0.10,turnRateDps:0.9,turnRateFlankDps:0.55,radarRangeNm:160,radarIntervalS:3.5,vlsCells:24,ciwsCount:3,ciwsAmmo:4500,ciwsBurstRounds:220,ciwsBurstS:1.5,ciwsCycleS:4.5,defenseChannels:{sam:4,ciws:3},rcsM2:45000,damageResist:6,damageDegrade:0.12,maxParkedSquadrons:6,baseLoadout:{ "SM-2MR":8,ESSM:64 } }
+  CVN: { hull:"CVN",className:"Nimitz/Ford-class Carrier approx.",prefix:"CVN",domain:"sea",isFixed:false,isAirfield:true,isCarrier:true,glyph:"carrier",lengthM:333,beamM:78,draftM:12.5,displacementT:100000,cruiseSpeedKt:18,maxSpeedKt:30,accelMps2:0.05,decelMps2:0.10,turnRateDps:0.9,turnRateFlankDps:0.55,radarRangeNm:160,radarIntervalS:3.5,vlsCells:24,ciwsCount:3,ciwsAmmo:4500,ciwsBurstRounds:220,ciwsBurstS:1.5,ciwsCycleS:4.5,defenseChannels:{sam:4,ciws:3},rcsM2:45000,passiveSonarRangeNm:42,activeSonarRangeNm:15,acousticDecoys:10,esmRangeNm:250,jammerRangeNm:95,jammerStrength:0.58,radarDecoys:18,damageResist:6,damageDegrade:0.12,maxParkedSquadrons:6,baseLoadout:{ "SM-2MR":8,ESSM:64 } }
 };
 
 // Built-in hull ids captured at module load. Protected from deletion and
@@ -276,6 +289,7 @@ export function makeShip(side, x, y, hull = "DDG") {
   const cruise = cls.cruiseSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER;
   const loadout = normalizeLoadout(defaultLoadout(hull));
   const isAir = (cls.domain ?? "sea") === "air";
+  const isSubsurface = (cls.domain ?? "sea") === "subsurface";
   return {
     id, name: `${side} ${cls.prefix} ${seq}`, side, hull, className: cls.className, x, y,
     domain: cls.domain ?? "sea", isFixed: cls.isFixed ?? false, glyph: cls.glyph ?? null,
@@ -283,6 +297,14 @@ export function makeShip(side, x, y, hull = "DDG") {
     // Air-unit state (squadron lifecycle/fuel/rearm). Empty object for non-air
     // so consumers can read uniformly; populated only for domain "air".
     ...(isAir ? initialAircraftState(cls) : {}),
+    ...initialElectronicWarfareState(cls),
+    ...initialSonarState(cls),
+    ...(isSubsurface ? {
+      depthM: 250,
+      targetDepthM: 250,
+      maxDepthM: cls.maxDepthM ?? 450,
+      depthRateMps: cls.depthRateMps ?? 2.5
+    } : {}),
     // Snapshot the spawned magazine so an airfield can refill it on rearm.
     baseLoadoutSnapshot: { ...loadout },
     heading: side === SIDE.BLUE ? Math.PI : 0, speed: 0,
@@ -324,10 +346,11 @@ export function makeShip(side, x, y, hull = "DDG") {
     // the AI layer commands a target, it does not teleport the aircraft
     // there. Irrelevant for surface/ground hulls (both stay at 0).
     altitudeM: defaultAltitudeM(cls), targetAltitudeM: defaultAltitudeM(cls),
-    radarRangeM: cls.radarRangeNm * NM, radarInterval: cls.radarIntervalS, radarCooldown: 0, radarActive: true,
+    radarRangeM: cls.radarRangeNm * NM, radarInterval: cls.radarIntervalS, radarCooldown: 0,
+    radarActive: cls.radarDefaultOn !== false, radarNormallyActive: cls.radarDefaultOn !== false,
     editable: true, alive: true,
     damage: 0, damageResist: cls.damageResist, damageDegrade: cls.damageDegrade,
-    subsystems: { radar: 1.0, vls: 1.0, propulsion: 1.0, fireControl: 1.0, ciws: 1.0, cic: 1.0 },
+    subsystems: { radar: 1.0, vls: 1.0, propulsion: 1.0, fireControl: 1.0, ciws: 1.0, cic: 1.0, sonar: 1.0, electronicWarfare: 1.0 },
     waypoint: null,
     navigationWaypoint: null,
     loadout,

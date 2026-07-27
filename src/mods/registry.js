@@ -38,7 +38,7 @@ const BUILTIN_PREFIX_ZH = {
   F22: "F-22", F35A: "F-35A", F35C: "F-35C",
   F15E: "F-15E", F15N: "F-15N", F15C: "F-15C",
   F15EX: "F-15EX", F16V: "F-16V",
-  AWAC: "预警机", AFB: "机场", CVN: "航母"
+  AWAC: "预警机", EA18G: "电子战机", SSN: "攻击核潜艇", AFB: "机场", CVN: "航母"
 };
 // prefixZh is display-only; unit-tag `prefix` itself stays alphanumeric (no "-").
 

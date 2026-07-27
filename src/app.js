@@ -664,8 +664,46 @@ function drawAircraft(ship, label) {
   }
 }
 
+function drawSubmarine(ship, label) {
+  const p = worldToScreen(ship);
+  if (!screenPointVisible(p, 48)) return;
+  const color = sideColor(ship.side);
+  const selected = ship.id === sim.selectedId;
+  const len = worldSize(ship.lengthM, 5, 18);
+  const beam = Math.max(2.5, len * 0.22);
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(ship.heading);
+  ctx.globalAlpha = ship.alive ? 0.9 : 0.3;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(4, 10, 15, .88)";
+  ctx.lineWidth = selected ? 1.2 : 0.8;
+  ctx.setLineDash([3, 2]);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, len * 0.5, beam, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(-len * 0.12, 0);
+  ctx.lineTo(len * 0.12, 0);
+  ctx.moveTo(0, -beam);
+  ctx.lineTo(0, -beam * 1.8);
+  ctx.stroke();
+  ctx.restore();
+  if (label.alpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha = label.alpha;
+    ctx.fillStyle = color;
+    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+    ctx.fillText(`${shipDisplayName(ship, "-")} ${Math.round(ship.depthM ?? 0)}m`, p.x + len * 0.5 + 3, p.y - 5);
+    ctx.restore();
+  }
+}
+
 function drawScaledShip(ship, label) {
   if (ship.domain === "air") return drawAircraft(ship, label);
+  if (ship.domain === "subsurface") return drawSubmarine(ship, label);
   if (ship.isFixed || ship.domain === "ground") return drawGroundUnit(ship, label);
   const p = worldToScreen(ship);
   if (!screenPointVisible(p, 48)) return;
@@ -1066,8 +1104,12 @@ function populateSpawnDropdown() {
   const naval = [];
   const ground = [];
   const air = [];
+  const subsurface = [];
   for (const [hull, cls] of Object.entries(SHIP_CLASSES)) {
-    const bucket = cls.domain === "ground" ? ground : cls.domain === "air" ? air : naval;
+    const bucket = cls.domain === "ground" ? ground
+      : cls.domain === "air" ? air
+        : cls.domain === "subsurface" ? subsurface
+          : naval;
     bucket.push([hull, cls]);
   }
   const escAttr = escapeHtml;
@@ -1077,6 +1119,7 @@ function populateSpawnDropdown() {
   const group = (label, arr) => arr.length ? `<optgroup label="${escAttr(label)}">${optHtml(arr)}</optgroup>` : "";
   shipClassSelect.innerHTML =
     group(t("naval.group"), naval) +
+    group(t("subsurface.group"), subsurface) +
     group(t("ground.group"), ground) +
     group(t("air.group"), air);
   if ([...shipClassSelect.options].some((o) => o.value === prev)) shipClassSelect.value = prev;

@@ -16,6 +16,8 @@ import {
   defaultAltitudeM
 } from "./ships.js";
 import { initialAircraftState } from "./aircraft.js";
+import { initialElectronicWarfareState } from "./ew.js";
+import { initialSonarState } from "./sonar.js";
 import { addEvent } from "./events.js";
 import { MAP_HEIGHT_M, MAP_WIDTH_M } from "../world/terrain.js";
 import { isLandPoint, isWaterPoint, normalizeMapId, tacticalMap } from "../world/terrain.js";
@@ -125,7 +127,7 @@ function assignFleetWaterPositions(sim, ships) {
     const sideShips = ships
       // Only sea units are seated into open water. Fixed ground emplacements,
       // airfields, and air units keep their placed position.
-      .filter((ship) => ship.side === side && (ship.domain ?? "sea") === "sea")
+      .filter((ship) => ship.side === side && ["sea", "subsurface"].includes(ship.domain ?? "sea"))
       .sort((a, b) => a.id.localeCompare(b.id));
     const anchor = waterAnchor(side);
     sideShips.forEach((ship, index) => {
@@ -288,6 +290,14 @@ export function restoreScenario(data) {
           }
         : {};
       return {
+        ...initialElectronicWarfareState(cls),
+        ...initialSonarState(cls),
+        ...(domain === "subsurface" ? {
+          depthM: 250,
+          targetDepthM: 250,
+          maxDepthM: cls.maxDepthM ?? 450,
+          depthRateMps: cls.depthRateMps ?? 2.5
+        } : {}),
         ...ship,
         hull,
         domain,

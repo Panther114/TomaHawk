@@ -9,6 +9,9 @@ import { ageTracks, scanSensors, shareTracks, pruneDeadTracks, markContactDead }
 import { buildForcePicture } from "./command.js";
 import { moveShips, decideShip } from "./movement.js";
 import { decideAircraft, updateAircraft } from "./aircraft.js";
+import { scanSonar } from "./sonar.js";
+import { decideSubmarine, updateSubmarineDepth } from "./submarines.js";
+import { updateElectronicWarfareState } from "./ew.js";
 import { planEngagements, processLaunchQueues, updateMissiles, pointDefense } from "./combat.js";
 import { offensiveMissileCount } from "./ships.js";
 import { missileHasSurfaceTarget, missileCanTarget, MISSILES } from "./missiles.js";
@@ -90,7 +93,14 @@ export function stepSim(sim, dt = 0.25) {
   ageTracks(sim, dt);
   moveShips(sim, dt);
   updateAircraft(sim, dt);
-  const sensorChanged = scanSensors(sim, dt);
+  for (const ship of sim.ships) {
+    if (!ship.alive) continue;
+    updateSubmarineDepth(ship, dt);
+    updateElectronicWarfareState(sim, ship);
+  }
+  const radarChanged = scanSensors(sim, dt);
+  const sonarChanged = scanSonar(sim, dt);
+  const sensorChanged = radarChanged || sonarChanged;
   const shareDue = Math.floor((sim.time - dt) / 5) !== Math.floor(sim.time / 5);
   const sharedChanged = shareDue ? shareTracks(sim) : false;
   const pictureDue = !sim.forcePicture || sim.time + 1e-9 >= (sim.nextForcePictureAt ?? 0);
@@ -101,6 +111,7 @@ export function stepSim(sim, dt = 0.25) {
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
     if (ship.domain === "air") decideAircraft(sim, ship);
+    else if (ship.domain === "subsurface") decideSubmarine(sim, ship);
     else decideShip(sim, ship);
   }
   planEngagements(sim);

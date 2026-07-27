@@ -7,13 +7,16 @@ The current implementation keeps data as plain JavaScript objects defined across
 Important fields:
 
 - `id`, `name`, `side`, `className`, `hull`
-- `domain` (`"sea"`, `"ground"`, or `"air"`) and `isFixed` (true for stationary ground emplacements)
+- `domain` (`"sea"`, `"subsurface"`, `"ground"`, or `"air"`) and `isFixed` (true for stationary ground emplacements)
 - `isAirfield` (rearm/refuel node — ground `AFB` or naval `CVN`), `isCarrier` (sea airfield)
 - `carrierCapable` / `lowObservable` / `commandHub` / `strikeSpecialist` (air and workshop flags)
 - `x`, `y`, `heading`, `speed`, `desiredSpeed`
 - `altitudeM`, `targetAltitudeM` (air units; physical altitude for horizon/drag, not a map axis)
 - `cruiseSpeed`, `maxSpeed`, `accel`, `decel`, `turnRate`
 - `radarRangeM`, `radarInterval`, `radarActive`
+- electronic warfare: `esmRangeM`, `jammerRangeM`, `jammerStrength`, `jammerActive`, `radarDecoys`, `emconUntil`
+- acoustic state: `passiveSonarRangeM`, `activeSonarRangeM`, `sonarActive`, `acousticQuieting`, `acousticDecoys`
+- submarine state when `domain === "subsurface"`: `depthM`, `targetDepthM`, `maxDepthM`, `depthRateMps`
 - `rcsM2` (optional class override; else domain/displacement default)
 - `editable`
 - `loadout`
@@ -57,8 +60,8 @@ Important fields:
 - `shortLabel`
 - `role`
 - `category`
-- `launchers` (`sea` / `ground` / `air`)
-- `targets` (`missile` / `air` / `sea` / `ground`)
+- `launchers` (`sea` / `subsurface` / `ground` / `air`)
+- `targets` (`missile` / `air` / `sea` / `subsurface` / `ground`)
 - `rcsM2` (munitions RCS for radar pickup scaling)
 - `symbol`
 - `rangeM`
@@ -79,6 +82,7 @@ Important fields:
 - `terminalProfile` (`"hypersonic_glide"` for LRHW-class), `strategic` (raid overflow quota)
 - `hypersonicOnly` / `engageProfile: "high_energy_only"` (THAAD-class: only engage high-energy threats)
 - `guidance` (`command_inertial` / `command_inertial_active` for interceptors, `inertial_active` for strike)
+- underwater delivery: `medium`, `waterEntryRangeM`, `underwaterSpeedMps`; anti-radiation: `requiresEmitter`, `homeOnJam`
 - `retargetable` [legacy, currently false], `selfDestructOnLoss` (target-loss policy defaults)
 - air-to-air: `nezFraction` (no-escape-zone fraction of max range)
 
@@ -89,7 +93,7 @@ weapons such as `TomahawkBlockV` stay horizon-limited and appear at shorter rang
 
 `cellCost` supports quad-packed missiles. For example, ESSM uses `0.25` cells.
 
-`launchers` (`sea`, `ground`, `air`) and `targets` (`missile`, `air`, `sea`, `ground`) are the primary capability model. Legacy custom ammo using `category`, `platforms`, or `target` is still accepted and normalized into those arrays. Each launched missile stores an immutable `launchRole`; anti-surface launches render as squares and anti-air launches render as triangles. `shortLabel` is the tactical map label, such as `SM2`, `SM6`, `ESSM`, `MSTK`, or `TLAM`.
+`launchers` (`sea`, `subsurface`, `ground`, `air`) and `targets` (`missile`, `air`, `sea`, `subsurface`, `ground`) are the primary capability model. Legacy custom ammo using `category`, `platforms`, or `target` is still accepted and normalized into those arrays. Each launched missile stores an immutable `launchRole`; anti-surface launches render as squares and anti-air launches render as triangles. `shortLabel` is the tactical map label, such as `SM2`, `SM6`, `ESSM`, `MSTK`, or `TLAM`.
 
 `launchIntervalS` is the minimum interval between actual launches from a ship for that missile type. `salvoSpacingS` controls how a queued salvo is released over time so multiple missiles do not spawn at the same map coordinate.
 
@@ -128,6 +132,8 @@ Important fields:
 - `heading`
 - `speed`
 - `maxRangeM`
+- `altitudeM`, `launchAltitudeM`, `cruiseAltitudeM`
+- terminal descent state: `terminalStartAltitudeM`, `terminalStartDistanceM`, `terminalTargetAltitudeM`, `terminalDiveBoost`
 - `targetX`, `targetY` (current commanded datum / lead point, used for rendering)
 - `aimX`, `aimY` (computed velocity-lead intercept point)
 - `controllerSide`, `guidance`
@@ -151,7 +157,10 @@ tick the weapon solves a closed-form intercept (`interceptPoint`) against the
 target's estimated velocity and steers toward that lead point within its
 airframe turn limit (`maxTurnRateDps`). Anti-ship weapons fly mid-course on the
 controlling force's cooperative (CEC) datalink track and switch to the true
-target only inside `seekerRangeM` (terminal seeker lock). When a target is
+target only inside `seekerRangeM` (terminal seeker lock). Anti-surface weapons
+descend continuously from their current altitude toward the terminal profile
+across that seeker run-in. Their available turn rate also falls after the
+boost/sustain portion of flight, reaching roughly 55% near maximum range. When a target is
 destroyed in flight, the weapon executes a commanded mid-course abort /
 self-destruct (`selfDestructOnTargetLoss`) — it never coasts on a dead datum.
 There is no retargeting or hand-off to a replacement contact in the current
@@ -171,7 +180,7 @@ Important fields:
 - `nextFirePlanAt`
 - `nextForcePictureAt`
 
-New scenarios begin in `setup`. The app's default scenario is an empty East China Sea setup, centred on the tactical-map coordinate 13,900 km east and 3,600 km south. The lower-level `createScenario` helper remains available for compact 1v1 setup tests and custom starts. The simulation-core default map is `openSea`; the app selects the UI's current tactical map when creating or resetting a scenario. Setup mode allows adding units, dragging starting positions, right-click selection, box selection, and keyboard deletion. Placement is domain-aware: **sea units require water**; **fixed ground emplacements require land** except **airfields** (`isAirfield` ground units / `AFB`) which may sit on land or water; **carriers** are sea units and stay on water. Dragging keeps the last valid position for the unit's domain, sea-unit duplication/restores normalize into open water while fixed ground units stay on land, and setup-only map changes reseat the **sea** forces onto deterministic water starts while leaving fixed emplacements in place. The simulation can run only when at least one alive Blue and one alive Red unit exist. Imported scenarios are capped at 200 ships, 5,000 missiles, and 500 events; browser-file imports are limited to 5 MB.
+New scenarios begin in `setup`. The app's default scenario is an empty East China Sea setup, centred on the tactical-map coordinate 13,900 km east and 3,600 km south. The lower-level `createScenario` helper remains available for compact 1v1 setup tests and custom starts. The simulation-core default map is `openSea`; the app selects the UI's current tactical map when creating or resetting a scenario. Setup mode allows adding units, dragging starting positions, right-click selection, box selection, and keyboard deletion. Placement is domain-aware: **sea and subsurface units require water**; **fixed ground emplacements require land** except **airfields** (`isAirfield` ground units / `AFB`) which may sit on land or water; **carriers** are sea units and stay on water. Dragging keeps the last valid position for the unit's domain, water-unit duplication/restores normalize into open water while fixed ground units stay on land, and setup-only map changes reseat the **sea/subsurface** forces onto deterministic water starts while leaving fixed emplacements in place. The simulation can run only when at least one alive Blue and one alive Red unit exist. Imported scenarios are capped at 200 ships, 5,000 missiles, and 500 events; browser-file imports are limited to 5 MB.
 
 ## Visual Config
 
@@ -396,20 +405,27 @@ missile defense only and refuses non-hypersonic targets in
 
 ## Subsystem Damage
 
-Every ship has a `subsystems` object with six fields initialised to `1.0`:
-`{ radar, vls, propulsion, fireControl, ciws, cic }`
+Every combat unit has a `subsystems` object with eight fields initialised to `1.0`:
+`{ radar, vls, propulsion, fireControl, ciws, cic, sonar, electronicWarfare }`
 
 Each anti-ship hit degrades 2-3 randomly selected subsystems by 15-45%. Effects:
+
 - **radar** — reduces track quality multiplier in `scanSensors`
 - **propulsion** — reduces effective max speed in `moveShips`
-- **vls** — tracked; no separate combat effect beyond magazine state
-- **fireControl** — tracked; no separate combat effect beyond combat resolution inputs
-- **ciws** — reduces CIWS PK in `pointDefense`
-- **cic** — tracked; no separate combat effect beyond command and sensing state
+- **vls** — stretches surface/ground launch cadence, capped at 5× nominal
+- **fireControl** — reduces simultaneous SAM engagement channels, retaining one local channel on a surviving unit
+- **ciws** — scales CIWS PK in `pointDefense`, with a small bounded residual chance
+- **cic** — stretches offensive command/commit reaction windows, capped at 2.5×
+- **sonar** — scales passive and active acoustic detection range
+- **electronicWarfare** — scales ESM range and received jamming strength
+
+The bounded floors avoid a live unit with remaining ammunition becoming an
+unresolvable scenario deadlock. These effects are scalar calculations on
+existing paths and do not change algorithmic complexity.
 
 ## Missile Detection and Defense
 
-`scanSensors(sim, dt)` detects hostile missiles on radar once they are close enough to be seen on the ship's own sensor picture. Those missile tracks are then shared through the normal force-picture pipeline and are the input to defensive launch planning. There is no passive ESM missile detection and no soft-kill defeat path; missile defense is kinetic only (missiles and CIWS).
+`scanSensors(sim, dt)` detects hostile airborne missiles on radar once they are close enough to be seen on the unit's own sensor picture. `scanSonar(sim, dt)` separately detects underwater weapons. Radar-guided attacks first face finite RF decoys; underwater attacks face finite acoustic countermeasures. Surviving airborne threats proceed to SAM/CIWS planning, while torpedoes are never offered to air-defense weapons.
 
 ## UI: Ship Detail Popup
 

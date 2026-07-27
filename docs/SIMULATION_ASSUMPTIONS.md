@@ -140,13 +140,15 @@ formula:
   why the notch/beam+dive defense works, not just the aspect/NEZ PK penalty
   below (which reflects the same effect at the hit-probability level but
   previously never touched the missile's own kinematics).
-- **Terminal-dive GPE→KE conversion.** At the exact tick a missile snaps into
-  its terminal dive (sea-skim run-in, or JSOW's terminal glide), it gains a
-  small, heavily-damped one-time speed bump proportional to the altitude just
-  dropped — a controlled guided descent converts only a small fraction of that
-  potential energy into forward speed (most of it is bled off as drag
-  maintaining stable flight, unlike a literal free-fall), but it is a real,
-  physically-motivated effect rather than the dive being energy-free.
+- **Continuous terminal descent.** Seeker activation records the weapon's
+  current altitude and distance. The weapon then follows a smooth descent toward
+  its terminal altitude across the remaining run-in instead of teleporting on
+  one tick. A small, capped GPE→KE credit grows with altitude actually lost, and
+  sensor horizon calculations use the live altitude throughout the descent.
+- **Post-burnout maneuver authority.** Turn authority is full through the first
+  35% of nominal range, then declines smoothly toward 55% at maximum range.
+  This keeps short shots agile while making an energy-depleted end-of-range
+  weapon less able to follow a hard late maneuver.
 
 ### Aircraft Energy State (GPE ↔ KE)
 An aircraft's altitude and airspeed were previously two fully independent
@@ -231,8 +233,14 @@ This is a plausible simulation abstraction, not a real-world tactical procedure.
 
 ## Current Additions
 
-### Ship Classes
-Five naval hulls are modelled (see DATA_MODEL.md): DDG (Burke destroyer), CCG (Ticonderoga cruiser), BBG (Trump arsenal battleship), FFG (Constellation frigate), and **CVN** (Nimitz/Ford-class carrier approx. — a moving airfield with a small self-defence magazine). Each has per-class kinematics, sensor fit, a single VLS/cell pool, CIWS parameters, `defenseChannels: { sam, ciws }`, damage resilience, and degradation. The setup rail groups Naval / Ground / Air for placement.
+### Ship and Submarine Classes
+Five surface hulls are modelled (see DATA_MODEL.md): DDG (Burke destroyer), CCG (Ticonderoga cruiser), BBG (Trump arsenal battleship), FFG (Constellation frigate), and **CVN** (Nimitz/Ford-class carrier approx. — a moving airfield with a small self-defence magazine). One attack-submarine type is included: **SSN**, a Virginia-class Block V approximation. The setup rail groups Naval / Subsurface / Ground / Air for placement.
+
+The SSN uses the public Block V geometry and 25+ knot performance class, a 40-Tomahawk VPM configuration, and an abstract 26-round Mk 48 torpedo-room load. Public sources do not disclose operational sonar ranges, quieting, maximum depth, Mk 48 range, or exact speed; those values are deliberately labeled gameplay envelopes rather than claimed specifications.
+
+Submarines are invisible to radar while submerged. Passive sonar range scales with target acoustic signature: slow, quiet SSNs are difficult contacts; high speed and cavitation expand detection range sharply. Active sonar gives a firmer, shorter-range contact but makes the transmitting platform easier to hear. SSN AI approaches at quiet speed, maintains torpedo standoff, changes depth gradually, and goes deep/flank only when evading an inbound underwater weapon.
+
+`Mk48` is a slow, heavyweight, acoustic-homing underwater weapon with higher damage than a cruise-missile hit. `VL-ASROC` first flies as a radar-visible rocket, then splashes down near the contact and continues as an underwater lightweight torpedo. SAMs, fighter AAMs, and CIWS cannot engage a submerged torpedo; ships and submarines instead maneuver and expend bounded acoustic countermeasures.
 
 ### Ground Emplacements
 Fixed land-based types use `domain: "ground"`, `isFixed: true`, and zero speed: **SAM**, **THAAD**, **CDB**, **DEB**, **EWR**, and **AFB** (airfield). They are stationary ship-entities so they reuse sensors, CEC, fire planning, damage, and win logic rather than a parallel system:
@@ -242,16 +250,37 @@ Fixed land-based types use `domain: "ground"`, `isFixed: true`, and zero speed: 
 - **THAAD.** Long-range high-altitude BMD battery (≈500 NM search abstraction, 48 interceptors). Only engages hypersonic / high-energy threats (Dark Eagle and Workshop equivalents). Does not fire on cruise missiles or aircraft.
 - **CDB targeting radar.** ≈250 NM OTH so long-range coastal ASCMs are usable at standoff; beyond own radar it still needs external CEC cueing.
 - **DEB remote cueing.** Long-range surface search plus engage-on-remote for 1,500 NM LRHW shots. High/fast profile is seen earlier than a sea-skimmer but leaves less engagement time. Treated as a strike specialist with a strategic-weapon quota.
-- **Win condition.** A side is eliminated when all of its units (sea, ground, and air) are destroyed. In-flight missiles are not units. See also mutual-exhaustion draw below.
+- **Win condition.** A side is eliminated when all of its units (sea, subsurface, ground, and air) are destroyed. In-flight missiles are not units. See also mutual-exhaustion draw below.
 
 ### SM-6 Dual-Role
 SM-6 (RIM-174 ERAM) fills the gap between long-range fleet air defense and anti-surface strike. It has 200 NM range, Mach 3.5 speed, PK 0.74, and `targets: ["missile", "air", "sea", "ground"]`. Its launch order permanently assigns either the anti-surface profile and square icon or the interceptor profile and triangle icon. SM-6 is preferred for long-range/high-threat defensive engagements and can be used offensively when magazine depth permits (>12 rounds).
 
 ### Subsystem Damage
-Each anti-ship hit degrades 2-3 of six subsystems (radar, VLS, propulsion, fireControl, CIWS, CIC) by 15-45%. Combat effects: radar damage reduces track quality, propulsion damage reduces max speed, CIWS damage reduces PK. Subsystem state is visible in the ship detail popup with colour-coded health bars.
+Each anti-ship hit degrades 2-3 applicable subsystems (radar, VLS, propulsion,
+fireControl, CIWS, CIC, sonar, electronic warfare) by 15-45%. Every field is consequential: radar reduces
+track quality; propulsion reduces effective maximum speed; VLS damage slows
+launch sequencing; fire-control damage reduces simultaneous SAM channels; CIWS
+damage reduces terminal-gun PK; and CIC damage lengthens offensive command
+reaction windows; sonar damage shortens acoustic range; EW damage weakens ESM
+and jamming. Effects use bounded residual capability so a surviving unit
+with ammunition cannot deadlock the scenario. Subsystem state remains visible
+in the ship detail popup with colour-coded health bars.
+
+### Electronic Warfare and Soft Kill
+Electronic warfare is a bounded deterministic abstraction, not a frequency-by-frequency electromagnetic model:
+
+- **ESM / electronic support.** An ESM-equipped unit can passively build a noisy bearing-derived contact on hostile radar or jammer emissions while its own radar is off. ESM reports retain `emitterActive` through force-picture fusion, enabling anti-radiation targeting.
+- **Electronic attack.** EA-18G and shipboard EW suites apply stand-off radar jamming. Received pressure falls with jammer range. Radar degradation grows with target range, while close targets burn through; jamming reduces both acquisition probability and track precision.
+- **SEAD.** The EA-18G carries AGM-88. It will only release against a track known to be emitting. An ESM-equipped target can enter a 90-second EMCON window as the weapon closes, shutting down radar and jammer; the passive-radar weapon retains a degraded last-location attack rather than vanishing.
+- **Soft kill.** RF-guided weapons can be seduced by expendable chaff/active-decoy abstractions. Home-on-jam seekers are harder to spoof. Torpedoes use a separate acoustic-countermeasure path. All stores are finite and have deployment cooldowns.
+
+The model intentionally omits waveform libraries, frequency agility, sidelobes, coherent repeater geometry, detailed link jamming, cyber effects, and classified counter-countermeasures. Those would add large state and calibration costs without defensible public data.
 
 ### Missile Detection and Kinetic Defense
-`scanSensors()` can detect hostile missiles once they are close enough to appear on the radar picture. Those tracks feed the normal force-picture pipeline, and defensive launch planning only reacts to observed missile tracks. There is no passive ESM missile detection and no soft-kill defeat layer; missile defense is kinetic only (SM-2, SM-6, ESSM, CIWS).
+`scanSensors()` can detect hostile airborne missiles once they are close enough to appear on the radar picture. Those tracks feed the normal force-picture pipeline, and defensive launch planning only reacts to observed missile tracks. Airborne defense remains kinetic (SM-2, SM-6, ESSM, CIWS) after any RF soft-kill attempt; underwater weapons use sonar and acoustic soft kill instead.
+
+### Explicitly Excluded Scope
+This release does **not** model mine warfare or mine countermeasures, logistics/resupply/UNREP, weather or sea-state effects, flooding/progressive buoyancy loss, or detailed damage-location/flood-control simulation. These are deliberate scope exclusions, not hidden roadmap promises. Submarines and EW were added without introducing those systems.
 
 Missile detection is now profile-specific. Tomahawk is modeled as an extremely
 low-altitude cruise weapon, so its radar pickup is strongly horizon-limited and
@@ -331,7 +360,9 @@ to be a hand-tuned "visibilityFactor" magic number per weapon with no
 relationship to any actual per-weapon RCS value. Altitude/profile (sea-skim
 vs. lofted) remains a separate, legitimate per-weapon factor feeding the same
 horizon model above — RCS governs how big the return is once in view, not
-whether the horizon masks it.
+whether the horizon masks it. The fourth-root equation remains intact; only
+extremely small/custom signatures reach the gameplay floor, now `0.18` rather
+than `0.35`. Catalogue AIM-9X remains above that floor from the equation itself.
 
 **RCS is now editable in the Unit Workshop.** Every naval, ground, and
 aircraft class (and every ammo record) exposes `rcsM2` as a plain numeric

@@ -40,6 +40,7 @@ function mergeTrack(fused, track) {
       vy: track.vy ?? 0,
       quality: track.quality,
       uncertainty: track.uncertainty,
+      emitterActive: track.emitterActive === true,
       weight: Math.max(0.05, track.quality),
       contributors: 1,
       bestQuality: track.quality
@@ -53,6 +54,7 @@ function mergeTrack(fused, track) {
   existing.weight = totalW;
   existing.contributors += 1;
   existing.uncertainty = Math.min(existing.uncertainty, track.uncertainty);
+  existing.emitterActive ||= track.emitterActive === true;
   if (track.quality > existing.bestQuality) {
     existing.bestQuality = track.quality;
     existing.vx = track.vx ?? 0;
@@ -227,9 +229,11 @@ function trackHullEstimate(track) {
     if (/f-?15c|f-15c eagle/.test(text)) return "F15C";
     if (/f-?15n|sea strike/.test(text)) return "F15N";
     if (/f-?16|viper/.test(text)) return "F16V";
+    if (/ea-?18g|growler/.test(text)) return "EA18G";
     if (/hawkeye|awac|aew/.test(text)) return "AWAC";
     if (domain === "air") return "F15C";
   }
+  if (domain === "subsurface" || /subsurface contact|virginia|attack submarine|\bssn\b/.test(text)) return "SSN";
   // Ground emplacements first — their class strings contain words ("battery",
   // "coastal") that would otherwise mis-match naval patterns.
   if (/\bthaad\b/.test(text)) return "THAAD";
@@ -259,6 +263,11 @@ export function offensiveTargetValue(track) {
     const quality = clamp(track?.quality ?? 0.35, 0.05, 0.99);
     const uncertaintyPenalty = Math.min(18, (track?.uncertainty ?? 0) / NM * 0.75);
     return 78 + quality * 34 - uncertaintyPenalty;
+  }
+  if (track?.domain === "subsurface") {
+    const quality = clamp(track?.quality ?? 0.35, 0.05, 0.99);
+    const uncertaintyPenalty = Math.min(22, (track?.uncertainty ?? 0) / NM);
+    return 105 + quality * 38 - uncertaintyPenalty;
   }
   const hull = trackHullEstimate(track);
   // Ground emplacements are high-priority strike targets: killing the radar
@@ -365,7 +374,7 @@ export function computeFleetCommand(sim) {
     const ordered = [...ships].sort((a, b) => fleetCapability(b) - fleetCapability(a) || a.id.localeCompare(b.id));
     // The guide anchors the surface formation, so it must be a mobile surface
     // combatant — never a fixed emplacement and never an air squadron.
-    const mobileOrdered = ordered.filter((ship) => !ship.isFixed && ship.domain !== "air");
+    const mobileOrdered = ordered.filter((ship) => !ship.isFixed && ship.domain !== "air" && ship.domain !== "subsurface");
     const otc = mobileOrdered[0] ?? ordered[0];
     otc.isOTC = true;
     otc.fleetRole = FLEET_ROLE.OTC;
@@ -404,9 +413,9 @@ export function computeFleetCommand(sim) {
     // Derive from `ordered` (capability-sorted) so the non-air ordering — and
     // thus every sector assignment — is byte-identical to the pre-air behaviour
     // when no aircraft are present.
-    const sectorShips = ordered.filter((ship) => ship.domain !== "air");
+    const sectorShips = ordered.filter((ship) => ship.domain !== "air" && ship.domain !== "subsurface");
     for (const ship of ships) {
-      if (ship.domain === "air") {
+      if (ship.domain === "air" || ship.domain === "subsurface") {
         ship.sectorCenter = side === SIDE.BLUE ? 0 : Math.PI;
         ship.sectorHalfWidth = Math.PI;
         ship.station = null;
@@ -417,7 +426,7 @@ export function computeFleetCommand(sim) {
     const stationRing = 6 * NM; // screen radius around the guide
     const sectorOrder = [otc, ...sectorShips.filter((ship) => ship !== otc)];
     sectorOrder.forEach((ship, idx) => {
-      if (ship.domain === "air") return;
+      if (ship.domain === "air" || ship.domain === "subsurface") return;
       // idx 0 (OTC) -> centred on axis; others fan out alternately.
       const slot = idx === 0 ? 0 : (idx % 2 === 1 ? Math.ceil(idx / 2) : -Math.ceil(idx / 2));
       ship.sectorCenter = wrapAngle(axis + slot * sectorWidth);
