@@ -206,16 +206,21 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     const result = validateUnit(form);
     if (!result.ok) { showErrors(result.errors); return; }
     if (isNew) ensureUniqueIdentity(form);
-    const record = await saveMod(form);
-    const key = recordKey(record);
-    const idx = units.findIndex((u) => recordKey(u) === key);
-    if (idx >= 0) units[idx] = record; else units.push(record);
-    selectedKey = key;
-    isNew = false;
-    dirty = false;
-    renderList();
-    renderDetail();
-    safeNotify();
+    try {
+      const record = await saveMod(form);
+      const key = recordKey(record);
+      const idx = units.findIndex((u) => recordKey(u) === key);
+      if (idx >= 0) units[idx] = record; else units.push(record);
+      selectedKey = key;
+      isNew = false;
+      dirty = false;
+      renderList();
+      renderDetail();
+      safeNotify();
+    } catch (e) {
+      console.warn("[mods] save failed", e);
+      alert(getLang() === "zh" ? "保存失败，请重试。" : "Save failed. Please retry.");
+    }
   }
 
   function doClone() {
@@ -249,16 +254,21 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
   async function doDelete() {
     if (!form || isBuiltinUnit(form)) return;
-    const ok = await deleteMod(form);
-    if (!ok) return;
-    units = units.filter((u) => recordKey(u) !== recordKey(form));
-    selectedKey = null;
-    form = null;
-    isNew = false;
-    dirty = false;
-    renderList();
-    renderDetail();
-    safeNotify();
+    try {
+      const ok = await deleteMod(form);
+      if (!ok) return;
+      units = units.filter((u) => recordKey(u) !== recordKey(form));
+      selectedKey = null;
+      form = null;
+      isNew = false;
+      dirty = false;
+      renderList();
+      renderDetail();
+      safeNotify();
+    } catch (e) {
+      console.warn("[mods] delete failed", e);
+      alert(getLang() === "zh" ? "删除失败，请重试。" : "Delete failed. Please retry.");
+    }
   }
 
   async function importJson(text) {
@@ -269,10 +279,15 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     ensureUniqueIdentity(parsed);
     const result = validateUnit(parsed);
     if (!result.ok) return alert((getLang() === "zh" ? "校验失败: " : "Validation failed: ") + result.errors.map((e) => `${e.field} ${e.msg}`).join(", "));
-    const record = await saveMod(parsed);
-    units.push(record);
-    selectKey(recordKey(record));
-    safeNotify();
+    try {
+      const record = await saveMod(parsed);
+      units.push(record);
+      selectKey(recordKey(record));
+      safeNotify();
+    } catch (e) {
+      console.warn("[mods] import save failed", e);
+      alert(getLang() === "zh" ? "导入失败，请重试。" : "Import failed. Please retry.");
+    }
   }
 
   // --- events --------------------------------------------------------------
@@ -399,7 +414,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     e.preventDefault();
     overlay.classList.remove("drop");
     const file = e.dataTransfer?.files?.[0];
-    if (file) file.text().then(importJson);
+    if (file) file.text().then(importJson).catch((e) => console.warn("[mods] drop read failed", e));
   });
 
   async function openEditor() {

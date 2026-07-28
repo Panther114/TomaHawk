@@ -99,6 +99,7 @@ and flooding are intentionally not modeled. / 本版本明确不建模水雷战�
 | Key | Action |
 | --- | --- |
 | `Space` | Play / pause (starts from setup) |
+| `.` | Advance one tick (pauses first) |
 | `Esc` | Cancel tool / clear selection |
 | `R` | Ruler (again = clear) |
 | `Tab` | Next unit |

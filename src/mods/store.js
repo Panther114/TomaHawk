@@ -64,16 +64,33 @@ let dbHandle = null;
  */
 export async function loadMods() {
   const vanilla = vanillaUnits();
+  const vanillaRecords = vanilla.map((u) => ({ ...u, _key: recordKey(u) }));
   if (!hasIndexedDb()) {
     // No persistence available (e.g. Node/tests): vanilla only, nothing to register.
-    return vanilla.map((u) => ({ ...u, _key: recordKey(u) }));
+    return vanillaRecords;
   }
-  const db = (dbHandle ||= await openDb());
+  let db;
+  try {
+    db = (dbHandle ||= await openDb());
+  } catch (e) {
+    // A blocked/private storage context must not break the editor or the sim.
+    console.warn("[mods] IndexedDB unavailable, loading vanilla only", e);
+    return vanillaRecords;
+  }
 
-  // Re-seed/heal vanilla records to canonical on every boot.
-  for (const u of vanilla) await dbPut(db, { ...u, _key: recordKey(u) });
+  // Re-seed/heal vanilla records to canonical on every boot. A single failing
+  // write must not abort the whole load (and block every custom unit below).
+  for (const u of vanilla) {
+    try { await dbPut(db, { ...u, _key: recordKey(u) }); }
+    catch (e) { console.warn("[mods] failed to re-seed vanilla unit", u?._key, e); }
+  }
 
-  const records = await dbGetAll(db);
+  let records;
+  try { records = await dbGetAll(db); }
+  catch (e) {
+    console.warn("[mods] failed to read stored units", e);
+    return vanillaRecords;
+  }
   const registered = [];
   const failed = [];
   for (let rec of records) {
@@ -98,18 +115,22 @@ export async function loadMods() {
   return records;
 }
 
-/** Persist a custom unit and register it live. Returns the stored record. */
+/** Persist a custom unit and register it live. Returns the stored record.
+ *  Persists BEFORE registering so a failed write never leaves a phantom unit
+ *  live in the sim catalogues but missing from storage. */
 export async function saveMod(unit) {
   const record = { ...unit, _key: recordKey(unit) };
-  registerUnit(record);
   if (hasIndexedDb()) await dbPut((dbHandle ||= await openDb()), record);
+  registerUnit(record);
   return record;
 }
 
-/** Delete a custom unit (refuses built-ins) and unregister it live. */
+/** Delete a custom unit (refuses built-ins) and unregister it live.
+ *  Persists the deletion BEFORE unregistering so a failed write never leaves the
+ *  unit gone from the live catalogues yet still resurrecting on next boot. */
 export async function deleteMod(unit) {
   if (isBuiltinUnit(unit)) return false;
-  unregisterUnit(unit);
   if (hasIndexedDb()) await dbDelete((dbHandle ||= await openDb()), recordKey(unit));
+  unregisterUnit(unit);
   return true;
 }

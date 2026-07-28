@@ -222,9 +222,10 @@ export function commandPosture(sim, side) {
 export function postureBar(side, posture) {
   const label = side === SIDE.BLUE ? "B" : "R";
   const pct = Math.round(posture.aggression * 100);
+  const agg = t('status.agg');
   return `
     <span class="${side === SIDE.BLUE ? "blue" : "red"} posture-chip">
-      ${label} AGG
+      ${label} ${agg}
       <span class="agg-meter ${side === SIDE.BLUE ? "blue" : "red"}"><i style="width:${pct}%"></i></span>
       <b>${pct}%</b>
     </span>
@@ -235,15 +236,18 @@ export function renderBattleStatus(sim, counts = null) {
   const c = counts ?? battleSummaryCounts(sim);
   const bluePosture = commandPosture(sim, SIDE.BLUE);
   const redPosture = commandPosture(sim, SIDE.RED);
+  const hp = t('status.hp');
+  const as = t('status.as');
+  const aa = t('status.aa');
   return `
     <span class="red">R ${c.redShips}</span>
     <span class="blue">B ${c.blueShips}</span>
-    <span class="red">R HP ${c.redHp}/${c.redHpMax}</span>
-    <span class="blue">B HP ${c.blueHp}/${c.blueHpMax}</span>
-    <span class="red">R AS ${c.redAntiShip}</span>
-    <span class="red">R AA ${c.redAntiAir}</span>
-    <span class="blue">B AS ${c.blueAntiShip}</span>
-    <span class="blue">B AA ${c.blueAntiAir}</span>
+    <span class="red">R ${hp} ${c.redHp}/${c.redHpMax}</span>
+    <span class="blue">B ${hp} ${c.blueHp}/${c.blueHpMax}</span>
+    <span class="red">R ${as} ${c.redAntiShip}</span>
+    <span class="red">R ${aa} ${c.redAntiAir}</span>
+    <span class="blue">B ${as} ${c.blueAntiShip}</span>
+    <span class="blue">B ${aa} ${c.blueAntiAir}</span>
     ${postureBar(SIDE.RED, redPosture)}
     ${postureBar(SIDE.BLUE, bluePosture)}
   `;

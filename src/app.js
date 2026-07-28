@@ -25,7 +25,6 @@ import {
   restoreScenario,
   serializeScenario,
   setScenarioMap,
-  setLoadout,
   stepSim,
   tracksForShip,
   weaponRangeEntries
@@ -231,10 +230,6 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   terrainLayerKey = "";
   clampCamera();
-}
-
-function selectedShip() {
-  return sim.ships.find((s) => s.id === sim.selectedId) ?? sim.ships[0];
 }
 
 function setPrimarySelection(ship) {
@@ -1260,10 +1255,15 @@ function renderPanels() {
     const posture = sim.commandState?.get(side);
     return `${posture?.aggression ?? 0.5}:${posture?.advantage ?? 0}`;
   }).join("|");
-  const statusKey = `${lang}|${Object.values(counts).join(":")}|${postureKey}`;
+  // A compact mode label (SETUP READY / RUNNING / PAUSED / ENDED) leads the
+  // status bar so the player always sees the current battle state at a glance.
+  const modeLabel = sim.mode === SCENARIO_MODE.ENDED ? RUN_STATUS.ended
+    : sim.mode === SCENARIO_MODE.RUNNING ? (sim.paused ? RUN_STATUS.paused : RUN_STATUS.running)
+    : RUN_STATUS.ready;
+  const statusKey = `${lang}|${modeLabel}|${Object.values(counts).join(":")}|${postureKey}`;
   if (panelRenderCache.status !== statusKey) {
     panelRenderCache.status = statusKey;
-    replaceHtmlIfChanged(status, renderBattleStatus(sim, counts));
+    replaceHtmlIfChanged(status, `<span class="mode-chip">${modeLabel}</span>` + renderBattleStatus(sim, counts));
   }
   const inventoryKey = `${lang}|${sim.ships.map((ship) => [
     ship.id,
@@ -1574,7 +1574,7 @@ play.addEventListener("click", () => {
 });
 document.querySelector("#reset").addEventListener("click", () => {
   sim = createDefaultScenario(undefined, sim.mapId);
-  selectedIds = new Set([sim.selectedId]);
+  selectedIds = new Set([sim.selectedId].filter(Boolean));
   activeRuler = null;
   rulers = [];
 });
@@ -1591,6 +1591,8 @@ function downloadJson(name, data) {
 // Custom-location save: File System Access API where available (a real "Save
 // As" dialog, any folder), Blob-download fallback everywhere else. Either way
 // this never touches saves/scenarios/, so it never shows up in the Load popup.
+// Returns false if the user cancelled the OS file picker (so the caller can
+// keep the Save form open); true once the file is written or downloaded.
 async function saveJsonToCustomLocation(name, data) {
   const text = JSON.stringify(data, null, 2);
   if (window.showSaveFilePicker) {
@@ -1602,13 +1604,14 @@ async function saveJsonToCustomLocation(name, data) {
       const writable = await handle.createWritable();
       await writable.write(text);
       await writable.close();
-      return;
+      return true;
     } catch (error) {
-      if (error?.name === "AbortError") return;
+      if (error?.name === "AbortError") return false;
       // Fall through to Blob download on any other failure (e.g. unsupported in this context).
     }
   }
   downloadJson(name, data);
+  return true;
 }
 
 document.querySelector("#aar").addEventListener("click", () => {
@@ -1638,10 +1641,24 @@ function confirmDialog(message) {
     card.append(p, actions);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
-    const finish = (result) => { overlay.remove(); resolve(result); };
+    const finish = (result) => {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey, true);
+      resolve(result);
+    };
+    // Trap keyboard while the modal is open: Escape = cancel, Enter = confirm.
+    // Capture phase + stopPropagation stops the global keydown handler from
+    // toggling the sim or cycling ships behind the dialog.
+    const onKey = (event) => {
+      event.stopPropagation();
+      if (event.key === "Escape") { event.preventDefault(); finish(false); }
+      else if (event.key === "Enter") { event.preventDefault(); finish(true); }
+    };
+    document.addEventListener("keydown", onKey, true);
     no.addEventListener("click", () => finish(false));
     yes.addEventListener("click", () => finish(true));
     overlay.addEventListener("click", (e) => { if (e.target === overlay) finish(false); });
+    no.focus();
   });
 }
 
@@ -1668,8 +1685,16 @@ async function submitSave(name, force) {
   const location = document.querySelector('input[name="save-location"]:checked')?.value;
   const data = serializeScenario(sim);
   if (location === "custom") {
-    await saveJsonToCustomLocation(`${name || "Untitled"}.json`, data);
-    closeSavePopup();
+    try {
+      // If the user dismissed the OS file picker, keep the Save form open so
+      // they can retry instead of losing their typed scenario name.
+      const saved = await saveJsonToCustomLocation(`${name || "Untitled"}.json`, data);
+      if (saved === false) return;
+      status.textContent = t("save.done");
+      closeSavePopup();
+    } catch {
+      status.textContent = t("save.failed");
+    }
     return;
   }
   try {
@@ -1837,7 +1862,13 @@ if (mapSelect) {
 }
 
 window.addEventListener("keydown", (event) => {
-  if (event.target instanceof HTMLInputElement) return;
+  const target = event.target;
+  // Never hijack keys while the user is typing in a field, dropdown, or any
+  // editable control — Space/Tab/Delete there must serve the control itself.
+  if (target instanceof HTMLInputElement
+      || target instanceof HTMLSelectElement
+      || target instanceof HTMLTextAreaElement
+      || target.isContentEditable) return;
   if (modEditor.isOpen()) {
     if (event.key === "Escape") { event.preventDefault(); modEditor.close(); }
     return;
@@ -1876,8 +1907,13 @@ window.addEventListener("keydown", (event) => {
     document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
   }
   if (event.key === "Tab") {
-    event.preventDefault();
-    cycleShip();
+    // Tab cycles units only when no control is focused (focus rests on the
+    // body/canvas). When a button or field is focused, let Tab move focus
+    // normally so keyboard navigation between controls stays usable.
+    if (target === document.body || target === document.documentElement || target === canvas) {
+      event.preventDefault();
+      cycleShip();
+    }
   }
   if (event.key === "`" || event.key === "~") {
     event.preventDefault();
@@ -1894,21 +1930,6 @@ document.body.addEventListener("click", (event) => {
   const id = event.target.closest("[data-select-ship]")?.dataset.selectShip;
   const ship = id ? sim.ships.find((candidate) => candidate.id === id) : null;
   if (ship) setPrimarySelection(ship);
-});
-
-document.body.addEventListener("change", (event) => {
-  const ship = selectedShip();
-  if (!ship) return;
-  if (event.target.id === "radar-toggle") ship.radarActive = event.target.checked;
-  if (event.target.dataset.missile) {
-    const result = setLoadout(ship, event.target.dataset.missile, Number(event.target.value));
-    if (!result.ok) event.target.value = ship.loadout[event.target.dataset.missile] ?? 0;
-  }
-  if (event.target.dataset.doc) ship.doctrine[event.target.dataset.doc] = Number(event.target.value);
-});
-document.body.addEventListener("input", (event) => {
-  const ship = selectedShip();
-  if (ship && event.target.dataset.doc) ship.doctrine[event.target.dataset.doc] = Number(event.target.value);
 });
 
 setFeedCollapsed(false);
@@ -1965,7 +1986,10 @@ const modEditor = createModEditor({
   }
 });
 populateSpawnDropdown();
-modEditor.preload();
+// Preload mod records from IndexedDB. A failure (e.g. a blocked/private storage
+// context) must not crash the app or leave an unhandled rejection — the
+// Workshop simply opens empty and vanilla play is unaffected.
+modEditor.preload().catch((err) => console.warn("Unit Workshop preload failed:", err));
 // Console diagnostics: window.tomahawkMods.dump("SM-7X") returns the stored
 // record plus whether it is registered as a usable missile.
 window.tomahawkMods = modEditor;

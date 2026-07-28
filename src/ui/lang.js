@@ -44,11 +44,12 @@ const strings = {
 
   // Status messages
   "status.ready":    { en: "SETUP READY",           zh: "部署就绪" },
-  "status.setup":    { en: "Default 4v4 scenario loaded; press play when ready.", zh: "默认 4v4 想定已载入，准备好后按空格开始。" },
   "status.paused":   { en: "PAUSED",               zh: "已暂停" },
   "status.ended":    { en: "ENDED",                zh: "已结束" },
   "status.running":  { en: "RUNNING",              zh: "运行中" },
   "status.invalid":  { en: "SETUP NEEDS BLUE+RED", zh: "需要蓝红双方" },
+  "status.as":       { en: "AS",                   zh: "反舰" },
+  "status.aa":       { en: "AA",                   zh: "防空" },
   "status.logCopied":{ en: "LOG COPIED · {n} lines", zh: "日志已复制 · {n} 行" },
   "status.logFailed":{ en: "LOG COPY FAILED",      zh: "复制失败" },
 
@@ -161,12 +162,12 @@ const strings = {
   "about.modelSensorsH": { en: "Sensors", zh: "传感器" },
   "about.modelSensors":  {
     en: "Radar contacts have quality, uncertainty, range limits, scan intervals, and track ageing.",
-    zh: "雷达接触包含航迹质量、不确定性、探测距离、扫描间隔与航迹衰减。"
+    zh: "雷达航迹具有质量、不确定性、距离限制、扫描间隔，并会随时间老化。"
   },
   "about.modelCommandH": { en: "Command", zh: "指挥" },
   "about.modelCommand":  {
     en: "Each side builds a fused picture from local and shared tracks, then chooses a posture from survival to saturation.",
-    zh: "每一方会融合本舰探测与共享航迹，再在自保、压制、饱和打击等姿态之间切换。"
+    zh: "每一方融合本舰与共享航迹形成统一态势，并在自保至饱和打击之间选择交战姿态。"
   },
   "about.modelWeaponsH": { en: "Weapons", zh: "武器" },
   "about.modelWeapons":  {
@@ -190,6 +191,7 @@ const strings = {
     zh: "点击文件夹按钮可打开单位工坊。舰艇、陆基阵地、飞机与武器都以数据记录形式编辑，保存在浏览器中，也可以导出为 JSON。内置记录会被锁定；需要自定义版本时，先克隆再修改。"
   },
   "about.kbSpace":    { en: "Play / Pause simulation",          zh: "播放 / 暂停模拟" },
+  "about.kbStep":     { en: "Advance one tick (pause first)",   zh: "单步推进一帧（先暂停）" },
   "about.kbEsc":      { en: "Cancel tool / deselect",           zh: "取消工具 / 取消选择" },
   "about.kbR":        { en: "Activate ruler tool",              zh: "启用标尺工具" },
   "about.kbTab":      { en: "Cycle selected ship",              zh: "循环选择舰艇" },
@@ -251,8 +253,8 @@ const strings = {
   "evt.incoming":   { en: "incoming",     zh: "来袭" },
   "evt.failed":     { en: "failed to intercept", zh: "拦截失败" },
   "evt.hitBy":      { en: "hit by",       zh: "被命中" },
-  "evt.damage":     { en: "Damage:",      zh: "伤害:" },
-  "evt.missionKilled":{ en: "mission-killed", zh: "任务损毁" },
+  "evt.damage":     { en: "Damage:",      zh: "损伤:" },
+  "evt.missionKilled":{ en: "mission-killed", zh: "任务杀伤" },
   "evt.hitsSustained":{ en: "hits sustained", zh: "累计命中" },
   "evt.classLimit": { en: "class limit",  zh: "舰级上限" },
   "evt.missed":     { en: "missed",       zh: "未命中" },

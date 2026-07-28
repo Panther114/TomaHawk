@@ -1798,13 +1798,12 @@ export function updateMissiles(sim, dt) {
       : aliveShipById(sim, missile.targetId);
 
     // Target killed in flight (sunk, or threat intercepted by someone else):
-    // abort or self-destruct — never coast on a dead datum.
+    // abort or self-destruct — never coast on a dead datum. No re-vectoring is
+    // allowed (see handleTargetLoss: the missile is deactivated and the shot is
+    // over, regardless of the selfDestructOnTargetLoss ROE flag).
     if (!target) {
-      if (!handleTargetLoss(sim, missile, spec)) continue;
-      target = targetIsInFlightMissile
-        ? sim.missiles.find((m) => m.id === missile.targetId && m.alive)
-        : sim.ships.find((s) => s.id === missile.targetId && s.alive);
-      if (!target) { deactivateMissile(sim, missile); continue; }
+      handleTargetLoss(sim, missile, spec);
+      continue;
     }
 
     const distToTarget = distance(missile, target);

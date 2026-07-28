@@ -412,34 +412,6 @@ small,
   color: var(--red);
 }
 
-.toggle,
-.loadout,
-#doctrine-tab label {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 4px;
-  margin: 2px 0;
-  font-size: 14px;
-}
-
-.loadout small {
-  display: block;
-  margin-top: 1px;
-  font-size: 14px;
-  line-height: 1.02;
-}
-
-.loadout input,
-#doctrine-tab input {
-  width: 58px;
-  background: rgba(7, 20, 27, 0.82);
-  border: 1px solid rgba(142, 193, 205, 0.26);
-  color: #fff;
-  padding: 1px 3px;
-  font-size: 14px;
-}
-
 .inventory-head,
 .inventory-row {
   display: grid;
@@ -671,6 +643,20 @@ small,
   flex: 1;
   font-size: 14px;
   color: #aecbd3;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  margin-right: 6px;
+  border: 1px solid rgba(247, 185, 85, 0.42);
+  background: rgba(247, 185, 85, 0.12);
+  color: var(--amber);
+  font: 600 14px var(--font-mono);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 #status span {

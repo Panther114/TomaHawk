@@ -424,6 +424,11 @@ export function restoreScenario(data) {
   for (const ship of restored.ships) {
     ensureShipInOpenWater(restored, ship, { fallbackToFormation: true });
   }
+  // A hand-edited or stale save may point selectedId at a ship that no longer
+  // exists; snap to a valid hull (or null) so the UI never dereferences a dead id.
+  if (restored.selectedId != null && !restored.ships.some((s) => s.id === restored.selectedId)) {
+    restored.selectedId = restored.ships[0]?.id ?? null;
+  }
   return restored;
 }
 

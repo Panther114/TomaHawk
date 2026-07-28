@@ -372,21 +372,32 @@ export function computeFleetCommand(sim) {
     // ground emplacements are never chosen as OTC/AAWC unless no sea unit
     // survives on the side.
     const ordered = [...ships].sort((a, b) => fleetCapability(b) - fleetCapability(a) || a.id.localeCompare(b.id));
-    // The guide anchors the surface formation, so it must be a mobile surface
-    // combatant — never a fixed emplacement and never an air squadron.
+    // OTC/AAWC are surface command roles. A mobile surface combatant is the
+    // preferred guide; a fixed emplacement may serve when no mobile unit
+    // survives; an air squadron or submarine is NEVER the OTC (it is a mobile
+    // striker/undersea unit, not a formation guide), so an all-air/all-sub side
+    // simply has no surface command tier.
     const mobileOrdered = ordered.filter((ship) => !ship.isFixed && ship.domain !== "air" && ship.domain !== "subsurface");
-    const otc = mobileOrdered[0] ?? ordered[0];
-    otc.isOTC = true;
-    otc.fleetRole = FLEET_ROLE.OTC;
-    // Second most capable mobile unit acts as dedicated AAW commander.
-    const aawc = mobileOrdered.find((ship) => ship !== otc) ?? ordered.find((ship) => ship !== otc) ?? null;
-    if (aawc) aawc.fleetRole = FLEET_ROLE.AAWC;
+    const surfaceOrdered = ordered.filter((ship) => ship.domain !== "air" && ship.domain !== "subsurface");
+    const otc = mobileOrdered[0] ?? surfaceOrdered[0] ?? null;
+    let aawc = null;
+    if (otc) {
+      otc.isOTC = true;
+      otc.fleetRole = FLEET_ROLE.OTC;
+      // Second most capable mobile unit acts as dedicated AAW commander.
+      aawc = mobileOrdered.find((ship) => ship !== otc) ?? surfaceOrdered.find((ship) => ship !== otc) ?? null;
+      if (aawc) aawc.fleetRole = FLEET_ROLE.AAWC;
+    }
+    // Geometry reference for the threat axis / formation ring. Falls back to the
+    // best available unit (including air/sub) so an all-air side still gets a
+    // meaningful axis — but that unit is not marked OTC (see above).
+    const guide = otc ?? ordered[0] ?? null;
 
     // Threat axis: mean bearing from the formation guide to fused hostiles,
     // defaulting — before any contact is held — to the rough strategic bearing
     // estimate rather than a fixed compass heading; see strategicBearingEstimate.
     const fused = sim.forcePicture?.get(side);
-    let axis = strategicBearingEstimate(sim, side, otc);
+    let axis = strategicBearingEstimate(sim, side, guide);
     if (fused && fused.size) {
       // Threat axis is a force-layout cue (CAP stations, AAW sectors), not a
       // raid-density meter. Inbound missiles must NOT pull the mean bearing —
@@ -398,7 +409,7 @@ export function computeFleetCommand(sim) {
       for (const track of fused.values()) {
         if (String(track.id).startsWith("M-")) continue;
         if ((track.quality ?? 0) < 0.08) continue;
-        const ang = Math.atan2(track.y - otc.y, track.x - otc.x);
+        const ang = Math.atan2(track.y - guide.y, track.x - guide.x);
         sx += Math.cos(ang);
         sy += Math.sin(ang);
         nAxis += 1;
@@ -421,29 +432,31 @@ export function computeFleetCommand(sim) {
         ship.station = null;
       }
     }
-    const n = sectorShips.length;
-    const sectorWidth = (2 * Math.PI) / Math.max(1, n);
-    const stationRing = 6 * NM; // screen radius around the guide
-    const sectorOrder = [otc, ...sectorShips.filter((ship) => ship !== otc)];
-    sectorOrder.forEach((ship, idx) => {
-      if (ship.domain === "air" || ship.domain === "subsurface") return;
-      // idx 0 (OTC) -> centred on axis; others fan out alternately.
-      const slot = idx === 0 ? 0 : (idx % 2 === 1 ? Math.ceil(idx / 2) : -Math.ceil(idx / 2));
-      ship.sectorCenter = wrapAngle(axis + slot * sectorWidth);
-      ship.sectorHalfWidth = sectorWidth / 2 + 0.12;
-      // Formation station: ring around the guide on the threat side. Fixed
-      // emplacements still own an AAW sector but are never given a station to
-      // steam to (they cannot move).
-      if (ship === otc || ship.isFixed) {
-        ship.station = null;
-      } else {
-        const stationAng = wrapAngle(axis + slot * sectorWidth);
-        ship.station = {
-          x: otc.x + Math.cos(stationAng) * stationRing,
-          y: otc.y + Math.sin(stationAng) * stationRing
-        };
-      }
-    });
+    if (otc) {
+      const n = sectorShips.length;
+      const sectorWidth = (2 * Math.PI) / Math.max(1, n);
+      const stationRing = 6 * NM; // screen radius around the guide
+      const sectorOrder = [otc, ...sectorShips.filter((ship) => ship !== otc)];
+      sectorOrder.forEach((ship, idx) => {
+        if (ship.domain === "air" || ship.domain === "subsurface") return;
+        // idx 0 (OTC) -> centred on axis; others fan out alternately.
+        const slot = idx === 0 ? 0 : (idx % 2 === 1 ? Math.ceil(idx / 2) : -Math.ceil(idx / 2));
+        ship.sectorCenter = wrapAngle(axis + slot * sectorWidth);
+        ship.sectorHalfWidth = sectorWidth / 2 + 0.12;
+        // Formation station: ring around the guide on the threat side. Fixed
+        // emplacements still own an AAW sector but are never given a station to
+        // steam to (they cannot move).
+        if (ship === otc || ship.isFixed) {
+          ship.station = null;
+        } else {
+          const stationAng = wrapAngle(axis + slot * sectorWidth);
+          ship.station = {
+            x: otc.x + Math.cos(stationAng) * stationRing,
+            y: otc.y + Math.sin(stationAng) * stationRing
+          };
+        }
+      });
+    }
     const ownOffense = ships.reduce((sum, ship) => sum + offensiveMissileCount(ship, true), 0);
     const ownVls = ships.reduce((sum, ship) => sum + vlsCapacity(ship), 0);
     const observed = observedForceMetrics(sim, side);

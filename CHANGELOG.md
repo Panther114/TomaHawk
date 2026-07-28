@@ -87,6 +87,23 @@ All notable changes to this repository will be documented in this file.
 - Overlapping same-type/same-faction weapon-range rings merged into one visual outline but still drew one label per underlying ring; a merged cluster now draws exactly one label (30% more transparent, 30% smaller than before) regardless of how many rings feed it.
 - 军力清单中每种导弹库存的颜色现在遵循统一的自动规则（独立导弹列，不含总垂发列——后者仍用自己的规则）：高于基准 67% 为白色，33%–67% 为黄色，低于 33% 为红色，为零则灰显；基准取自该舰的实际初始装载。单位详情卡片现在按单位**类型**（海军/陆基/空中）而非具体舰型构建，因此通过单位工坊新增的自定义飞机会自动获得飞机形态的卡片。同类型同阵营合并后的武器射程圈此前仍会按舰艇数量重复绘制标签；现在每个合并后的圈仅绘制一个标签（透明度降低 30%，字号缩小 30%）。
 
+### Fixed — Bug-fix pass / 缺陷修复
+- **Air squadrons could be wrongly designated OTC.** When a side had no mobile surface unit (an all-air or all-fixed-remainder force), the fleet-command guide fell back to an air squadron and marked it `isOTC`, violating the "air is never OTC" invariant. OTC/AAWC roles are now surface-only (mobile surface preferred, fixed emplacement as last resort); an all-air side simply has no surface command tier, and the threat axis still derives from the best available unit.
+- **Dead missile re-vector branch removed.** `handleTargetLoss` always deactivated the missile and returned `false`, so the `if (!handleTargetLoss(...))` re-resolution path in `updateMissiles` was unreachable. Simplified to the actual behaviour (no re-vectoring), so the code matches the documented intent.
+- **`restoreScenario` could leave `selectedId` pointing at a missing ship.** A hand-edited or stale save no longer leaves a dangling selection; it snaps to a valid hull (or `null`).
+- **Wrong first-load status text.** The status bar hardcoded "Default 4v4 scenario loaded" while the real default is an empty setup; it now shows an accurate `SETUP READY` mode chip (RUNNING / PAUSED / ENDED while in battle), and the dead `status.setup` string was removed.
+- **Battle status bar was never localized.** `renderBattleStatus` / `postureBar` emitted hardcoded English (`HP`/`AS`/`AA`/`AGG`); the metric labels now follow the active language (耐久/反舰/防空/攻势 in Chinese).
+- **Keyboard shortcuts leaked through focused dropdowns.** The global keydown guard only checked `HTMLInputElement`, so Space/R/Tab/Delete fired while a `<select>` was focused. It now also covers `HTMLSelectElement`, `HTMLTextAreaElement`, and contenteditable elements.
+- **Tab stole keyboard focus navigation.** Tab now cycles units only when no control is focused (focus rests on the body/canvas); when a button or field is focused, Tab moves focus normally.
+- **`confirmDialog` had no keyboard support and leaked sim shortcuts.** The modal now traps keyboard (Escape = cancel, Enter = confirm) and stops the global handler from toggling the sim behind it.
+- **Reset left a `null` in the selection set.** Resetting to the empty default no longer produces `selectedIds = Set{ null }`.
+- **Custom-location save had no error handling.** The File System Access path sat outside the `try/catch`; a thrown write no longer leaves the popup open and sim paused. Cancelling the OS file picker now keeps the Save form instead of discarding it, and a success status is shown.
+- **Dead editable-ship handlers and CSS removed.** The `change`/`input` listeners for `#radar-toggle` / `[data-missile]` / `[data-doc]` (and the `setLoadout` import) referenced elements the removed doctrine panel left behind; the `.toggle` / `.loadout` / `#doctrine-tab` CSS rules were equally dead. All removed.
+- **Unit Workshop preload could reject unhandled.** `modEditor.preload()` is now `.catch()`-guarded so a blocked IndexedDB context never crashes the app.
+- **Mod save/delete mutated the live catalogue before persisting.** `saveMod` / `deleteMod` now persist first and register/unregister after, so a failed write never leaves a phantom unit live-but-unsaved (or gone-live-but-still-in-storage). `loadMods` is resilient: a blocked/broken IndexedDB falls back to vanilla-only instead of rejecting. Save/delete/import paths in the editor surface failures with a retry message instead of unhandled rejections.
+- **Undocumented single-step key.** The `.` key (advance one tick) is now listed in the About overlay and the README/REFERENCE controls.
+- 修复：全空军一侧可能被错误指定 OTC；移除不可达的导弹再瞄准分支；`restoreScenario` 不再留下指向已删单位的 selectedId；首屏状态栏文字与实际"空想定"不符；战斗状态栏未本地化；键盘快捷键在聚焦下拉框时仍触发；Tab 抢占焦点导航；确认弹窗无键盘支持且背后快捷键仍生效；重置后选择集合残留 null；自定义路径保存无错误处理且取消系统对话框会丢失表单；移除已删除面板遗留的死事件监听与死 CSS；单位工坊预加载未捕获拒绝；模组保存/删除在持久化前就改动实时目录且 IndexedDB 故障会拒绝；单步推进键 `.` 此前未在文档中说明。
+
 ## v0.3.0 — 2026-06-30
 
 ### Release summary
