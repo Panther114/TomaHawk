@@ -9,7 +9,7 @@ import {
   SIDE, NM, MISSILES, SHIP_CLASSES, usedCells, vlsCapacity, battleSummaryCounts,
   aliveAircraftCount, squadronSize, missileHasSurfaceTarget
 } from "../sim.js";
-import { t, getLang } from "./lang.js";
+import { t } from "./lang.js";
 
 // A ground emplacement is a fixed, land-based unit; it gets its own inventory
 // sub-table (different columns) and glyph rather than the naval ship layout.
@@ -234,23 +234,29 @@ export function postureBar(side, posture) {
 
 export function renderBattleStatus(sim, counts = null) {
   const c = counts ?? battleSummaryCounts(sim);
-  const bluePosture = commandPosture(sim, SIDE.BLUE);
-  const redPosture = commandPosture(sim, SIDE.RED);
-  const hp = t('status.hp');
-  const as = t('status.as');
-  const aa = t('status.aa');
-  return `
-    <span class="red">R ${c.redShips}</span>
-    <span class="blue">B ${c.blueShips}</span>
-    <span class="red">R ${hp} ${c.redHp}/${c.redHpMax}</span>
-    <span class="blue">B ${hp} ${c.blueHp}/${c.blueHpMax}</span>
-    <span class="red">R ${as} ${c.redAntiShip}</span>
-    <span class="red">R ${aa} ${c.redAntiAir}</span>
-    <span class="blue">B ${as} ${c.blueAntiShip}</span>
-    <span class="blue">B ${aa} ${c.blueAntiAir}</span>
-    ${postureBar(SIDE.RED, redPosture)}
-    ${postureBar(SIDE.BLUE, bluePosture)}
-  `;
+  const force = (side, label) => {
+    const prefix = side === SIDE.BLUE ? "blue" : "red";
+    const posture = commandPosture(sim, side);
+    const ships = c[`${prefix}Ships`];
+    const hp = c[`${prefix}Hp`];
+    const hpMax = c[`${prefix}HpMax`];
+    const antiShip = c[`${prefix}AntiShip`];
+    const antiAir = c[`${prefix}AntiAir`];
+    const hpPct = hpMax ? Math.round(hp / hpMax * 100) : 0;
+    const offensePct = Math.round((posture.aggression ?? 0.5) * 100);
+    const stat = (className, name, value, pct = null) => `<span class="summary-stat ${className}">
+      <small>${name}</small><b>${value}</b>${pct == null ? "" : `<span class="mini-meter"><i style="width:${pct}%"></i></span>`}
+    </span>`;
+    return `<div class="force-summary ${prefix}">
+      <span class="force-side"><small>${side === SIDE.BLUE ? "BLUE" : "RED"}</small><b>${label}</b></span>
+      ${stat("units", "存活", ships)}
+      ${stat("hp", "总耐久", `${hp}/${hpMax}`, hpPct)}
+      ${stat("asuw", "反舰库存", antiShip)}
+      ${stat("aaw", "防空库存", antiAir)}
+      ${stat("offense", "攻势", `${offensePct}%`, offensePct)}
+    </div>`;
+  };
+  return `${force(SIDE.BLUE, "蓝方")}${force(SIDE.RED, "红方")}`;
 }
 
 // Column header for an inventory sub-table. Naval ("sea") and ground tables
@@ -315,7 +321,7 @@ export function shipDisplayName(ship, separator = "-") {
   const key = `ship.${(ship?.hull || "DDG").toLowerCase()}`;
   const localized = t(key);
   const label = localized === key
-    ? (getLang() === "zh" && cls?.prefixZh ? cls.prefixZh : idLabel)
+    ? (cls?.prefixZh || idLabel)
     : localized;
   return suffix ? `${label}${separator}${suffix}` : label;
 }

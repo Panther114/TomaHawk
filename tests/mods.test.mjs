@@ -11,7 +11,6 @@ import {
   makeUniqueShipId, unitId, availableAmmoIds
 } from "../src/mods/registry.js";
 import { loadMods, deleteMod, recordKey } from "../src/mods/store.js";
-import { setLang } from "../src/ui/lang.js";
 import { weaponColumns, groundRowHtml, shipDisplayName } from "../src/ui/view.js";
 
 test("schema exposes four types; naval+ground+aircraft are deployable", () => {
@@ -111,7 +110,6 @@ test("deployable units expose optional Chinese unit tags with English fallback",
 
   registerUnit(custom);
   const ship = makeShip(SIDE.BLUE, 0, 0, custom.id);
-  setLang("zh");
   assert.match(shipDisplayName(ship, "-"), /^双语舰-\d+$/);
   unregisterUnit(custom);
 
@@ -120,7 +118,6 @@ test("deployable units expose optional Chinese unit tags with English fallback",
   registerUnit(fallback);
   const fallbackShip = makeShip(SIDE.BLUE, 0, 0, fallback.id);
   assert.match(shipDisplayName(fallbackShip, "-"), /^FBK-\d+$/);
-  setLang("en");
   unregisterUnit(fallback);
 });
 

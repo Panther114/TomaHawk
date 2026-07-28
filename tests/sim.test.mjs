@@ -596,15 +596,15 @@ test("visual tactical symbols are intentionally compact", () => {
 });
 
 test("HTML keeps WEZ as a single toggle and 60x maximum speed", () => {
-  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../sandbox.html", import.meta.url), "utf8");
   assert.match(html, /id="filter-ranges"/);
   assert.doesNotMatch(html, /id="ranges-mode"/);
   assert.match(html, /id="speed"[^>]*max="60"/);
-  assert.match(html, /id="copy-fire-log"/);
+  assert.doesNotMatch(html, /id="copy-fire-log"|id="event-console"/);
   assert.doesNotMatch(html, /id="duplicate"|id="clear-blue"|id="clear-red"/);
 });
 
-test("right panel renderer is fleet inventory focused", () => {
+test("right panel renderer is contextual and the UI is Chinese-only", () => {
   const app = fs.readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
   // Pure panel/markup builders live in src/ui/view.js; the canvas overlay and
   // wiring stay in app.js. Inventory/posture markup is asserted against the
@@ -614,15 +614,12 @@ test("right panel renderer is fleet inventory focused", () => {
   assert.match(ui, /inventory-row/);
   assert.match(ui, /sunk/);
   assert.match(ui, /inventory-divider/);
-  assert.match(app, /right:\$\{rightInset\}px/);
-  assert.match(app, /flex-direction:column/);
-  assert.match(app, /overflow-y:auto/);
-  assert.match(app, /availableHeight/);
-  assert.match(ui, /agg-meter/);
-  assert.match(app, /copyLogToClipboard/);
-  assert.match(app, /setFeedCollapsed/);
-  assert.match(app, /toggle-feed/);
-  assert.match(app, /document\.documentElement\.lang = getLang\(\) === 'zh' \? 'zh-CN' : 'en'/);
+  assert.match(app, /panel\?\.classList\.remove\("retracted"\)/);
+  assert.match(app, /selectContextTab/);
+  assert.match(ui, /force-summary/);
+  assert.doesNotMatch(app, /copyLogToClipboard|setFeedCollapsed|toggle-feed/);
+  assert.match(app, /document\.documentElement\.lang = 'zh-CN'/);
+  assert.doesNotMatch(app, /getLang|setLang|toggleLang/);
   assert.match(app, /isAntiAirCategory\(ring\.category\)/);
   assert.doesNotMatch(ui, /<span>Class<\/span>|<span>Scenario<\/span>|<span>Heading<\/span>/);
   assert.doesNotMatch(ui, /LAST LAUNCH|LAST EFFECT/);

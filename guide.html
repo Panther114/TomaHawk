@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="破晓前夜 Dawnfall 玩家教程：从部署第一支编队到读懂传感器、航迹与交战结果。" />
+    <title>玩法教程｜破晓前夜 Dawnfall</title>
+    <link rel="icon" href="src/assets/dawnfall-mark.svg" />
+    <link rel="stylesheet" href="src/guide.css" />
+  </head>
+  <body>
+    <header class="guide-nav">
+      <a class="guide-brand" href="/"><img src="src/assets/dawnfall-mark.svg" alt="" /><span>破晓前夜<small>DAWNFALL · 玩家教程</small></span></a>
+      <nav><a href="#first-battle">首场推演</a><a href="#sensors">机制</a><a href="#controls">操作</a><a class="launch" href="/sandbox">进入推演</a></nav>
+    </header>
+
+    <main>
+      <section class="guide-hero">
+        <p class="eyebrow">FIELD MANUAL / 01</p>
+        <h1>五分钟，完成<br />你的第一场联合作战推演。</h1>
+        <p>破晓前夜不会替任何一方提供上帝视角。你部署兵力、设置战场，然后观察双方如何发现目标、共享航迹、规划火力并承受后果。</p>
+        <div class="hero-actions"><a href="#first-battle">开始阅读</a><a href="/sandbox">直接进入沙盘 ↗</a></div>
+      </section>
+
+      <section id="first-battle" class="chapter">
+        <div class="chapter-title"><small>01</small><div><p>QUICK START</p><h2>五分钟首场推演</h2></div></div>
+        <ol class="mission-steps">
+          <li><b>打开装备库</b><p>进入沙盘后点击左上角“部署装备”。先选择蓝方，再选择一艘驱逐舰 DDG。</p></li>
+          <li><b>完成双方部署</b><p>装备库关闭后，光标会携带符号预览。海军单位放在水域，陆基阵地放在陆地；红色轮廓代表位置非法。连续单击可放置同型单位，按 Esc 或右键结束。</p></li>
+          <li><b>构成可运行想定</b><p>蓝红双方至少各有一个存活单位。建议首次使用：每方 2 艘驱逐舰、1 架预警机与 2 个战斗机中队。</p></li>
+          <li><b>按下播放</b><p>底部中央点击播放，或按 Space。双方 AI 只依据本方传感器和共享航迹行动；没有被发现的目标不会被凭空攻击。</p></li>
+          <li><b>读取战况</b><p>顶部战况条显示双方存活单位、总耐久、反舰与防空库存以及当前攻势。选中单位会自动展开右侧详情。</p></li>
+        </ol>
+      </section>
+
+      <section class="chapter interface">
+        <div class="chapter-title"><small>02</small><div><p>CONTROL SURFACE</p><h2>控制台区域</h2></div></div>
+        <figure class="ui-figure">
+          <div class="screenshot-frame">
+            <img src="src/assets/guide/sandbox-overview.png" alt="破晓前夜沙盘界面总览" onerror="this.hidden=true" />
+            <span class="shot-fallback">实际沙盘界面标注图</span>
+            <i class="callout c1">1</i><i class="callout c2">2</i><i class="callout c3">3</i><i class="callout c4">4</i><i class="callout c5">5</i>
+          </div>
+          <figcaption>
+            <span><b>1</b> 部署、选择与测距</span>
+            <span><b>2</b> 双方战况总览</span>
+            <span><b>3</b> 单位详情与兵力列表</span>
+            <span><b>4</b> 图层、坐标与比例尺</span>
+            <span><b>5</b> 播放、单步与速度</span>
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="chapter terrain">
+        <div class="chapter-title"><small>03</small><div><p>DEPLOYMENT</p><h2>海、陆、空部署限制</h2></div></div>
+        <div class="rule-grid">
+          <article><span>SEA</span><h3>海上与水下</h3><p>舰艇、航母和潜艇需要开放水域。沿岸浅窄区域会考虑舰体安全间距；红色预览说明当前位置无法容纳该单位。</p></article>
+          <article><span>LAND</span><h3>陆基阵地</h3><p>雷达、防空与岸基打击阵地部署在陆地。机场是例外：为了支持抽象化想定，可部署在任意位置。</p></article>
+          <article><span>AIR</span><h3>空中编队</h3><p>航空兵可在地图任意位置生成。战斗中会消耗燃油和弹药，并按载机适配关系返回机场或航母整补。</p></article>
+        </div>
+      </section>
+
+      <section id="sensors" class="chapter mechanics">
+        <div class="chapter-title"><small>04</small><div><p>SIMULATION MODEL</p><h2>你看到的，未必是战场全貌</h2></div></div>
+        <div class="mechanic-list">
+          <article><b>01 / 传感器</b><h3>探测不是开关</h3><p>雷达、声呐与电子支援拥有距离、扫描间隔和目标特征限制。航迹会积累质量，也会随时间老化并扩大误差。</p></article>
+          <article><b>02 / 航迹共享</b><h3>协同交战依赖通信</h3><p>本地航迹会进入本方融合态势。预警机与指挥节点能加快共享，使雷达静默单位仍可依据远程航迹交战。</p></article>
+          <article><b>03 / 指挥姿态</b><h3>攻势随局势变化</h3><p>指挥 AI 会评估兵力、弹药、威胁与目标广度，在保全兵力、控制节奏与饱和突击之间调整。</p></article>
+          <article><b>04 / 武器与损伤</b><h3>拦截有层次，命中有后果</h3><p>远程区域防空、点防御与近防系统依次接战。命中除降低耐久外，还可能削弱雷达、动力、射控、战情中心或航空兵规模。</p></article>
+        </div>
+      </section>
+
+      <section id="controls" class="chapter controls">
+        <div class="chapter-title"><small>05</small><div><p>REFERENCE</p><h2>快捷键与工具</h2></div></div>
+        <div class="key-grid">
+          <span><kbd>Space</kbd><b>播放 / 暂停</b></span><span><kbd>.</kbd><b>单步推进</b></span>
+          <span><kbd>R</kbd><b>测距工具</b></span><span><kbd>Esc</kbd><b>结束部署 / 取消工具</b></span>
+          <span><kbd>Tab</kbd><b>循环选择单位</b></span><span><kbd>Delete</kbd><b>部署阶段删除单位</b></span>
+          <span><kbd>滚轮</kbd><b>缩放地图</b></span><span><kbd>中键 / Alt 拖动</kbd><b>平移地图</b></span>
+        </div>
+        <div class="support-grid">
+          <article><h3>保存与战报</h3><p>“工具”菜单可保存或载入想定。AAR 战报保留原始事件字段，并附带中文显示文本，便于继续使用既有分析脚本。</p></article>
+          <article><h3>单位工坊</h3><p>内置单位不可直接修改。先克隆，再调整参数或载弹；自定义记录保存在浏览器的 <code>dawnfall-mods</code> 数据库，也可导出 JSON。</p></article>
+          <article><h3>常见问题</h3><p>无法开始通常意味着某一方没有存活单位；无法部署通常是地形不匹配，或推演已经开始。刷新页面前请先保存重要想定。</p></article>
+        </div>
+      </section>
+    </main>
+
+    <footer><span>破晓前夜 Dawnfall v1.0</span><a href="/">返回首页</a><a href="/sandbox">进入推演</a></footer>
+  </body>
+</html>

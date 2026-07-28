@@ -7,16 +7,15 @@ Use this file to route yourself to the smallest relevant part of the repository 
 ## Fast repo map
 
 - `src/sim.js` — **barrel only**: re-exports `src/sim/*`. Never put logic here; it is the stable public import surface for `src/app.js` and tests.
-- `src/sim/` — the simulation core, split into focused modules (see below). `src/README.md` is the authoritative map.
+- `src/sim/` — the simulation core, split into focused modules (see below). `docs/ARCHITECTURE.md` is the authoritative map.
 - `src/app.js` — canvas rendering, UI state, map interaction, controls, panels, save/load wiring.
 - `src/styles.css` — layout and visual styling for the tactical UI.
 - `index.html` — static UI shell and DOM ids used by `src/app.js`.
 - `tests/sim.test.mjs` — behavior/regression tests; often the fastest way to learn intended rules.
 - `server.mjs` — tiny static file server for local runs.
-- `README.md` — concise product overview; `docs/REFERENCE.md` holds the full bilingual manual.
+- `README.md` — concise product overview; `docs/PLAYER_GUIDE.md` holds the player manual.
 - `docs/ARCHITECTURE.md` — module boundaries and rendering/sim split.
-- `docs/DATA_MODEL.md` — object shapes and field meanings.
-- `docs/SIMULATION_ASSUMPTIONS.md` — modeling assumptions and doctrine rules.
+- `docs/SIMULATION.md` — model behavior, assumptions and scope boundaries.
 - `docs/ROADMAP.md` — future ideas; not always current behavior.
 
 ### `src/sim/` modules (route to the smallest one)
@@ -39,8 +38,7 @@ Use this file to route yourself to the smallest relevant part of the repository 
 ### 1. Combat, sensors, tracks, doctrine, missile behavior
 Open the specific `src/sim/` module, plus:
 - `tests/sim.test.mjs`
-- `docs/DATA_MODEL.md`
-- `docs/SIMULATION_ASSUMPTIONS.md`
+- `docs/SIMULATION.md`
 
 Module by concern:
 - scenario lifecycle / setup editing: `src/sim/scenario.js` (`createScenario`, `placeShip`, `duplicateShip`, `deleteShip`, `clearSide`, `canRunScenario`, serialize/restore/export)
@@ -95,8 +93,7 @@ The simulation core is split into small `src/sim/*` modules behind the `src/sim.
 - Do **not** start with `docs/ROADMAP.md` for current behavior; it includes future work.
 - Do **not** read all docs for a small bug. Only open the doc that matches the question:
   - architecture/module split → `docs/ARCHITECTURE.md`
-  - object fields/data shape → `docs/DATA_MODEL.md`
-  - doctrine/model assumptions → `docs/SIMULATION_ASSUMPTIONS.md`
+  - object fields, doctrine and model assumptions → `docs/SIMULATION.md`
 
 ## Efficient working style for this repo
 
@@ -153,11 +150,9 @@ change you happened to make this session**.
 - **Keep version strings in sync.** A version bump touches `package.json`
   (`version`), `index.html` (the brand wordmark and the about-overlay subtitle),
   and `src/ui/lang.js` (`about.subtitle`, both `en` and `zh`). Update the release
-  references in `README.md` and `docs/REFERENCE.md` too.
+  references in `README.md` and `docs/PLAYER_GUIDE.md` too.
 - **Bilingual coherence is required.** The changelog and the bilingual docs
-  (`README.md`, `docs/REFERENCE.md`) must read naturally and stay consistent in
-  **both** the English and the 中文 sections — translate meaning, do not leave one
-  side stale or machine-literal.
+  (`README.md`, `docs/PLAYER_GUIDE.md`) must read naturally in Simplified Chinese.
 - Organize the entry (Added / Changed / Fixed / Documentation) and keep the prior
   version sections below the new one. Verify with `npm test` before finishing.
 
@@ -166,14 +161,14 @@ change you happened to make this session**.
 | Problem | Read first | Then read if needed |
 | --- | --- | --- |
 | Ship placement/setup mode | `src/sim/scenario.js`, `src/app.js` | `tests/sim.test.mjs` |
-| Missile launch/flight/intercept | `src/sim/combat.js`, `src/sim/math.js` (`interceptPoint`) | `tests/sim.test.mjs`, `docs/SIMULATION_ASSUMPTIONS.md` |
-| Radar/tracks/CEC | `src/sim/sensors.js`, `src/sim/command.js` | `docs/DATA_MODEL.md`, tests |
-| Command posture / AI aggression | `src/sim/command.js` | `tests/sim.test.mjs`, `docs/SIMULATION_ASSUMPTIONS.md` |
-| Missile or ship catalogue/stats | `src/sim/missiles.js`, `src/sim/ships.js` | `docs/DATA_MODEL.md` |
+| Missile launch/flight/intercept | `src/sim/combat.js`, `src/sim/math.js` (`interceptPoint`) | `tests/sim.test.mjs`, `docs/SIMULATION.md` |
+| Radar/tracks/CEC | `src/sim/sensors.js`, `src/sim/command.js` | `docs/SIMULATION.md`, tests |
+| Command posture / AI aggression | `src/sim/command.js` | `tests/sim.test.mjs`, `docs/SIMULATION.md` |
+| Missile or ship catalogue/stats | `src/sim/missiles.js`, `src/sim/ships.js` | `docs/SIMULATION.md` |
 | Modding / Unit Workshop (custom units, editor, import/storage) | `src/mods/schema.js`, `src/mods/editor.js` | `src/mods/registry.js`, `src/mods/store.js`, `tests/mods.test.mjs`, `docs/MODDING.md` |
 | Ground emplacements (SAM/THAAD/CDB/DEB/EWR/AFB), `isFixed`/`domain` units | `src/sim/ships.js`, `src/sim/scenario.js` | `tests/ground-units.test.mjs`, `src/sim/command.js`, `src/sim/combat.js` |
 | Air / carrier basing (RTB, CVN, LO stand-in) | `src/sim/aircraft.js`, `src/sim/ships.js` | `src/sim/movement.js`, `src/sim/step.js`, sim tests |
-| Terrain, maps, land/water placement, coastal navigation | `src/world/terrain.js`, `src/sim/scenario.js`, `src/sim/movement.js` | `docs/MAP_DATA.md`, `src/world/map-spec.js` |
+| Terrain, maps, land/water placement, coastal navigation | `src/world/terrain.js`, `src/sim/scenario.js`, `src/sim/movement.js` | `docs/SIMULATION.md`, `src/world/map-spec.js` |
 | Performance / complexity score | `scripts/perf-harness.mjs`, `tests/performance-regressions.test.mjs` | `scripts/bench.mjs` |
 | Save/load/AAR/log export | `src/sim/scenario.js`, `src/sim/events.js` | `src/app.js`, tests |
 | The tick order of operations | `src/sim/step.js` | the called modules |

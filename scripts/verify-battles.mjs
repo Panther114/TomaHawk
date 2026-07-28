@@ -333,7 +333,7 @@ function runOne(spec) {
 
 function formatReport(results) {
   const lines = [];
-  lines.push("TomaHawk multi-scenario battle verification");
+  lines.push("Dawnfall multi-scenario battle verification");
   lines.push(`generated ${new Date().toISOString()}`);
   lines.push("");
   for (const r of results) {

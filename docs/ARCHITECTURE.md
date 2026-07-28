@@ -1,120 +1,60 @@
-# TomaHawk Architecture
+# 架构说明
 
-TomaHawk is a local 2D modern battle simulator inspired by the tactical density of the DCS World F10/map view, not the 3D cockpit or external camera view. The current implementation is a dependency-light browser app served locally with Node so the project is playable immediately in this environment.
+## 总览
 
-The implemented stack uses static HTML, CSS, and JavaScript with a deterministic simulation core. This keeps the project local, fast to run, and easy to inspect.
+破晓前夜采用原生 HTML、CSS、JavaScript 与 Canvas，没有打包器和前端框架。浏览器负责界面与绘制；模拟核心保持无 DOM、可在 Node.js 中直接测试。
 
-## Runtime Shape
+```text
+页面与交互（index / sandbox / guide）
+        ↓
+UI 适配层（src/app.js、src/ui/*）
+        ↓
+稳定公开入口（src/sim.js）
+        ↓
+确定性模拟核心（src/sim/*）
+```
 
-- The simulation core owns deterministic state, doctrine, movement, sensors, tracks, missile flight, defenses, damage, and terrain-aware ship navigation. It is split into focused modules under `src/sim/` (constants, math, events, missiles, ships, sensors, command, movement, combat, aircraft, scenario, step) behind the `src/sim.js` re-export barrel. See `src/README.md` for the module map. `src/sim/aircraft.js` owns the air-domain squadron model: attrition (HP = plane count), the mission/RTB/rearm/fuel state machine, evasive maneuvers, flares, and the (intentionally provisional) `AIRCRAFT_TEMP_CONFIG` tunables.
-- `src/app.js` owns canvas rendering, map interactions, UI panels, loadout editing, and sim controls.
-- `src/world/terrain.js` is the shared low-level terrain module. It owns the tactical-map geometry, projection, and binary water/land queries that both the UI and the simulation consume.
-- Scenario setup, save/load, copyable logs, and after-action export are handled through helpers in `src/sim/scenario.js` and `src/sim/events.js`.
-- `server.mjs` serves only `index.html` and `src/` assets, exposes `/health`, and binds to Railway's injected host/port in deployment. Local runs retain the on-disk scenario/debug convenience endpoints; hosted Railway runs intentionally disable them, using browser-file save/import instead.
-- `tests/` verifies deterministic and rules-level behavior with Node's built-in test runner — `sim.test.mjs` (core rules), `ui.test.mjs` (presentation helpers), `ground-units.test.mjs` (land emplacements / THAAD), air and carrier cases in the sim suite, `mods.test.mjs` (Unit Workshop), `performance-regressions.test.mjs` (complexity guard), plus map/font/i18n cases.
-- `docs/DATA_MODEL.md` records the current object shapes and unit conventions.
+## 页面层
 
-## Core Boundaries
+- `index.html`：产品落地页，只负责品牌与导航。
+- `sandbox.html`：沙盘 DOM 外壳；`src/app.js` 连接 Canvas、控件、存档与工坊。
+- `guide.html`：响应式中文教程。
+- `server.mjs`：解析 `/`、`/sandbox`、`/guide`，流式发送静态文件；想定存取与调试日志端点仅在本地启用。
 
-The simulation is intentionally separated into truth, perception, decision, and presentation concerns.
+## UI 层
 
-- Truth: actual unit and missile positions, health, impact resolution. Sea ships, fixed ground emplacements (`domain: "ground"`, `isFixed: true` — SAM, THAAD, CDB, DEB, EWR, AFB), carriers (`CVN` / naval `isAirfield`), and air squadrons (`domain: "air"`) all share the same entity pipeline for sensing, CEC, fire planning, damage, and win checks. Fixed ground never moves and (except airfields) must sit on land; air overflies terrain; carriers move and pin rearming flights to the deck.
-- Perception: radar scans create hostile track files with quality, age, and uncertainty. Friendly and self state is known directly and is not duplicated into radar/CEC track maps.
-- Decision: ship movement is per-unit (formation station-keeping, retreat when strike-empty); aircraft use `decideAircraft` for strike/A2A/CAP/RTB. Air defence is force-level — OTC / AAWC hierarchy, AAW sectors, and a fire planner allocate interceptors and salvos from the CEC picture, inbound threats, queues, magazines, and ROE. Defensive orders outrank strike in the launch scheduler. THAAD-class weapons only accept high-energy threats. Inbound defense uses the freshest local or shared missile track rather than waiting on a slower composite refresh.
-- Presentation: the UI displays selected-unit tracks and uncertainty instead of giving every unit omniscient targeting data.
+- `src/ui/lang.js`：单一简体中文消息目录与事件格式化。
+- `src/ui/catalog.js`：22 个内置装备及自定义单位的展示目录；只引用模拟类数据，不向核心添加展示字段。
+- `src/ui/symbols.js`：标准风格受控子集战术符号，使用缓存 `Path2D`。
+- `src/ui/tutorial.js`：教程页与沙盘引导共享的步骤数据。
+- `src/ui/view.js`：无 DOM 的 HTML 片段和投影辅助函数。
 
-Scenarios move through three modes:
+## 模拟核心
 
-- `setup`: units can be added, dragged, selected by right-click or box select, and deleted with keyboard commands. Placement is domain-aware (sea on water, ground on land, AFB land or water), dragging holds the last valid position for the unit's domain, and map changes are only allowed here.
-- `running`: the deterministic simulation advances.
-- `ended`: freeze after a wipeout win (`sim.ended` = winning side) **or** a mutual magazine-exhaustion draw (`sim.ended = "draw"`).
+`src/sim.js` 仅为稳定导出入口。逻辑按职责拆分在：
 
-## Visual Layers
+- `scenario.js`：想定创建、部署、序列化、恢复与 AAR。
+- `step.js`：固定顺序的时钟调度。
+- `sensors.js`、`command.js`：探测、航迹与融合态势。
+- `movement.js`、`aircraft.js`：舰艇与航空兵生命周期。
+- `combat.js`、`missiles.js`：火力规划、飞行与防御。
+- `ships.js`：内置与自定义单位注册表。
 
-The canvas renderer draws the tactical map in this order:
+UI 不得绕过公开入口修改核心规则。v1 的页面、符号和教程改造不改变保存格式或模拟 API。
 
-- full-viewport 20 km ocean grid,
-- selected presentation terrain (Open Sea or projected Natural Earth 1:50m global coastlines),
-- all-ship weapon engagement-zone rings from actual nonzero loadout,
-- radar rings when enabled,
-- selected-unit perceived tracks and uncertainty,
-- world-scaled ship symbols,
-- missile symbols, labels, and engagement lines,
-- setup selection box and DOM panels.
+## 性能策略
 
-Ships and missiles use tactical scaling: their symbols shrink and grow with zoom, with a very small minimum size so they remain visible without dominating the map. Hit testing is intentionally larger than the rendered symbol so wide-zoom selection remains practical. Labels stay screen-sized, reduced, and fade at wide zoom unless they are critical.
+Canvas 每帧绘制，DOM 面板约 20 Hz 更新。地图对象先做视口裁剪；标签使用 LOD 与聚类；战术符号的几何路径预构建后复用。模拟性能由 `scripts/perf-harness.mjs` 的机器无关复杂度分数约束。
 
-The WEZ layer defaults to all-unit rings and can be changed to selected-only or disabled. Rings are super thin but kept visible for every ship regardless of side color. Overlapping rings of the **same weapon type and faction** are merged into a single union outline (each ring is stroked clipped to the region outside its same-type neighbours, so the internal crossing arcs disappear); rings of a different weapon or faction never merge, and style/colour/dash are unchanged. Large TLAM/MSTK rings are still rendered from world scale; selected labels are clamped to the viewport edge so they remain inspectable when the actual ring edge falls outside the screen.
+## 数据与持久化
 
-The lower-left footer shows a one-line side summary for ship counts, hitpoints, and in-air missile roles. Ship addition is a setup-only action; the BLUE/RED placement controls are disabled once the scenario is running.
+- 想定：兼容原有 JSON 结构。
+- 单位工坊：IndexedDB `dawnfall-mods`；首次启动复制并验证旧数据库后删除旧库。
+- 教程状态：`localStorage["dawnfall.tutorialDismissed"]`。
+- 调试开关：`localStorage["dawnfall.debug"]` 或 `?debug=1`。
 
-### UI hierarchy and typography
+## 托管边界
 
-- The UI uses the system Segoe UI stack for operational text and the bundled Rationale face for the compact TomaHawk wordmark. It has no runtime web-font dependency.
-- The interface deliberately retains small, dense type. Hierarchy comes from surface contrast, weight, grouping, dividers, and selective amber/side-color emphasis rather than globally increasing font sizes.
-- The top command deck separates brand, scenario tools, map layers, and inventory. The bottom deck separates simulation transport, tactical readout, and save/export actions.
-- The tactical feed is a distinct lower-left console with its copy action and retract toggle attached to the feed header.
+Railway 运行 `npm start`，服务监听平台注入的 `0.0.0.0:$PORT`，并通过 `/health` 接受部署健康检查。Node 堆限制为 64 MiB；静态资源按流发送，不建立服务端资源缓存。
 
-Shared map dimensions live in `src/world/map-spec.js`; terrain definitions and binary water/land queries live in `src/world/terrain.js`; generated global coastline geometry lives in `src/ui/data/`, and `src/ui/maps.js` re-exports the presentation-facing map helpers. WGS84 Natural Earth land and coastline data is projected with a global equirectangular projection and rendered across the viewport without stretching or an artificial outer border. `docs/MAP_DATA.md` records provenance and regeneration. The simulation consumes the same binary water/land queries for setup validation, map resets, path checks, coastal detours, and final swept-segment collision guards. Terrain queries use a conservative 0.5 NM water mask plus ring/edge spatial grids as broad phases, then authoritative polygon and continuous segment intersection checks near land; rendering culls land/coast paths to the current viewport before drawing.
-
-## DCS Map Reference
-
-The UI follows the DCS map-view idea at a pragmatic level:
-
-- Full-screen tactical map first.
-- Dense grid and coordinate readout.
-- Side-colored symbols instead of decorative ship art.
-- Category-coded missile symbols: squares for anti-ship, triangles for anti-air.
-- Thin low-alpha weapon range rings for every visible ship by default.
-- Compact fleet inventory and bottom control strip.
-- Dense event log for tactical interpretation.
-- Copyable event log for after-action review outside the UI.
-- Pan/zoom canvas map with minimal chrome.
-
-This is not a clone of DCS UI assets or icons.
-
----
-
-## Current Architecture Notes
-
-### Key functions (and their home module)
-- `SHIP_CLASSES` / `makeShip(side, x, y, hull)` (`src/sim/ships.js`) — per-class parameter catalogue and the generic hull-parameterised ship factory
-- `usedCells()` / `vlsCapacity()` (`src/sim/ships.js`) — per-class VLS cell accounting
-- `scanSensors(sim, dt)` (`src/sim/sensors.js`) — radar detection with per-missile-profile detection envelopes so high-altitude air-defense missiles and low-altitude cruise missiles are not equally visible; also holds the 4/3 Earth-radius `radarHorizonM()`/`radarHeightM()` horizon model
-- `scanSonar(sim, dt)` (`src/sim/sonar.js`) — passive/active acoustic contacts for surface ships, submarines, and underwater weapons
-- electronic-warfare helpers (`src/sim/ew.js`) — passive ESM, stand-off noise jamming with close-range burn-through, RF decoys, and anti-radiation EMCON
-- `decideSubmarine` / `updateSubmarineDepth` (`src/sim/submarines.js`) — quiet patrol, contact approach, torpedo evasion, and bounded depth changes
-- `buildForcePicture(sim)` (`src/sim/command.js`) — fuses each side's tracks into one CEC composite picture
-- `computeFleetCommand(sim)` (`src/sim/command.js`) — side-wide command posture from the force picture; derives smoothed aggressiveness, persistent strike mode, target breadth, and raid depth from own surface-magazine depth (all strike munitions) versus observed enemy strength. Threat axis uses unit tracks only (missiles excluded). Peer fights open near half-aggression; empty/thin pictures are pulled toward neutral advantage rather than panic survive
-- `planOffensiveFires(sim)` (`src/sim/combat.js`) — force-level anti-surface planning that concentrates on the most valuable observed targets first, then allocates in two passes (strike specialists such as DEB/CDB/air, then general naval shooters). Strategic/hypersonic weapons may use a small overflow quota after the general raid cap. Domain-specialist target slots keep ground-only and sea-only magazines usable. Prefers dedicated anti-ship rounds over dual-role SM-6, caps raid size by target toughness outside `saturate` (anti-overcommit), and guarantees surface targets when air contacts would otherwise monopolise the plan
-- `decideAircraft(sim, ship)` (`src/sim/aircraft.js`) — per-squadron geometry state machine: vectors on the fused CEC picture with **weapon-domain-filtered** surface locks (JSOW→ground, Harpoon→sea), LO stand-in release for low-observable strikers, breaks to air-to-air only inside self-defence range, sweeps when it has no strike to fly, CAP/support orbits, and RTB/rearm at AFB or carrier-capable decks (`CVN`). Altitude (`altitudeM`) climbs/descends toward commanded targets for radar-horizon masking and energy, not as a third map axis
-- `chooseDefensiveWeapon` / interceptor PK (`src/sim/combat.js`) — SAM channel pool, THAAD hypersonic-only filter, high-energy PK shaping vs LRHW, AAM ban on hypersonic threats
-- `applySubsystemDamage(sim, ship)` and bounded subsystem-effect helpers (`src/sim/damage.js`) — random degradation plus VLS cadence, fire-control channel, CIWS, and CIC consequences
-- `PerfRecorder` / `BattleLogger` (`src/sim/debug.js`) — read-only per-run collectors (performance trace + tactical narrative) written by `scripts/sim-debug.mjs` / `scripts/validate-ai-fixes.mjs` (headless) and optionally by the browser app (`POST /debug/save` when `?debug=1` or `localStorage tomahawk.debug=1`); they draw no RNG and mutate no sim state, so determinism is unaffected
-
-### Performance
-- The browser animation loop budgets sim catch-up work per frame (~12 ms) and carries leftover sim time as debt, so a heavy raid cannot force many full ticks into one frame and hitch the UI. Simulation determinism is unchanged; only wall-clock pacing is affected.
-- `stepSim` retains `_missileById`, `_shipById`, `_missilesByTarget`, `_shipsBySide`, `_aliveShips`, and `_aliveMissiles` across ticks. Launches and deaths update those structures **incrementally** when possible; a dirty flag still forces a full rebuild as a safety net. Side-alive counts support an O(1) win check.
-- Fire planning builds one-cycle nested-map engagement/queue indexes and precomputes interceptor solutions and best missile tracks (probed from live hostile missiles, not a full track-map scan). Defensive planning ranks shooters with the same sector/target/nearest key as before, walks at most a short local list, and rejects missiles that are not aimed at a living friendly ship.
-- Ship track maps contain local sensor reports only. CEC stores one delayed, degraded shared report per side/contact in `sharedTracksBySide`; consumers compose local and shared views without copying the same report into every receiver.
-- Track position, quality, and uncertainty are projected lazily by `currentTrack()`. An expiry heap and reverse contact-holder index replace full-map ageing and death-pruning scans.
-- The force picture refreshes fully every 0.5 seconds and incrementally updates dirty contacts directly through the reverse contact-holder index after sensor/CEC changes. Sensor scans **always** use a spatial broad-phase grid once the contact count exceeds a small threshold (detection math is unchanged; only candidate enumeration is pruned).
-- The renderer caches stable panel/detail markup and weapon-range metadata, uses indexed missile-target lookup, spatial label clustering, and viewport culling. The canvas battlefield redraws every animation frame, but the **DOM side-panels refresh at ~20 Hz**. Dense-raid canvas savings: drop per-missile glow above ~50 live missiles, suppress most guide-lines unless zoomed/selected/low count, thin non-terminal icons above ~120 missiles, draw strategic-zoom missiles as dots, cull off-screen weapon rings, and gate WEZ rings to selected units when many hulls are present. These do not change simulation tick order. The `PerfRecorder` render-vs-sim split (`debug/perf-debug.log`) is how their effect is measured.
-- `npm run bench` measures simulation throughput; `npm run bench:frontend` measures the isolated high-density rendering helpers.
-- A machine-independent **complexity score** (`scripts/perf-harness.mjs`) measures the ratio of per-tick cost at two force sizes (~1.0 linear, ~5.0 quadratic). `tests/performance-regressions.test.mjs` asserts it under a ceiling so an accidental O(n²) hot loop fails CI; `npm run bench` prints the same score.
-
-### UI: Ship Detail Overlay
-- `shipDetailOverlay` — dynamically created fixed-position DOM element
-- `renderShipDetails()` — renders compact subsystem cards for ships in `selectedIds`
-- Right-click+drag on ship adds to `selectedIds` (additive selection)
-- Right-click blank clears `selectedIds`
-- The ship detail overlay is pinned to the right edge with a small inset and clamped to the viewport so it does not drift into the map. It renders compact cards at reduced scale and wraps into additional leftward columns based on the available vertical space.
-- Inventory shows whole-number HP, hull type, and VLS occupancy; only sunk ships gray their names
-- The top-right fleet inventory is intentionally tightened with smaller type and narrower columns to keep the panel compact while preserving the same information density.
-- VLS occupancy bars are color-coded by fill ratio in the detail overlay: green at 80%+, yellow at 40-80%, red below 40%
-- Alive ships show a subtle white center cross; sunk ships do not show waypoint/movement markers
-
-### Ship Subsystem State
-
-- `subsystems: { radar, vls, propulsion, fireControl, ciws, cic, sonar, electronicWarfare }` — each 1.0 nominal
-- `damage.js` owns health normalization and bounded gameplay effects; `combat.js`, `sensors.js`, and `movement.js` consume them without adding scans or schedulers
+检测到 `RAILWAY_ENVIRONMENT` 后，`/scenario/*` 与 `/debug/save` 会保持关闭。浏览器承担模拟时钟、AI、绘制、单位工坊、教程状态、想定导入导出和战报生成，因此生产服务不保存用户状态，也不会随想定规模增加内存占用。

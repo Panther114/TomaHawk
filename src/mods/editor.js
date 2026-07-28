@@ -4,7 +4,6 @@
 // discards unsaved changes; Save is the only commit path. Built-in units are
 // read-only (Clone to customize) and can never be deleted.
 
-import { getLang } from "../ui/lang.js";
 import { SCHEMAS, DEFAULTS, DEPLOYABLE_TYPES, validateUnit } from "./schema.js";
 import { loadMods, saveMod, deleteMod, recordKey } from "./store.js";
 import { unitId, isBuiltinUnit, makeUniqueShipId, availableAmmoIds, UNIT_KIND_DOMAIN } from "./registry.js";
@@ -13,7 +12,7 @@ import { MISSILES, usedCells } from "../sim.js";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
   { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
 ));
-const L = (label) => label?.[getLang()] ?? label?.en ?? "";
+const L = (label) => label?.zh ?? label?.en ?? "";
 
 const KIND_LABEL = {
   ammo: { en: "Ammo", zh: "弹药" },
@@ -35,7 +34,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
   let open = false;
 
   const findUnit = (key) => units.find((u) => recordKey(u) === key);
-  const unitTag = (u) => getLang() === "zh" && u.prefixZh ? u.prefixZh : u.prefix;
+  const unitTag = (u) => u.prefixZh || u.prefix;
   const labelOf = (u) => (u.kind === "ammo" ? unitId(u) : `${unitTag(u)} · ${u.name}`);
   // Host callback must never break the editor's own flow (e.g. a render fault).
   const safeNotify = () => { try { onChange?.(); } catch (e) { console.warn("[mods] onChange failed", e); } };
@@ -44,7 +43,6 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
   function renderList() {
     const groups = { ammo: [], naval: [], ground: [], aircraft: [] };
     for (const u of units) (groups[u.kind] || groups.naval).push(u);
-    const lang = getLang();
     const section = (kind) => {
       const items = groups[kind].sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
       const rows = items.map((u) => {
@@ -53,7 +51,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
         const sel = key === selectedKey ? " selected" : "";
         return `<button class="mods-item${sel}" data-key="${esc(key)}">${lock}<span>${esc(labelOf(u))}</span></button>`;
       }).join("");
-      return `<div class="mods-group"><div class="mods-group-h">${esc(KIND_LABEL[kind][lang] ?? KIND_LABEL[kind].en)}</div>${rows || `<div class="mods-empty">—</div>`}</div>`;
+      return `<div class="mods-group"><div class="mods-group-h">${esc(KIND_LABEL[kind].zh)}</div>${rows || `<div class="mods-empty">—</div>`}</div>`;
     };
     listEl.innerHTML = `
       <div class="mods-newbar">
@@ -105,17 +103,17 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     // it makes any sense for that platform (e.g. an aircraft equipping ESSM).
     const avail = availableAmmoIds(UNIT_KIND_DOMAIN[form.kind]).filter((id) => !(id in lo));
     const addSel = locked
-      ? `<div class="mods-lo-hint">${esc(getLang() === "zh" ? "内置单位：点击「克隆」后即可添加/编辑载弹" : "Built-in — click Clone to add or edit weapons")}</div>`
+      ? `<div class="mods-lo-hint">${esc("内置单位：点击「克隆」后即可添加/编辑载弹")}</div>`
       : `<div class="mods-lo-add"><select data-loadout-add>
-        <option value="">+ ${esc(getLang() === "zh" ? "添加弹药" : "add ammo")}</option>
+        <option value="">+ ${esc("添加弹药")}</option>
         ${avail.map((id) => `<option value="${esc(id)}">${esc(MISSILES[id]?.shortLabel ?? id)}</option>`).join("")}
       </select></div>`;
-    const title = getLang() === "zh" ? "载弹" : "Loadout";
+    const title = "载弹";
     // Live cell-budget readout (counts per-missile cell cost, not just counts).
     const used = +usedCells(lo).toFixed(2);
     const cap = Number(form.vlsCells) || 0;
     const over = used > cap;
-    const cellTag = `<span class="mods-lo-cells${over ? " over" : ""}">${used} / ${cap} ${getLang() === "zh" ? "单元" : "cells"}</span>`;
+    const cellTag = `<span class="mods-lo-cells${over ? " over" : ""}">${used} / ${cap} 单元</span>`;
     return `<fieldset class="mods-section mods-loadout"><legend>${esc(title)} ${cellTag}</legend>${rows || `<div class="mods-empty">—</div>`}${addSel}</fieldset>`;
   }
 
@@ -132,17 +130,15 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
   function renderDetail() {
     if (!form) {
-      detailEl.innerHTML = `<div class="mods-placeholder">${esc(getLang() === "zh" ? "从左侧选择一个单位，或新建一个。" : "Select a unit on the left, or create a new one.")}</div>`;
+      detailEl.innerHTML = `<div class="mods-placeholder">从左侧选择一个单位，或新建一个。</div>`;
       return;
     }
     const schema = SCHEMAS[form.kind];
     const locked = !isNew && isBuiltinUnit(form);
-    const lang = getLang();
-
     const typeField = isNew
-      ? `<label class="mods-field"><span class="mods-flabel">${lang === "zh" ? "类型" : "Type"}</span>
+      ? `<label class="mods-field"><span class="mods-flabel">类型</span>
           <select data-type-select>${DEPLOYABLE_TYPES.concat("ammo").map((k) => `<option value="${k}"${k === form.kind ? " selected" : ""}>${esc(L(KIND_LABEL[k]))}</option>`).join("")}</select></label>`
-      : `<div class="mods-field mods-typeshow"><span class="mods-flabel">${lang === "zh" ? "类型" : "Type"}</span><span class="mods-typeval">${esc(L(KIND_LABEL[form.kind]))}${locked ? ` · ${lang === "zh" ? "内置（克隆后可编辑）" : "built-in (Clone to edit)"}` : ""}</span></div>`;
+      : `<div class="mods-field mods-typeshow"><span class="mods-flabel">类型</span><span class="mods-typeval">${esc(L(KIND_LABEL[form.kind]))}${locked ? " · 内置（克隆后可编辑）" : ""}</span></div>`;
 
     const sections = schema.sections.map((sec) =>
       `<fieldset class="mods-section"><legend>${esc(L(sec.title))}</legend>
@@ -151,12 +147,12 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
     const loadout = schema.loadout ? loadoutHtml(locked) : "";
 
-    const dirtyTag = dirty ? `<span class="mods-dirty">${lang === "zh" ? "未保存" : "Unsaved"}</span>` : "";
+    const dirtyTag = dirty ? `<span class="mods-dirty">未保存</span>` : "";
     const footer = `<div class="mods-actions">
-      ${locked ? "" : `<button class="mods-btn primary" data-action="save">${lang === "zh" ? "保存" : "Save"}</button>`}
-      <button class="mods-btn" data-action="clone">${lang === "zh" ? "克隆" : "Clone"}</button>
-      <button class="mods-btn" data-action="export">${lang === "zh" ? "导出" : "Export"}</button>
-      ${locked || isNew ? "" : `<button class="mods-btn danger" data-action="delete">${lang === "zh" ? "删除" : "Delete"}</button>`}
+      ${locked ? "" : `<button class="mods-btn primary" data-action="save">保存</button>`}
+      <button class="mods-btn" data-action="clone">克隆</button>
+      <button class="mods-btn" data-action="export">导出</button>
+      ${locked || isNew ? "" : `<button class="mods-btn danger" data-action="delete">删除</button>`}
       ${dirtyTag}<span class="mods-errs" data-errs></span></div>`;
 
     detailEl.innerHTML = `<div class="mods-form">
@@ -219,7 +215,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
       safeNotify();
     } catch (e) {
       console.warn("[mods] save failed", e);
-      alert(getLang() === "zh" ? "保存失败，请重试。" : "Save failed. Please retry.");
+      alert("保存失败，请重试。");
     }
   }
 
@@ -267,18 +263,18 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
       safeNotify();
     } catch (e) {
       console.warn("[mods] delete failed", e);
-      alert(getLang() === "zh" ? "删除失败，请重试。" : "Delete failed. Please retry.");
+      alert("删除失败，请重试。");
     }
   }
 
   async function importJson(text) {
     let parsed;
-    try { parsed = JSON.parse(text); } catch { return alert(getLang() === "zh" ? "无效的 JSON 文件" : "Invalid JSON file"); }
-    if (!parsed || !SCHEMAS[parsed.kind]) return alert(getLang() === "zh" ? "无法识别的单位文件" : "Unrecognized unit file");
+    try { parsed = JSON.parse(text); } catch { return alert("无效的 JSON 文件"); }
+    if (!parsed || !SCHEMAS[parsed.kind]) return alert("无法识别的单位文件");
     delete parsed.builtin; delete parsed.locked; delete parsed._key;
     ensureUniqueIdentity(parsed);
     const result = validateUnit(parsed);
-    if (!result.ok) return alert((getLang() === "zh" ? "校验失败: " : "Validation failed: ") + result.errors.map((e) => `${e.field} ${e.msg}`).join(", "));
+    if (!result.ok) return alert("校验失败：" + result.errors.map((e) => `${e.field} ${e.msg}`).join("，"));
     try {
       const record = await saveMod(parsed);
       units.push(record);
@@ -286,7 +282,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
       safeNotify();
     } catch (e) {
       console.warn("[mods] import save failed", e);
-      alert(getLang() === "zh" ? "导入失败，请重试。" : "Import failed. Please retry.");
+      alert("导入失败，请重试。");
     }
   }
 
@@ -361,7 +357,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     if (!el) return;
     const used = +usedCells(form.baseLoadout || {}).toFixed(2);
     const cap = Number(form.vlsCells) || 0;
-    el.textContent = `${used} / ${cap} ${getLang() === "zh" ? "单元" : "cells"}`;
+    el.textContent = `${used} / ${cap} 单元`;
     el.classList.toggle("over", used > cap);
   }
 
@@ -401,7 +397,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     if (tag && !tag.querySelector(".mods-dirty")) {
       const span = document.createElement("span");
       span.className = "mods-dirty";
-      span.textContent = getLang() === "zh" ? "未保存" : "Unsaved";
+      span.textContent = "未保存";
       tag.insertBefore(span, tag.querySelector("[data-errs]"));
     }
   }
@@ -438,13 +434,10 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     open: openEditor,
     close: closeEditor,
     isOpen: () => open,
-    // Re-render the dynamically-built list/form in the current language. Called
-    // by the host when the UI language toggles while the popup is open.
-    refreshLang() { if (open) { renderList(); renderDetail(); } },
     // expose a one-shot loader so the app can register stored units at boot
     // without opening the popup
     async preload() { if (!loaded) { units = await loadMods(); loaded = true; safeNotify(); } },
-    // Debug accessor (also wired to window.tomahawkMods): inspect or extract a
+    // Debug accessor (also wired to window.dawnfallMods): inspect or extract a
     // stored unit's JSON from the browser, and check whether it is registered.
     async dump(name) {
       if (!loaded) { units = await loadMods(); loaded = true; }

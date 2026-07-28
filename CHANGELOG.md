@@ -3,7 +3,38 @@
 All notable changes to this repository will be documented in this file.
 本文件记录仓库的全部重要变更。
 
-## Unreleased
+## v1.0.0 — 2026-07-28
+
+### Release summary / 发行摘要
+
+- **Dawnfall product transition.** The user-facing product is now **破晓前夜 Dawnfall v1.0**. The app is Simplified-Chinese-first with no language switch; military designations such as DDG, F-22, THAAD and Tomahawk Block V remain where they improve precision.
+- **Experience release.** A full-screen equipment library, continuous placement preview, compact battle overview, contextual force drawer, layer controls, playback bar, tools drawer, first-run tour, one-screen landing page and a dedicated responsive guide replace the old mechanical control shell.
+- **Complete post-v0.3 simulation delta.** This release also includes every change accumulated since v0.3: carrier basing, THAAD, expanded player aircraft, submarine and electronic warfare, RCS/detection and movement accuracy work, fire-planning fixes, Unit Workshop upgrades, persistence hardening, performance work and the regression fixes detailed below.
+- 用户可见产品统一为**破晓前夜 Dawnfall v1.0**，只提供简体中文界面；DDG、F-22、THAAD、Tomahawk Block V 等必要军事型号仍保留。v1 同时汇总 v0.3 之后的全部模拟升级与修复，完整条目见本节后续内容。
+
+### Added — Interface, landing page, symbols and tutorial / 界面、首页、符号与教程
+
+- Added `/`, `/sandbox` and `/guide` routes: a cinematic one-screen landing page, the desktop tactical sandbox, and a mobile-readable Chinese player guide.
+- Replaced the class dropdown with a searchable, categorized equipment library covering all 22 built-in units and deterministic custom-unit fallbacks.
+- Added continuous deployment with affiliation-colored cursor symbols, terrain-validity feedback, right-click/Escape cancellation and clear setup locking.
+- Added a MIL-STD-2525E / APP-06-inspired controlled symbol subset using cached `Path2D` geometry. It distinguishes affiliation, domain and major function without claiming full standard compliance.
+- Added a shared eight-step tutorial model and first-run guidance persisted under `dawnfall.tutorialDismissed`.
+- 新增三个公开页面、全屏装备库、连续部署预览、地形错误提示、标准风格受控战术符号、首次引导与中文图文教程。
+
+### Changed — Chinese layer, layout, branding and persistence / 中文层、布局、品牌与持久化
+
+- Removed the English language state and switch. Dynamic UI and event display now use a centralized Simplified Chinese catalogue.
+- Removed the visible tactical feed and About overlay while preserving internal events, debug capture and AAR export. AAR files now use `dawnfall-aar-*` and add `displayTextZh` without changing original event fields.
+- Reorganized the sandbox around a large map viewport: mirrored force summaries at top, contextual right drawer, bottom-left layer controls, central playback controls and a compact tools drawer.
+- Unit Workshop persistence moves to `dawnfall-mods`; a verified one-time migration copies legacy records before removing the old database. Debug entry points are now `dawnfall.debug` and `window.dawnfallMods`.
+- Railway production uses a 64 MiB Node heap and streamed static delivery; simulation, rendering and user persistence remain client-side.
+- 取消英文切换与可见战术日志；重排沙盘控制面；战报保留原始字段并补充中文显示文本；完成单位工坊、调试键和全局入口的品牌迁移。
+- Railway 生产环境采用 64 MiB Node 堆与静态文件流式发送；模拟、绘制和用户数据持久化全部保留在客户端。
+
+### Documentation / 文档
+
+- Replaced the previous bilingual reference bundle with seven maintained Chinese documents: `README.md`, `PLAYER_GUIDE.md`, `ARCHITECTURE.md`, `SIMULATION.md`, `MODDING.md`, `SOURCES.md` and `ROADMAP.md`.
+- 删除重复、过时和历史演示设计稿，修复文档入口，并以自然中文重写玩家、架构、模拟、模组、来源与路线图说明。
 
 ### Added — THAAD hypersonic defense battery / 萨德高超防空电池
 - **THAAD ground battery** + **THAAD interceptor**: public-approx ~110 NM reach, ~Mach 8 class interceptor, high-altitude hit-to-kill profile. Magazine 48 (6×8 envelope). AN/TPY-2-class long search radar.
@@ -32,7 +63,7 @@ All notable changes to this repository will be documented in this file.
 - **Aircraft locked unfireable domains.** JSOW-only flights vectored onto ships and Harpoon-only flights onto SAMs, then “released” forever with full magazines. Surface locks are weapon-domain-filtered; stand-off range uses fireable weapons only; on-station starts with a short nose-on release geometry before beam weave.
 - **CAP / path wobble.** Threat axis mean included missile tracks (raid thrash) and CAP stations rewrote every decision tick. Axis is unit-tracks-only; CAP/support stations use a waypoint deadband.
 - **Peer-fight aggression floor.** Own offense counted only MSTK/TLAM/SM-6 while enemy priors already weighted DEB×2 and air — near-equal mixed fights opened in `survive` (aggr ~0.09). Own strike depth now counts all surface munitions; parity baseline ~0.50 with light pressure penalty and fog-of-war pull only when the picture is empty/thin; focus mode can take two surface targets at healthy aggression.
-- **Frame lag spikes.** Browser catch-up could force several heavy sim ticks into one animation frame under large raids. Sim work is budgeted per frame (carry debt); debug perf/battle logging is opt-in (`?debug=1` or `localStorage tomahawk.debug=1`).
+- **Frame lag spikes.** Browser catch-up could force several heavy sim ticks into one animation frame under large raids. Sim work is budgeted per frame (carry debt); debug perf/battle logging is opt-in (`?debug=1` or `localStorage dawnfall.debug=1`).
 - 修复暗鹰/专用火力被近距舰载反舰弹“占满配额”而从不发射；修复飞机对不可攻击域的错误锁定；威胁轴线与 CAP 站位不再因导弹航迹抖动；对等交战开局进攻性回到合理区间；浏览器端仿真步长按帧预算限流。新增 `tests/ai-doctrine-fixes.test.mjs` 与 `scripts/validate-ai-fixes.mjs`。
 
 ### Added — RCS unification + Unit Workshop exposure / RCS 统一与单位工坊开放

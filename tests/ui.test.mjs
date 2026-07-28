@@ -25,7 +25,7 @@ import {
   clusterProximityLabels
 } from "../src/ui/view.js";
 import { placeShip, clearSide, NM } from "../src/sim.js";
-import { setLang, t } from "../src/ui/lang.js";
+import { t } from "../src/ui/lang.js";
 
 const camera = { x: 1000, y: -500, scale: 0.0022 };
 const viewW = 1280;
@@ -148,13 +148,15 @@ test("postureBar renders the aggression percentage and side class", () => {
   assert.match(html, /\bred\b/);
 });
 
-test("renderBattleStatus emits ship counts and both posture bars", () => {
+test("renderBattleStatus emits mirrored Chinese force summaries", () => {
   const sim = createScenario(3);
   const html = renderBattleStatus(sim);
-  assert.match(html, /R HP/);
-  assert.match(html, /B HP/);
-  assert.match(html, /B AGG/);
-  assert.match(html, /R AGG/);
+  assert.match(html, /force-summary blue/);
+  assert.match(html, /force-summary red/);
+  assert.match(html, /总耐久/);
+  assert.match(html, /反舰库存/);
+  assert.match(html, /防空库存/);
+  assert.match(html, /攻势/);
 });
 
 test("inventory header exposes all eight tracked columns", () => {
@@ -182,11 +184,9 @@ test("inventory markup escapes scenario-provided unit identifiers", () => {
 });
 
 test("inventory row localizes the ship name in Chinese", () => {
-  setLang("zh");
   const ship = { ...createScenario(7).ships[1], id: "CG-2", hull: "CCG" };
   const row = inventoryRowHtml(ship, false);
   assert.match(row, /巡洋舰-2/);
-  setLang("en");
 });
 
 test("inventoryHtml inserts a divider between sides and a row per ship", () => {
@@ -284,8 +284,6 @@ test("inventoryHtml renders a per-faction naval table then a ground table", () =
   assert.ok(html.indexOf('class="inventory-head"') < html.indexOf("inventory-head ground"));
 });
 
-test("tracks toggle uses 锁定 in Chinese", () => {
-  setLang("zh");
+test("tracks toggle uses a Chinese label", () => {
   assert.equal(t("opt.tracks"), "锁定");
-  setLang("en");
 });

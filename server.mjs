@@ -1,6 +1,8 @@
 import { createServer } from "node:http";
+import { createReadStream } from "node:fs";
 import { readFile, writeFile, mkdir, readdir, unlink, stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
 
 const root = resolve(process.cwd());
 const host = process.env.HOST || "0.0.0.0";
@@ -10,7 +12,7 @@ const hosted = Boolean(process.env.RAILWAY_ENVIRONMENT);
 const scenarioStoreEnabled = !hosted;
 
 function isPublicAsset(rel) {
-  return rel === "index.html" || rel.startsWith("src/");
+  return ["index.html", "sandbox.html", "guide.html"].includes(rel) || rel.startsWith("src/");
 }
 
 // Fixed on-disk save location: strips anything but word chars/space/dash so the
@@ -38,6 +40,7 @@ const types = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8",
   ".png": "image/png",
+  ".webp": "image/webp",
   ".ttf": "font/ttf"
 };
 
@@ -148,7 +151,14 @@ createServer(async (req, res) => {
       }
       return;
     }
-    const rel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+    const pageRoutes = {
+      "/": "index.html",
+      "/sandbox": "sandbox.html",
+      "/sandbox/": "sandbox.html",
+      "/guide": "guide.html",
+      "/guide/": "guide.html"
+    };
+    const rel = pageRoutes[url.pathname] || url.pathname.slice(1);
     if (!isPublicAsset(rel)) {
       res.writeHead(403);
       res.end("Forbidden");
@@ -160,15 +170,22 @@ createServer(async (req, res) => {
       res.end("Forbidden");
       return;
     }
-    const body = await readFile(file);
+    const info = await stat(file);
     // No build step: source files are served as-is and change between runs.
     // Force revalidation so browsers never run a stale cached ES module (which
     // otherwise makes code fixes appear to "not take effect" until a hard reload).
     res.writeHead(200, {
       "content-type": types[extname(file)] || "application/octet-stream",
-      "cache-control": "no-cache"
+      "content-length": info.size,
+      "cache-control": hosted
+        ? "public, max-age=300, stale-while-revalidate=86400"
+        : "no-cache"
     });
-    res.end(body);
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    await pipeline(createReadStream(file), res);
   } catch {
     res.writeHead(404);
     res.end("Not found");
@@ -177,5 +194,5 @@ createServer(async (req, res) => {
   const localUrl = `http://127.0.0.1:${port}`;
   const bindLabel = host === "0.0.0.0" ? `${host}:${port}` : localUrl;
   const localHint = host === "0.0.0.0" ? ` (local access: ${localUrl})` : "";
-  console.log(`TomaHawk running on ${bindLabel}${localHint}`);
+  console.log(`破晓前夜 Dawnfall v1.0 running on ${bindLabel}${localHint}`);
 });

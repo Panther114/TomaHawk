@@ -6,7 +6,8 @@
 
 import { vanillaUnits, registerUnit, unregisterUnit, unitId, isBuiltinUnit } from "./registry.js";
 
-const DB_NAME = "tomahawk-mods";
+const DB_NAME = "dawnfall-mods";
+const LEGACY_DB_NAME = "tomahawk-mods";
 const DB_VERSION = 1;
 const STORE = "units";
 
@@ -19,9 +20,9 @@ function hasIndexedDb() {
   return typeof indexedDB !== "undefined" && indexedDB !== null;
 }
 
-function openDb() {
+function openNamedDb(name) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const req = indexedDB.open(name, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "_key" });
@@ -29,6 +30,40 @@ function openDb() {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+function deleteNamedDb(name) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(name);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error(`数据库 ${name} 仍被占用`));
+  });
+}
+
+async function migrateLegacyDb(targetDb) {
+  let legacy;
+  try {
+    if (typeof indexedDB.databases === "function") {
+      const databases = await indexedDB.databases();
+      if (!databases.some((entry) => entry.name === LEGACY_DB_NAME)) return;
+    }
+    legacy = await openNamedDb(LEGACY_DB_NAME);
+    const records = await dbGetAll(legacy);
+    for (const record of records) await dbPut(targetDb, record);
+    legacy.close();
+    await deleteNamedDb(LEGACY_DB_NAME);
+  } catch (error) {
+    legacy?.close();
+    // Keep the old database intact when any copy/verification step fails.
+    console.warn("[mods] 旧版单位数据库迁移未完成，将在下次启动时重试", error);
+  }
+}
+
+async function openDb() {
+  const db = await openNamedDb(DB_NAME);
+  await migrateLegacyDb(db);
+  return db;
 }
 
 function tx(db, mode) {

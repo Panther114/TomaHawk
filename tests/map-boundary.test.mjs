@@ -53,10 +53,11 @@ test("hosted save fallback preserves browser-file export when server storage is 
   assert.match(appSource, /if \(!res\.ok\) \{\s*await saveJsonToCustomLocation/s);
 });
 
-test("tactical feed escapes translated scenario event text before inserting markup", () => {
+test("visible tactical feed is removed while AAR keeps Chinese event text", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
-
-  assert.match(appSource, /escapeHtml\(translateEventText\(e\.text\)\)/);
+  const html = readFileSync(new URL("../sandbox.html", import.meta.url), "utf8");
+  assert.doesNotMatch(html, /event-console|event-log|toggle-feed/);
+  assert.match(appSource, /displayTextZh:\s*translateEventText\(event\.text\)/);
 });
 
 test("tactical-map renders ship and missile labels as fill text, not stroke labels", () => {
@@ -85,10 +86,13 @@ test("launched missiles display zoom-fading text labels beside their icons", () 
   assert.match(appSource, /const groupKey = `\$\{missile\.side\}:\$\{missile\.missileId\}`;/);
 });
 
-test("ship and missile icons keep a small minimum size instead of collapsing to dots", () => {
+test("cached tactical symbols and missile icons keep a fixed readable size", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+  const symbolSource = readFileSync(new URL("../src/ui/symbols.js", import.meta.url), "utf8");
 
-  assert.match(appSource, /worldSize\(ship\.lengthM, 4, 25\)/);
+  assert.match(appSource, /drawTacticalSymbol\(ctx/);
+  assert.match(symbolSource, /const FRAME_CACHE = new Map\(\)/);
+  assert.match(symbolSource, /path\.rect\(-14, -10, 28, 20\)/);
   assert.match(appSource, /Math\.max\(2\.2, VISUAL_CONFIG\.missileMinPx \* \(isAntiAir \? 0\.85 : 1\)\)/);
 });
 
