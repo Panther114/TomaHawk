@@ -327,6 +327,22 @@ function nearestFriendlyAirfield(sim, ship, { requireSlot = false } = {}) {
   return bestCarrier && !best ? bestCarrier : best;
 }
 
+function lockedRecoveryBase(sim, ship) {
+  if (!ship?.homeBaseId) return null;
+  const base = sim._shipById?.get(ship.homeBaseId)
+    ?? sim.ships.find((candidate) => candidate.id === ship.homeBaseId);
+  return canRecoverAtBase(ship, base) ? base : null;
+}
+
+function chooseRecoveryBase(sim, ship) {
+  // Once RTB begins, keep the destination stable. Re-selecting the nearest
+  // field every decision tick makes a flight weave between bases or carriers
+  // when distances/deck capacity change while it is already on final.
+  return lockedRecoveryBase(sim, ship)
+    || nearestFriendlyAirfield(sim, ship, { requireSlot: true })
+    || nearestFriendlyAirfield(sim, ship, { requireSlot: false });
+}
+
 /** True if the fused picture holds any non-missile track this loadout can arm. */
 function hasEmployableSurfaceTrack(sim, ship) {
   const picture = sim.forcePicture?.get(ship.side);
@@ -369,6 +385,25 @@ export function stickToBaseDeck(sim, ship) {
   ship.targetAltitudeM = 0;
   ship.afterburner = false;
   ship.evading = false;
+  return true;
+}
+
+// Capture an RTB flight as soon as it enters the recovery corridor. This is
+// checked both before and after movement so a high-speed flight cannot pass
+// through the 2 NM gate between decision ticks and then clear its waypoint at
+// 0.4 NM without ever transitioning to REARMING.
+export function captureAircraftRecovery(sim, ship) {
+  if (ship?.airState !== AIR_STATE.RTB) return false;
+  const base = lockedRecoveryBase(sim, ship);
+  if (!base || distance(ship, base) > AIRCRAFT_TEMP_CONFIG.baseReachM) return false;
+  if (!baseHasDeckSlot(sim, ship, base)) return false;
+  ship.airState = AIR_STATE.REARMING;
+  ship.rearmUntil = sim.time + (ship.rearmTimeS ?? AIRCRAFT_TEMP_CONFIG.rearmTimeS);
+  if (sim._parkedByBase) {
+    sim._parkedByBase.set(base.id, (sim._parkedByBase.get(base.id) || 0) + 1);
+  }
+  stickToBaseDeck(sim, ship);
+  setPhase(sim, ship, "rearming", base.id);
   return true;
 }
 
@@ -616,7 +651,7 @@ function refillFromBase(ship) {
 // reach in time regardless of the threshold).
 const AIR_FUEL_RESERVE_FRAC = 0.18;
 function bingoFuelS(sim, ship) {
-  const base = nearestFriendlyAirfield(sim, ship);
+  const base = lockedRecoveryBase(sim, ship) || nearestFriendlyAirfield(sim, ship);
   const reserve = ship.enduranceS * AIR_FUEL_RESERVE_FRAC;
   if (!base) return ship.enduranceS * AIRCRAFT_TEMP_CONFIG.rtbFuelThresholdFrac;
   const timeToBaseS = distance(ship, base) / (ship.maxSpeed || AIR_MAX_MPS);
@@ -687,22 +722,11 @@ export function decideAircraft(sim, ship) {
     ship.afterburner = false; // conserve fuel getting home, not sprinting there
     // Prefer a base with an open deck slot; if every compatible deck is full,
     // still approach the nearest so we can hold a pattern until a slot frees.
-    const base = nearestFriendlyAirfield(sim, ship, { requireSlot: true })
-      || nearestFriendlyAirfield(sim, ship, { requireSlot: false });
+    const base = chooseRecoveryBase(sim, ship);
     if (base) {
       ship.homeBaseId = base.id;
+      if (captureAircraftRecovery(sim, ship)) return;
       const onFinal = distance(ship, base) <= AIRCRAFT_TEMP_CONFIG.baseReachM;
-      if (onFinal && baseHasDeckSlot(sim, ship, base)) {
-        ship.airState = AIR_STATE.REARMING;
-        ship.rearmUntil = sim.time + (ship.rearmTimeS ?? AIRCRAFT_TEMP_CONFIG.rearmTimeS);
-        // Occupy a deck slot immediately so concurrent RTBs see the capacity.
-        if (sim._parkedByBase) {
-          sim._parkedByBase.set(base.id, (sim._parkedByBase.get(base.id) || 0) + 1);
-        }
-        stickToBaseDeck(sim, ship);
-        setPhase(sim, ship, "rearming", base.id);
-        return;
-      }
       if (onFinal && !baseHasDeckSlot(sim, ship, base)) {
         // Deck full: hold pattern abeam until a squadron relaunches.
         setPhase(sim, ship, "deck-wait", base.id);

@@ -1,24 +1,24 @@
-# 破晓前夜 Dawnfall
+# Tomahawk (战斧)
 
-一款在浏览器中运行的现代联合作战推演游戏。你负责部署蓝红双方兵力；推演开始后，两套对称的指挥 AI 只依据各自能够探测和共享的航迹行动。相同种子与相同输入会产生相同结果。
+A deterministic modern joint-warfare simulation that runs in the browser. It centers on sensor detection, track fusion, cooperative engagement, magazine management, and subsystem damage so you can quickly build blue/red scenarios and review the engagement chain. Two symmetric command AIs act only on tracks each side can detect and share; the same seed and inputs always produce the same result.
 
-当前版本：**v1.0.0**
+Current version: **v1.0.0**
 
-## 快速开始
+## Quick start
 
-需要 Node.js 20 或更新版本，无需安装第三方依赖。
+Requires Node.js 20 or newer. No third-party dependencies to install.
 
 ```bash
 npm start
 ```
 
-打开 <http://127.0.0.1:4172>：
+Open <http://127.0.0.1:4172>:
 
-- `/`：一屏产品首页
-- `/sandbox`：推演沙盘（需要至少 1280×720 的桌面视口）
-- `/guide`：中文玩法教程
+- `/` — one-screen product landing page
+- `/sandbox` — tactical sandbox (desktop browser content area of at least 960×560 recommended)
+- `/guide` — in-app Chinese player manual
 
-运行验证：
+Run checks:
 
 ```bash
 npm test
@@ -27,59 +27,59 @@ npm run bench
 npm run bench:server
 ```
 
-## Railway 部署
+## Railway deployment
 
-仓库根目录的 `railway.json` 已配置 `npm start`、`/health` 健康检查和失败重启策略。连接 GitHub 仓库后可直接部署，不需要数据库、持久卷、构建命令或额外环境变量。服务会监听 Railway 注入的 `0.0.0.0:$PORT`。
+Root `railway.json` is set up for `npm start`, a `/health` check, and restart-on-failure. Connect the GitHub repo and deploy; no database, volume, build command, or extra environment variables are required. The process listens on Railway’s `0.0.0.0:$PORT`.
 
-生产服务只负责流式发送静态文件，Node 堆上限为 64 MiB，不缓存地图或图片。模拟、Canvas 绘制、想定序列化、AAR、教程状态和单位工坊全部在浏览器中运行；Railway 环境会禁用本地磁盘存档与调试日志端点。用户存档通过浏览器文件下载、文件选择器和 IndexedDB 完成。
+Production only streams static files, caps the Node heap at 64 MiB, and does not cache maps or images. Simulation, Canvas drawing, scenario serialization, AAR, tutorial state, and the Unit Workshop all run in the browser. On Railway, local disk scenario endpoints and debug log endpoints are disabled. User saves use browser downloads, file pickers, and IndexedDB.
 
-## 能模拟什么
+## What it models
 
-- 海上、水下、陆基与空中单位协同行动
-- 雷达、声呐、电子支援、雷达地平线、RCS 与航迹老化
-- 融合态势、航迹共享与基于远程航迹的协同交战
-- 分层防空、近防、反舰、对地、反潜与高超声速攻防
-- 航空兵燃油、返场、再装挂、航母甲板与机场保障
-- 电子干扰、烧穿、反辐射压制与有限软杀伤诱饵
-- 子系统损伤、航空兵逐机减员与弹药耗竭
-- 本地单位工坊、想定存档与 AAR 战报
+- Coordinated naval, subsurface, ground, and air units
+- Radar, sonar, ESM, radar horizon, RCS, and track ageing
+- Fused force picture, track sharing, and engage-on-remote cooperative fire
+- Layered air defence, point defence, anti-ship, strike, ASW, and hypersonic offence/defence
+- Aircraft fuel, RTB, rearm, carrier deck, and airfield support
+- Electronic attack, burn-through, anti-radiation pressure, and limited soft-kill decoys
+- Subsystem damage, per-aircraft attrition, and magazine exhaustion
+- Local Unit Workshop, scenario saves, and AAR reports
 
-本项目不是完整的作战分析软件，也不建模水雷、补给链、天气海况、人员训练或政治决策。所有公开装备参数均为开源资料基础上的游戏化近似。
+This project is not a validated mission-planning or operational-analysis tool. It does not model mines, logistics, weather/sea state, crew training, or political decisions. Public equipment parameters are engineering abstractions built from open sources.
 
-## 基本玩法
+## Basic play
 
-1. 在沙盘左上角打开“部署装备”，选择蓝方或红方。
-2. 从装备库选择单位，在地图上连续单击部署；红色预览表示位置不合法。
-3. 蓝红双方至少各部署一个存活单位。
-4. 按 `Space` 或点击底部播放键开始推演。
-5. 通过顶部战况条、地图航迹和右侧单位详情观察过程。
+1. In the sandbox, open **部署装备** (Deploy equipment) at the top left and choose Blue or Red.
+2. Pick a unit from the library and click repeatedly on the map to place; a red preview means the position is invalid.
+3. Place at least one living unit on each side.
+4. Press `Space` or use the bottom play control to start.
+5. Watch the top battle strip, map tracks, and right-hand unit detail.
 
-完整说明见 [玩家指南](docs/PLAYER_GUIDE.md) 或应用内的 `/guide` 页面。
+Full repo notes are in the [Player guide](docs/PLAYER_GUIDE.md). The illustrated in-app manual is at `/guide` (Simplified Chinese).
 
-## 项目结构
+## Project structure
 
-- `index.html`：落地页
-- `sandbox.html`：推演沙盘
-- `guide.html`：玩家教程
-- `src/app.js`：Canvas 绘制、界面状态与交互
-- `src/ui/`：中文消息、装备目录、战术符号与教程步骤
-- `src/sim/`：确定性模拟核心
-- `src/mods/`：单位工坊与本地迁移
-- `server.mjs`：低内存静态文件服务；磁盘存档与调试端点仅供本地开发
-- `tests/`：规则、持久化、UI 与性能回归测试
+- `index.html` — landing page
+- `sandbox.html` — tactical sandbox shell
+- `guide.html` — in-app Chinese player tutorial
+- `src/app.js` — Canvas drawing, UI state, and interaction
+- `src/ui/` — Simplified Chinese messages, equipment catalog, tactical symbols, tutorial steps
+- `src/sim/` — deterministic simulation core
+- `src/mods/` — Unit Workshop and local migration
+- `server.mjs` — low-memory static file server; disk saves and debug endpoints are local-dev only
+- `tests/` — rules, persistence, UI, and performance regression tests
 
-架构边界见 [架构说明](docs/ARCHITECTURE.md)，模拟规则见 [模拟说明](docs/SIMULATION.md)。
+Architecture boundaries: [Architecture](docs/ARCHITECTURE.md). Simulation rules: [Simulation](docs/SIMULATION.md).
 
-## 文档
+## Documentation
 
-- [玩家指南](docs/PLAYER_GUIDE.md)
-- [架构说明](docs/ARCHITECTURE.md)
-- [模拟说明](docs/SIMULATION.md)
-- [单位工坊](docs/MODDING.md)
-- [资料来源](docs/SOURCES.md)
-- [路线图](docs/ROADMAP.md)
-- [版本记录](CHANGELOG.md)
+- [Player guide](docs/PLAYER_GUIDE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Simulation](docs/SIMULATION.md)
+- [Unit Workshop](docs/MODDING.md)
+- [Sources](docs/SOURCES.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Changelog](CHANGELOG.md)
 
-## 许可
+## License
 
-代码以 [PolyForm Noncommercial 1.0.0](LICENSE) 许可发布。真实装备名称仅用于描述模拟对象，不代表任何制造商、军种或机构的认可。
+Code is released under the [PolyForm Noncommercial 1.0.0](LICENSE) license. Real equipment names only identify simulated objects and do not imply endorsement by any manufacturer, service, or agency.

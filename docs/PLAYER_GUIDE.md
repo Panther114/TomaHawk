@@ -1,43 +1,59 @@
-# 玩家指南
+# Player guide
 
-## 第一场推演
+The live product UI is Simplified Chinese. This page is the English repo manual. The illustrated, interactive tutorial is available in-app at `/guide`.
 
-进入 `/sandbox` 后，点击左上角“部署装备”。先选择阵营，再从海上、水下、陆基或空中分类中选择装备。装备库关闭后，光标会显示战术符号预览：
+## Interactive manual
 
-- 阵营色轮廓：位置合法，可单击连续部署。
-- 红色轮廓：位置非法，屏幕上方会说明原因。
-- `Esc` 或鼠标右键：结束连续部署。
+`/guide` is a semantic single-page task manual rather than a slide deck. Its seven chapters follow the actual play sequence: quick start, console orientation, deployment, running and reading a battle, system tools, Unit Workshop, then shortcuts and troubleshooting.
 
-海军与潜艇需要开放水域；陆基雷达、防空和打击阵地需要陆地；航空兵和机场可部署在任意位置。双方至少各有一个存活单位后，按 `Space` 开始。
+The code-native mini console is safe to experiment with: it models deployment, selection, the ruler, map layers, playback, time rate, unit details, and the tools menu without starting the simulation core. Each lesson states the action to perform, the result to observe, and a common failure mode. Completed lessons are stored in `localStorage["tomahawk.guideProgress.v1"]`; storage failure does not disable the tutorial.
 
-## 读懂控制台
+The deployment, running-state, system-tools, and Unit Workshop chapters use screenshots generated from the current sandbox at 1600×900. Their numbered rectangles and explanations are responsive HTML overlays, so annotations remain selectable and readable on mobile. Regenerate the checked-in image set with:
 
-- 左上：部署、选择、测距。
-- 顶部：双方存活单位、总耐久、反舰库存、防空库存与攻势。
-- 右侧：单位详情和兵力列表；选中单位时自动展开。
-- 左下：比例尺、坐标和图层控制。
-- 底部：播放、单步、1–60× 速度和推演时间。
-- 右上：保存、载入、AAR、单位工坊与重置。
+```bash
+npm run screenshot:guide
+```
 
-地图是主要信息面。航迹不等于真实目标位置：虚线、透明度和误差圈反映共享或不确定信息。
+The command drives the public UI with Playwright, verifies that all eight PNGs decode at the expected dimensions, and writes a diagnostic report to `artifacts/guide-screenshots.json`.
 
-## 快捷键
+## First battle
 
-| 操作 | 快捷键 |
+Open `/sandbox`, then click **部署装备** (Deploy equipment) at the top left. Choose a side, then pick equipment from sea, subsurface, ground, or air categories. After the library closes, the cursor shows a tactical-symbol preview:
+
+- Affiliation-colored outline — valid position; click repeatedly to place more of the same type.
+- Red outline — invalid position; a reason appears at the top of the screen.
+- `Esc` or right-click — end continuous placement.
+
+Naval units and submarines need open water; ground radar, SAM, and strike batteries need land; aircraft and airfields can be placed anywhere. With at least one living unit on each side, press `Space` to start.
+
+## Reading the console
+
+- Top left: deploy, select, range/ruler.
+- Top: living units per side, total durability, anti-ship inventory, air-defence inventory, and aggression.
+- Right: unit detail and force list; expands automatically when a unit is selected.
+- Bottom left: scale bar, coordinates, and layer controls.
+- Bottom: play, single-step, 1–60× rate, and scenario time.
+- Top right: save, load, AAR, Unit Workshop, and reset.
+
+The map is the main information surface. Tracks are not true target positions: dashed lines, transparency, and error rings reflect shared or uncertain data.
+
+## Shortcuts
+
+| Action | Key |
 | --- | --- |
-| 播放 / 暂停 | `Space` |
-| 单步推进 | `.` |
-| 测距 | `R` |
-| 结束部署或取消工具 | `Esc` |
-| 循环选择单位 | `Tab`（地图聚焦时） |
-| 删除单位 | `Delete`（仅部署阶段） |
-| 缩放 | 鼠标滚轮 |
-| 平移 | 鼠标中键或 `Alt` + 拖动 |
+| Play / pause | `Space` |
+| Single step | `.` |
+| Ruler | `R` |
+| End deploy or cancel tool | `Esc` |
+| Cycle units | `Tab` (when the map has focus) |
+| Delete unit | `Delete` (setup only) |
+| Zoom | Mouse wheel |
+| Pan | Middle mouse or `Alt` + drag |
 
-## 保存、战报与工坊
+## Saves, AAR, and workshop
 
-“工具”菜单可将想定保存到本地想定库，或下载 JSON 文件。AAR 文件名以 `dawnfall-aar-` 开头；事件保留原始字段，同时增加 `displayTextZh` 中文显示文本。
+The **工具** (Tools) menu can save a scenario to the local library or download a JSON file. AAR filenames start with `tomahawk-aar-`; events keep original fields and add `displayTextZh` for Chinese display text.
 
-单位工坊中的内置记录只读。克隆后可修改参数与载弹，自定义单位存入浏览器 `dawnfall-mods` IndexedDB，也可导入或导出 JSON。
+Built-in Unit Workshop records are read-only. Clone them to edit parameters and loadouts; custom units live in the browser IndexedDB database `tomahawk-mods` and can be imported or exported as JSON.
 
-更完整、适合手机阅读的图文教程位于应用内 `/guide`。
+The fuller interactive guide is at in-app `/guide` (Simplified Chinese).

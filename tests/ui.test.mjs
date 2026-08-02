@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createScenario, SIDE } from "../src/sim.js";
 import {
   worldToScreen,
@@ -15,10 +16,13 @@ import {
   remainingStockColor,
   commandPosture,
   postureBar,
+  battleStatusState,
   renderBattleStatus,
   inventoryHeadHtml,
   inventoryRowHtml,
+  inventoryRowState,
   inventoryHtml,
+  unitInfoPopoverHtml,
   groundRowHtml,
   isGroundUnit,
   shipDetailCardHtml,
@@ -98,34 +102,96 @@ test("vlsLoadState reports a full default destroyer magazine", () => {
   assert.ok(vls.fill > 0 && vls.fill <= 1);
 });
 
-test("inventory color helpers map hp, vls, and missile states to the requested thresholds", () => {
+test("inventory color helpers use the shared percentage thresholds", () => {
   const ship = createScenario(1).ships[0];
-  assert.equal(inventoryHpColor({ damageResist: 2, damage: 0 }), "#5fd58c");
-  assert.equal(inventoryHpColor({ damageResist: 2, damage: 2 }), "#4e6972");
-  assert.equal(inventoryHpColor({ damageResist: 2, damage: 1 }), "#f7b955");
-  assert.equal(inventoryVlsColor({ loadout: {} , vlsCells: 96 }), "#4e6972");
-  assert.equal(inventoryVlsColor({ loadout: { MaritimeStrike: 80 }, vlsCells: 96 }), "#5fd58c");
-  assert.equal(inventoryVlsColor({ loadout: { MaritimeStrike: 20 }, vlsCells: 96 }), "#f28d4e");
-  assert.equal(inventoryMissileColor(ship, "ESSM"), "#ffffff");
+  assert.equal(inventoryHpColor({ damageResist: 2, damage: 0 }), "#f2f4f5");
+  assert.equal(inventoryHpColor({ damageResist: 2, damage: 2 }), "#5c6369");
+  assert.equal(inventoryHpColor({ damageResist: 4, damage: 1 }), "#64b982");
+  assert.equal(inventoryHpColor({ damageResist: 4, damage: 2 }), "#64b982");
+  assert.equal(inventoryHpColor({ damageResist: 4, damage: 3 }), "#d6ad45");
+  assert.equal(inventoryVlsColor({ loadout: {} , vlsCells: 96 }), "#5c6369");
+  assert.equal(inventoryVlsColor({ loadout: { MaritimeStrike: 80 }, vlsCells: 96 }), "#64b982");
+  assert.equal(inventoryVlsColor({ loadout: { MaritimeStrike: 20 }, vlsCells: 96 }), "#c95757");
+  assert.equal(inventoryMissileColor(ship, "ESSM"), "#f2f4f5");
   const withBaseline = (essm) => ({ loadout: { ESSM: essm }, baseLoadoutSnapshot: { ESSM: 30 } });
-  assert.equal(inventoryMissileColor(withBaseline(0), "ESSM"), "#4e6972");
-  assert.equal(inventoryMissileColor(withBaseline(21), "ESSM"), "#ffffff"); // 70% > 67%
-  assert.equal(inventoryMissileColor(withBaseline(20), "ESSM"), "#f7b955"); // 67% falls into the 33-67% band
-  assert.equal(inventoryMissileColor(withBaseline(10), "ESSM"), "#f7b955"); // 33% falls into the 33-67% band
-  assert.equal(inventoryMissileColor(withBaseline(9), "ESSM"), "#ff6b63"); // 30% < 33%
+  assert.equal(inventoryMissileColor(withBaseline(0), "ESSM"), "#5c6369");
+  assert.equal(inventoryMissileColor(withBaseline(30), "ESSM"), "#f2f4f5");
+  assert.equal(inventoryMissileColor(withBaseline(21), "ESSM"), "#64b982");
+  assert.equal(inventoryMissileColor(withBaseline(10), "ESSM"), "#d6ad45");
+  assert.equal(inventoryMissileColor(withBaseline(6), "ESSM"), "#c95757");
 });
 
-test("remainingStockColor applies the universal >67%/33-67%/<33%/0 thresholds", () => {
-  assert.equal(remainingStockColor(0, 100), "#4e6972");
-  assert.equal(remainingStockColor(68, 100), "#ffffff");
-  assert.equal(remainingStockColor(67, 100), "#f7b955");
-  assert.equal(remainingStockColor(34, 100), "#f7b955");
-  assert.equal(remainingStockColor(33, 100), "#f7b955"); // 33% is the inclusive edge of the yellow band
-  assert.equal(remainingStockColor(32, 100), "#ff6b63");
-  assert.equal(remainingStockColor(1, 100), "#ff6b63");
+test("dense missile rendering preserves every full tactical symbol and guide", async () => {
+  const source = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  // Batches may be fresh Maps or module-level pooled Maps; every weapon still
+  // gets a full Path2D symbol + guide stroke (no visual LOD/culling caps).
+  assert.match(source, /symbolBatches/);
+  assert.match(source, /appendMissileSymbol\(/);
+  assert.match(source, /ctx\.fill\(symbols\.path\)/);
+  assert.match(source, /ctx\.stroke\(guide\.path\)/);
+  assert.doesNotMatch(
+    source,
+    /lodDots|compactIcons|MISSILE_ICON_THIN_CAP|MISSILE_GUIDE_LINE_CAP|MISSILE_GLOW_CAP|stableMissileHash|Density sampling/
+  );
+});
+
+test("inventoryRowState derives all live values used by in-place panel updates", () => {
+  const ship = createScenario(1).ships[0];
+  const initial = inventoryRowState(ship);
+  assert.equal(initial.hp, ship.damageResist);
+  assert.equal(initial.hpMax, ship.damageResist);
+  assert.equal(initial.hpPct, 100);
+  assert.equal(initial.hpColor, "#f2f4f5");
+  assert.equal(initial.vlsCap, 96);
+
+  ship.damage = 1;
+  ship.loadout.ESSM = 0;
+  const depleted = inventoryRowState(ship);
+  assert.equal(depleted.hp, ship.damageResist - 1);
+  assert.equal(depleted.aawColor, "#64b982");
+  assert.equal(depleted.airState, "MSN");
+});
+
+test("battleStatusState exposes stable value and meter fields for DOM patching", () => {
+  const sim = createScenario(1);
+  const state = battleStatusState(sim);
+  assert.match(state.blue.hp.value, /^\d+\/\d+$/);
+  assert.equal(typeof state.blue.hp.pct, "number");
+  assert.match(state.red.intercept.value, /^\d+%$/);
+  assert.equal(typeof state.red.offense.pct, "number");
+});
+
+test("unit icons and IDs use continuous zoom scaling with explicit larger bounds", async () => {
+  const source = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(source, /const UNIT_ICON_MIN_SCALE = 0\.56/);
+  assert.match(source, /const UNIT_ICON_MAX_SCALE = 1\.55/);
+  assert.match(source, /function unitZoomProgress\(\)/);
+  assert.match(source, /const iconScale = unitIconScale\(selected\)/);
+  assert.match(source, /ctx\.font = canvasFont\(unitLabelPx\(\)\)/);
+});
+
+test("force roster typography is enlarged and HP denominators stay white until death", async () => {
+  const css = await readFile(new URL("../src/tomahawk.css", import.meta.url), "utf8");
+  assert.match(css, /\.inventory-head[\s\S]*?font-size: 12\.1px !important/);
+  assert.match(css, /\.inventory-row[\s\S]*?font-size: 13\.2px !important/);
+  assert.match(css, /\.inventory-unit strong[\s\S]*?font-size: 14\.3px/);
+  assert.match(css, /\.inventory-cell b \{ font: 650 19\.8px\/18px/);
+  assert.match(css, /\.inventory-denominator \{ color: var\(--text\); \}/);
+  assert.match(css, /\.inventory-row\.sunk \.inventory-hp-denominator \{ color: #5c6369; \}/);
+});
+
+test("remainingStockColor applies the universal 100/50/25/0 thresholds", () => {
+  assert.equal(remainingStockColor(0, 100), "#5c6369");
+  assert.equal(remainingStockColor(100, 100), "#f2f4f5");
+  assert.equal(remainingStockColor(99, 100), "#64b982");
+  assert.equal(remainingStockColor(50, 100), "#64b982");
+  assert.equal(remainingStockColor(49, 100), "#d6ad45");
+  assert.equal(remainingStockColor(25, 100), "#d6ad45");
+  assert.equal(remainingStockColor(24, 100), "#c95757");
+  assert.equal(remainingStockColor(1, 100), "#c95757");
   // A count with no known baseline (e.g. a fake fixture) reads as "full" white
   // rather than false-alarming red/grey.
-  assert.equal(remainingStockColor(5, 0), "#ffffff");
+  assert.equal(remainingStockColor(5, 0), "#f2f4f5");
 });
 
 test("displayCount returns non-negative integers and tolerates junk", () => {
@@ -153,25 +219,34 @@ test("renderBattleStatus emits mirrored Chinese force summaries", () => {
   const html = renderBattleStatus(sim);
   assert.match(html, /force-summary blue/);
   assert.match(html, /force-summary red/);
-  assert.match(html, /总耐久/);
-  assert.match(html, /反舰库存/);
-  assert.match(html, /防空库存/);
+  assert.match(html, /总生命/);
+  assert.match(html, /在空反舰/);
+  assert.match(html, /在空防空/);
+  assert.match(html, /存活目标/);
   assert.match(html, /攻势/);
 });
 
-test("inventory header exposes all eight tracked columns", () => {
+test("inventory header exposes the naval roster columns", () => {
   const head = inventoryHeadHtml();
-  for (const col of ["SHIP", "HP", "VLS", "SM2", "SM6", "ESSM", "MSTK", "TLAM"]) {
-    assert.match(head, new RegExp(`>${col}<`));
+  for (const col of ["单位", "生命", "垂发", "防空弹药", "打击弹药", "速度"]) {
+    assert.match(head, new RegExp(col));
   }
+  assert.match(head, /inventory-head naval/);
 });
 
 test("inventory row is a selectable button carrying the ship id and HP/VLS cells", () => {
   const ship = createScenario(7).ships[0];
   const row = inventoryRowHtml(ship, true);
   assert.match(row, new RegExp(`data-select-ship="${ship.id}"`));
-  assert.match(row, /class="inventory-row blue[^"]*selected"/);
-  assert.match(row, /\/96</); // VLS capacity cell
+  assert.match(row, /class="inventory-row naval blue[^"]*selected"/);
+  assert.match(row, /inventory-denominator">\/96</); // white VLS denominator
+  assert.match(row, /data-inventory-hp[^>]*>2<\/i><i data-inventory-hp-cap[^>]*>\/2<\/i>/);
+  // Compact single-line localized name; no repeated hull code or English labels.
+  assert.match(row, /驱逐舰·1/);
+  assert.doesNotMatch(row, /DDG 驱逐舰/);
+  assert.match(row, /data-info-ship/);
+  assert.doesNotMatch(row, /<small>HP<\/small>/);
+  assert.doesNotMatch(row, /<small>VLS<\/small>/);
 });
 
 test("inventory markup escapes scenario-provided unit identifiers", () => {
@@ -186,7 +261,8 @@ test("inventory markup escapes scenario-provided unit identifiers", () => {
 test("inventory row localizes the ship name in Chinese", () => {
   const ship = { ...createScenario(7).ships[1], id: "CG-2", hull: "CCG" };
   const row = inventoryRowHtml(ship, false);
-  assert.match(row, /巡洋舰-2/);
+  assert.match(row, /巡洋舰·2/);
+  assert.doesNotMatch(row, /CG 巡洋舰/);
 });
 
 test("inventoryHtml inserts a divider between sides and a row per ship", () => {
@@ -200,8 +276,8 @@ test("inventoryHtml inserts a divider between sides and a row per ship", () => {
 
 test("ground inventory header exposes the ground-specific columns", () => {
   const head = inventoryHeadHtml("ground");
-  for (const col of ["UNIT", "HP", "RDR", "AAW", "ASUW"]) {
-    assert.match(head, new RegExp(`>${col}<`));
+  for (const col of ["单位", "生命", "雷达", "防空弹药", "打击弹药"]) {
+    assert.match(head, new RegExp(col));
   }
   assert.match(head, /inventory-head ground/);
 });
@@ -220,8 +296,19 @@ test("groundRowHtml is a selectable row with the unit tag, radar reach, and effe
   const row = groundRowHtml(sam, true);
   assert.match(row, new RegExp(`data-select-ship="${sam.id}"`));
   assert.match(row, /class="inventory-row ground blue[^"]*selected"/);
-  assert.match(row, /SAM-/); // unit tag
-  assert.match(row, /160</); // radar reach in nm
+  assert.match(row, /防空营·3/); // compact localized name
+  assert.match(row, />160</); // radar reach (nm, no English suffix)
+});
+
+test("unit info popover exposes quantitative details without map geometry", () => {
+  const sim = createScenario(7, "openSea");
+  const f15n = placeShip(sim, SIDE.BLUE, -10 * NM, 0, "F15N");
+  const html = unitInfoPopoverHtml(f15n, sim);
+  assert.match(html, /inventory-info-card/);
+  assert.match(html, /燃料/);
+  assert.match(html, /高度/);
+  assert.match(html, /弹药/);
+  assert.doesNotMatch(html, /坐标|航点/);
 });
 
 test("shipDetailCardHtml dispatches naval/ground/air layouts by unit TYPE, not hull name", () => {

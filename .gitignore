@@ -30,3 +30,7 @@ reasonix.toml
 
 # Test-runner scratch state
 test-results/
+
+# Local UI verification scratch (screenshots, measurement scripts)
+tmp/
+artifacts/

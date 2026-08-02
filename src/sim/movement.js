@@ -6,13 +6,14 @@ import { clamp, distance, angleTo, wrapAngle } from "./math.js";
 import { offensiveMissileCount } from "./ships.js";
 import { firstLandCollisionFraction, isWaterPoint, segmentCrossesLand, terrainCollision } from "../world/terrain.js";
 import { shipWaterClearanceM } from "./scenario.js";
-import { iterateTracksForShip } from "./sensors.js";
-import { AIRCRAFT_TEMP_CONFIG, AIR_STATE, stickToBaseDeck } from "./aircraft.js";
+import { tracksForShipInto } from "./sensors.js";
+import { AIRCRAFT_TEMP_CONFIG, AIR_STATE, captureAircraftRecovery, stickToBaseDeck } from "./aircraft.js";
 
 // Shared empty list: when the per-tick missile-by-target index exists but holds
 // no bucket for a ship, that ship has nothing inbound — iterate nothing rather
 // than falling back to a full O(missiles) scan (the pre-index fallback only).
 const NO_INCOMING = [];
+const decisionTracksByShip = new WeakMap();
 const CLEAR_ROUTE_CACHE_S = 10;
 const BLOCKED_DETOUR_CACHE_S = 10;
 const WAYPOINT_DEADBAND_M = 0.1 * NM;
@@ -190,6 +191,7 @@ function applyWaterCollisionGuard(sim, ship, nextPosition) {
 // clamp to the map. No terrain interaction (overflies everything). Speed is
 // degraded by attrition (lost aircraft) just like a damaged ship's propulsion.
 function moveAirUnit(sim, ship, dt) {
+  if (captureAircraftRecovery(sim, ship)) return;
   // Carrier / airfield deck: a rearming squadron is a passenger of its base.
   // Without this, a moving CVN would leave parked flights floating in the sea
   // at their recovery coordinates. O(1) per parked flight.
@@ -253,6 +255,7 @@ function moveAirUnit(sim, ship, dt) {
   ship.altitudeM = Math.max(0, ship.altitudeM + altDelta);
   ship.x = clamp(ship.x + Math.cos(ship.heading) * ship.speed * dt, -sim.widthM / 2, sim.widthM / 2);
   ship.y = clamp(ship.y + Math.sin(ship.heading) * ship.speed * dt, -sim.heightM / 2, sim.heightM / 2);
+  captureAircraftRecovery(sim, ship);
 }
 
 export function moveShips(sim, dt) {
@@ -316,7 +319,12 @@ export function decideShip(sim, ship) {
   if (ship.domain === "air") return;
   let nearestEnemy = null;
   let nearestEnemyRange = Infinity;
-  for (const track of iterateTracksForShip(sim, ship)) {
+  let decisionTracks = decisionTracksByShip.get(ship);
+  if (!decisionTracks) {
+    decisionTracks = [];
+    decisionTracksByShip.set(ship, decisionTracks);
+  }
+  for (const track of tracksForShipInto(sim, ship, decisionTracks)) {
     if (track.side === ship.side || track.quality <= 0.18) continue;
     const range = distance(ship, track);
     if (range < nearestEnemyRange) {

@@ -103,7 +103,8 @@ The simulation core is split into small `src/sim/*` modules behind the `src/sim.
 - Use `tests/sim.test.mjs` to confirm whether behavior is intentional, especially for determinism, defense logic, loadouts, serialization, and UI defaults.
 - Keep changes deterministic; this is a core repository expectation.
 - If you change behavior in a `src/sim/*` module, check whether a nearby test already exists before adding anything new.
-- For UI edits, keep English and Chinese text in sync, and verify the result in both Edge and Chrome at 100% browser scale before wrapping up.
+- For UI edits, keep the Simplified Chinese product UI coherent (the app is Chinese-first, not bilingual), and verify the result in both Edge and Chrome at 100% browser scale before wrapping up.
+- Repo docs (`README.md`, `docs/*`, `CHANGELOG.md`) are English. Do not reintroduce Chinese dual-language doc blocks unless the user asks.
 
 ## Runtime and validation
 
@@ -148,11 +149,12 @@ change you happened to make this session**.
   (commits since the last version tag/commit), the stale `Unreleased`/working
   notes, and the actual diff of the docs/code versus the previous release.
 - **Keep version strings in sync.** A version bump touches `package.json`
-  (`version`), `index.html` (the brand wordmark and the about-overlay subtitle),
-  and `src/ui/lang.js` (`about.subtitle`, both `en` and `zh`). Update the release
-  references in `README.md` and `docs/PLAYER_GUIDE.md` too.
-- **Bilingual coherence is required.** The changelog and the bilingual docs
-  (`README.md`, `docs/PLAYER_GUIDE.md`) must read naturally in Simplified Chinese.
+  (`version`), `index.html` (the brand wordmark), and `src/ui/lang.js` (Chinese
+  UI copy that mentions the version). Update the release references in
+  `README.md` and `docs/PLAYER_GUIDE.md` too.
+- **Docs are English; the app is Simplified Chinese.** Changelog and repo docs
+  (`README.md`, `docs/*`) should read naturally in English. Product UI strings
+  stay Chinese-first.
 - Organize the entry (Added / Changed / Fixed / Documentation) and keep the prior
   version sections below the new one. Verify with `npm test` before finishing.
 

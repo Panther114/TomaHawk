@@ -3,55 +3,73 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="破晓前夜 Dawnfall——以探测、航迹共享与自主交战为核心的现代联合作战推演。" />
-    <meta property="og:title" content="破晓前夜 Dawnfall" />
-    <meta property="og:description" content="在发现、共享与交战之间，决定战场走向。" />
-    <title>破晓前夜 Dawnfall｜现代联合作战推演</title>
-    <link rel="icon" href="src/assets/dawnfall-mark.svg" />
+    <meta name="description" content="战斧 Tomahawk——在浏览器中运行的确定性现代联合作战仿真系统。" />
+    <meta property="og:title" content="战斧 Tomahawk" />
+    <meta property="og:description" content="进入现代联合作战推演。" />
+    <title>战斧 · Tomahawk</title>
+    <link rel="icon" href="src/assets/icon.png" />
+    <link rel="preload" href="src/fonts/chi_font.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="stylesheet" href="src/fonts.css" />
     <link rel="stylesheet" href="src/landing.css" />
   </head>
   <body>
-    <a class="skip-link" href="#hero-copy">跳到主要内容</a>
-    <main class="landing">
-      <div class="landing-grid" aria-hidden="true"></div>
+    <a class="skip-link" href="#game-menu">跳到主要内容</a>
+    <main class="landing" data-landing>
+      <div class="landing-scene" aria-hidden="true">
+        <img
+          class="scene-layer scene-background"
+          src="src/assets/landing/tomahawk-storm-sunset.webp"
+          data-parallax-x="6"
+          data-parallax-y="4"
+          alt=""
+          fetchpriority="high"
+        />
+        <img
+          class="scene-layer scene-carrier"
+          src="src/assets/landing/tomahawk-carrier-v2.webp"
+          data-parallax-x="22"
+          data-parallax-y="14"
+          alt=""
+        />
+        <img
+          class="scene-layer scene-aircraft"
+          src="src/assets/landing/tomahawk-hornet-v2.webp"
+          data-parallax-x="67"
+          data-parallax-y="43"
+          alt=""
+        />
+      </div>
+      <div class="landing-atmosphere" aria-hidden="true"></div>
+      <div class="landing-grain" aria-hidden="true"></div>
+
       <header class="landing-nav">
-        <a class="landing-brand" href="/" aria-label="破晓前夜首页">
-          <img src="src/assets/dawnfall-mark.svg" alt="" />
-          <span><b>破晓前夜</b><small>DAWNFALL</small></span>
+        <a class="landing-brand" href="/" aria-label="战斧首页">
+          <img src="src/assets/icon.png" alt="" />
+          <span><b>战斧</b><small>TOMAHAWK</small></span>
         </a>
         <nav aria-label="主导航">
-          <a href="/guide">玩法教程</a>
-          <a href="https://github.com/Panther114/TomaHawk">项目仓库</a>
-          <a class="nav-enter" href="/sandbox">进入推演</a>
+          <a href="/guide">操作手册</a>
+          <a href="https://github.com/Panther114/TomaHawk" aria-label="GitHub 项目仓库">
+            <svg class="github-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 0 0-3 18.52c.48.09.66-.21.66-.46v-1.68c-2.69.58-3.26-1.14-3.26-1.14-.44-1.11-1.08-1.4-1.08-1.4-.88-.6.07-.59.07-.59.97.07 1.48 1 1.48 1 .86 1.47 2.25 1.04 2.8.8.09-.63.34-1.04.61-1.28-2.15-.24-4.42-1.08-4.42-4.8 0-1.06.38-1.92 1-2.6-.1-.24-.43-1.23.1-2.57 0 0 .82-.26 2.67.99a9.3 9.3 0 0 1 4.86 0c1.85-1.25 2.67-.99 2.67-.99.53 1.34.2 2.33.1 2.57.62.68 1 1.54 1 2.6 0 3.73-2.27 4.56-4.43 4.8.35.3.65.87.65 1.76v2.61c0 .25.17.55.66.46A9.5 9.5 0 0 0 12 2.5Z"/></svg>
+            <span>GitHub</span>
+          </a>
         </nav>
       </header>
 
-      <section class="hero-visual" aria-label="航母战斗群与舰载机">
-        <div class="horizon-line"></div>
-        <img class="hero-carrier" src="src/assets/hero/carrier-group.webp" alt="航母战斗群侧向写实剪影" />
-        <div class="hero-fallback" aria-hidden="true">
-          <span class="fallback-jet"></span>
-          <span class="fallback-carrier"></span>
-          <span class="fallback-escort"></span>
-        </div>
-        <div class="bearing bearing-a">031° 14′ 22″ N</div>
-        <div class="bearing bearing-b">127° 48′ 09″ E</div>
+      <section id="game-menu" class="game-menu" aria-labelledby="game-title">
+        <img class="menu-mark" src="src/assets/icon.png" alt="" />
+        <h1 id="game-title">
+          <span>战斧</span>
+          <small>TOMAHAWK</small>
+        </h1>
+        <a class="primary-cta" href="/sandbox" data-enter-simulation>
+          <span>进入推演</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12h13m-5-5 5 5-5 5" />
+          </svg>
+        </a>
       </section>
-
-      <section id="hero-copy" class="hero-copy">
-        <span class="eyebrow">现代联合作战推演</span>
-        <h1><span>破晓前夜</span><b>DAWNFALL</b></h1>
-        <p>在发现、共享与交战之间，决定战场走向。</p>
-        <div class="hero-actions">
-          <a class="primary-cta" href="/sandbox"><span>进入推演</span><i>→</i></a>
-          <a class="text-cta" href="/guide">查看五分钟教程</a>
-        </div>
-      </section>
-
-      <footer class="landing-foot">
-        <span>v1.0 · DETERMINISTIC SIMULATION</span>
-        <span>海上 · 水下 · 陆基 · 空中</span>
-      </footer>
     </main>
+    <script type="module" src="src/landing.js"></script>
   </body>
 </html>

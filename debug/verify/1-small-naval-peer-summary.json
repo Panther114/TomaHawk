@@ -1,15 +1,15 @@
 {
-  "ticks": 13244,
-  "simTimeS": 3311,
+  "ticks": 18194,
+  "simTimeS": 4548.5,
   "outcome": "draw",
-  "wallMs": 1052.6,
-  "avgMsTick": 0.079,
+  "wallMs": 2173.4,
+  "avgMsTick": 0.119,
   "perf": {
-    "p50": 0.031,
-    "p95": 0.286,
-    "max": 11.525,
-    "peakEntities": 41,
-    "peakMissiles": 37
+    "p50": 0.04,
+    "p95": 0.413,
+    "max": 16.355,
+    "peakEntities": 42,
+    "peakMissiles": 38
   },
   "blue": {
     "alive": 1,
@@ -23,12 +23,12 @@
     "rearming": [],
     "rtb": [],
     "hulls": [
-      "DDG"
+      "FFG"
     ]
   },
   "red": {
-    "alive": 1,
-    "ships": 1,
+    "alive": 2,
+    "ships": 2,
     "ground": 0,
     "air": 0,
     "planes": 0,
@@ -38,17 +38,18 @@
     "rearming": [],
     "rtb": [],
     "hulls": [
-      "DDG"
+      "DDG",
+      "FFG"
     ]
   },
   "launches": {
-    "SM-6": 1,
+    "SM-2MR": 1,
     "MaritimeStrike": 2,
-    "ESSM": 1
+    "ESSM": 2
   },
   "counts": {
-    "intercepts": 42,
-    "misses": 63,
+    "intercepts": 38,
+    "misses": 71,
     "decoys": 0,
     "splashes": 0,
     "rearmPhases": 0,
@@ -63,64 +64,64 @@
   "flags": [],
   "lastEvents": [
     {
-      "t": 831.25,
-      "side": "Blue",
-      "text": "Blue FFG 4 launched SM2 at MaritimeStrike."
-    },
-    {
-      "t": 831.25,
-      "side": "Blue",
-      "text": "Blue FFG 4 queued 1x SM2 salvo at MaritimeStrike."
-    },
-    {
-      "t": 830.75,
-      "side": "Blue",
-      "text": "Blue DDG 3 launched MSTK at surface combatant."
-    },
-    {
-      "t": 830.5,
-      "side": "Blue",
-      "text": "SM-2MR failed to intercept MaritimeStrike."
-    },
-    {
-      "t": 830.25,
+      "t": 862.25,
       "side": "Blue",
       "text": "Blue DDG 3 queued 1x SM2 salvo at MaritimeStrike."
     },
     {
-      "t": 830.25,
-      "side": "Blue",
-      "text": "Blue DDG 3 queued 1x SM2 salvo at MaritimeStrike."
-    },
-    {
-      "t": 829.5,
-      "side": "Blue",
-      "text": "SM-2MR intercepted incoming MaritimeStrike."
-    },
-    {
-      "t": 829.5,
-      "side": "Blue",
-      "text": "SM-2MR failed to intercept MaritimeStrike."
-    },
-    {
-      "t": 829.5,
-      "side": "Blue",
-      "text": "Blue DDG 3 launched SM2 at MaritimeStrike."
-    },
-    {
-      "t": 828.75,
+      "t": 861.75,
       "side": "Red",
-      "text": "Red DDG 5 launched MSTK at surface combatant."
+      "text": "ESSM received a midcourse abort and self-destructed after its target was destroyed."
     },
     {
-      "t": 827.75,
+      "t": 861.5,
       "side": "Red",
-      "text": "Red DDG 5 launched SM2 at MaritimeStrike."
+      "text": "ESSM intercepted incoming MaritimeStrike."
     },
     {
-      "t": 827.5,
+      "t": 861.25,
       "side": "Blue",
-      "text": "Blue FFG 4 launched SM2 at MaritimeStrike."
+      "text": "ESSM failed to intercept MaritimeStrike."
+    },
+    {
+      "t": 859.5,
+      "side": "Red",
+      "text": "Red FFG 6 launched SM2 at MaritimeStrike."
+    },
+    {
+      "t": 858.75,
+      "side": "Red",
+      "text": "Red DDG 5 launched ESSM at MaritimeStrike."
+    },
+    {
+      "t": 858.25,
+      "side": "Red",
+      "text": "Red DDG 5 queued 1x ESSM salvo at MaritimeStrike."
+    },
+    {
+      "t": 858.25,
+      "side": "Red",
+      "text": "Red FFG 6 queued 1x SM2 salvo at MaritimeStrike."
+    },
+    {
+      "t": 858.25,
+      "side": "Red",
+      "text": "Red DDG 5 queued 1x ESSM salvo at MaritimeStrike."
+    },
+    {
+      "t": 858,
+      "side": "Red",
+      "text": "SM-2MR received a midcourse abort and self-destructed after its target was destroyed."
+    },
+    {
+      "t": 858,
+      "side": "Red",
+      "text": "ESSM received a midcourse abort and self-destructed after its target was destroyed."
+    },
+    {
+      "t": 858,
+      "side": "Red",
+      "text": "ESSM intercepted incoming MaritimeStrike."
     }
   ],
   "name": "small-naval-peer",

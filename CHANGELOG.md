@@ -1,62 +1,58 @@
 # Changelog
 
 All notable changes to this repository will be documented in this file.
-本文件记录仓库的全部重要变更。
 
 ## v1.0.0 — 2026-07-28
 
-### Release summary / 发行摘要
+### Release summary
 
-- **Dawnfall product transition.** The user-facing product is now **破晓前夜 Dawnfall v1.0**. The app is Simplified-Chinese-first with no language switch; military designations such as DDG, F-22, THAAD and Tomahawk Block V remain where they improve precision.
+- **Tomahawk product transition.** The user-facing product is now **战斧 Tomahawk v1.0**. The app is Simplified-Chinese-first with no language switch; military designations such as DDG, F-22, THAAD and Tomahawk Block V remain where they improve precision.
 - **Experience release.** A full-screen equipment library, continuous placement preview, compact battle overview, contextual force drawer, layer controls, playback bar, tools drawer, first-run tour, one-screen landing page and a dedicated responsive guide replace the old mechanical control shell.
 - **Complete post-v0.3 simulation delta.** This release also includes every change accumulated since v0.3: carrier basing, THAAD, expanded player aircraft, submarine and electronic warfare, RCS/detection and movement accuracy work, fire-planning fixes, Unit Workshop upgrades, persistence hardening, performance work and the regression fixes detailed below.
-- 用户可见产品统一为**破晓前夜 Dawnfall v1.0**，只提供简体中文界面；DDG、F-22、THAAD、Tomahawk Block V 等必要军事型号仍保留。v1 同时汇总 v0.3 之后的全部模拟升级与修复，完整条目见本节后续内容。
 
-### Added — Interface, landing page, symbols and tutorial / 界面、首页、符号与教程
+### Added — Interface, landing page, symbols and tutorial
 
 - Added `/`, `/sandbox` and `/guide` routes: a cinematic one-screen landing page, the desktop tactical sandbox, and a mobile-readable Chinese player guide.
 - Replaced the class dropdown with a searchable, categorized equipment library covering all 22 built-in units and deterministic custom-unit fallbacks.
 - Added continuous deployment with affiliation-colored cursor symbols, terrain-validity feedback, right-click/Escape cancellation and clear setup locking.
 - Added a MIL-STD-2525E / APP-06-inspired controlled symbol subset using cached `Path2D` geometry. It distinguishes affiliation, domain and major function without claiming full standard compliance.
 - Added a shared eight-step tutorial model and first-run guidance persisted under `dawnfall.tutorialDismissed`.
-- 新增三个公开页面、全屏装备库、连续部署预览、地形错误提示、标准风格受控战术符号、首次引导与中文图文教程。
 
-### Changed — Chinese layer, layout, branding and persistence / 中文层、布局、品牌与持久化
+### Changed — Chinese layer, layout, branding and persistence
 
 - Removed the English language state and switch. Dynamic UI and event display now use a centralized Simplified Chinese catalogue.
 - Removed the visible tactical feed and About overlay while preserving internal events, debug capture and AAR export. AAR files now use `dawnfall-aar-*` and add `displayTextZh` without changing original event fields.
 - Reorganized the sandbox around a large map viewport: mirrored force summaries at top, contextual right drawer, bottom-left layer controls, central playback controls and a compact tools drawer.
 - Unit Workshop persistence moves to `dawnfall-mods`; a verified one-time migration copies legacy records before removing the old database. Debug entry points are now `dawnfall.debug` and `window.dawnfallMods`.
 - Railway production uses a 64 MiB Node heap and streamed static delivery; simulation, rendering and user persistence remain client-side.
-- 取消英文切换与可见战术日志；重排沙盘控制面；战报保留原始字段并补充中文显示文本；完成单位工坊、调试键和全局入口的品牌迁移。
-- Railway 生产环境采用 64 MiB Node 堆与静态文件流式发送；模拟、绘制和用户数据持久化全部保留在客户端。
 
-### Documentation / 文档
+### Documentation
 
-- Replaced the previous bilingual reference bundle with seven maintained Chinese documents: `README.md`, `PLAYER_GUIDE.md`, `ARCHITECTURE.md`, `SIMULATION.md`, `MODDING.md`, `SOURCES.md` and `ROADMAP.md`.
-- 删除重复、过时和历史演示设计稿，修复文档入口，并以自然中文重写玩家、架构、模拟、模组、来源与路线图说明。
+- Replaced the previous bilingual reference bundle with seven maintained English repository documents: `README.md`, `PLAYER_GUIDE.md`, `ARCHITECTURE.md`, `SIMULATION.md`, `MODDING.md`, `SOURCES.md` and `ROADMAP.md`. The in-app `/guide` page remains Simplified Chinese.
+- Removed duplicate, stale, and historical demo design drafts; fixed documentation entry points.
 
-### Added — THAAD hypersonic defense battery / 萨德高超防空电池
+### Added — THAAD hypersonic defense battery
+
 - **THAAD ground battery** + **THAAD interceptor**: public-approx ~110 NM reach, ~Mach 8 class interceptor, high-altitude hit-to-kill profile. Magazine 48 (6×8 envelope). AN/TPY-2-class long search radar.
 - **Hypersonic-only engagement:** interceptors carry `hypersonicOnly` / `engageProfile: high_energy_only` and fire planning never releases them against cruise missiles or aircraft — only `isHighEnergyThreat` (Mach 5+ / strategic / boost-glide). Better PK band vs LRHW than SM-6 (~40–55% ceiling after penalties).
-- 新增 THAAD 阵地与拦截弹：仅拦截高超/弹道类威胁，不对巡航弹或飞机开火。
 
-### Added — Carrier basing (moving airfield) / 航母基地（移动机场）
+### Added — Carrier basing (moving airfield)
+
 - **CVN hull** (Nimitz/Ford approx.): sea-domain combatant with `isAirfield:true` — steams, fights, and serves as a rearm/refuel deck for friendly squadrons.
 - **Carrier-capable airframes only** recover on CVN (`F-35C`, `AWAC`/E-2, fictional `F15N`); land-based types still need an AFB. Workshop exposes `carrierCapable` and naval **Carrier deck**.
 - **Deck stick + lead recovery:** rearming flights ride the moving deck every tick; RTB aims at a lead intercept of the carrier, not its wake. Full decks (`maxParkedSquadrons`) put overflow flights in a holding pattern.
-- 新增 CVN 航母（移动机场）：舰载机型方可回收；停放中队贴合甲板运动；满甲板时盘旋等待。
 
-### Fixed / Added — Accuracy pass + player airframes / 精度修复与玩家机型
+### Fixed / Added — Accuracy pass + player airframes
+
 - **RCS floor no longer collapses LO fighters.** Detection floor 0.12 made F-22 and F-35 identical on radar; floor is now 0.05 with distinct LO RCS values.
 - **Air-domain detection lift (O(1)).** Destroyer-referenced fourth-root alone painted non-stealth fighters only at knife-fight range (~38 NM), so track quality never cleared the 0.32 ID gate and SAMs never engaged. Air targets get a capped lift so F-15-class flights paint at ~90 NM while LO stays much shorter.
 - **Domain-aware track classification.** Low-quality air/ground tracks no longer read as "surface combatant" (which inflated enemy offense with DDG priors).
 - **Air-launched weapons inherit launch altitude** and blend toward cruise profile over ~8 NM (no more Harpoon teleporting to 30 m sea-skim on the launch tick).
 - **LO stand-in doctrine is flag-based** (`lowObservable`), not hard-coded to F-35C + Harpoon — F-35A JSOW uses the same low-release gate.
 - **Player airframes with public-approx data:** F-22, F-35A, F-35C, F-15C, F-15E, F-15N (role sibling), **F-15EX**, **F-16V** — real class names, differentiated speeds/RCS/radar/loadouts; tags stay alphanumeric (no `-` in prefix, so inventory id split stays correct).
-- 修复隐身机 RCS 探测被地板值抹平；修复非隐身战斗机因探测距离过近而无法被舰空导弹交战；低质量航迹按域分类；空射武器从载机高度下降；新增 F-15EX / F-16V 等玩家机型开源近似数据。
 
-### Fixed — Fire planning, aircraft doctrine, peer aggression, and lag / 火力规划、空中条令、对等交战进攻性与卡顿
+### Fixed — Fire planning, aircraft doctrine, peer aggression, and lag
+
 - **Realistic hypersonic intercept difficulty (perf-safe).** SAM/CIWS hit chance against high-energy threats was only a flat −0.28 speed step, so SM-6 vs Dark Eagle still landed near ~50% single-shot PK. Intercepts now use an O(1) model: continuous Mach kinematic penalty, boost-glide/strategic profile + altitude, interceptor-layer match (ESSM/CIWS collapse; SM-6-class least-bad with a hard ~30% ceiling), plus existing track/saturation terms. Defensive planning prioritises hypersonic threats, commits multi-shot depth, and prefers SM-6 over ESSM. Custom Workshop `strategic` / hypersonic-glide ammo uses the same path.
 - **Dark Eagle / specialist starvation.** Force offensive planning used a single target slot filled by the nearest destroyers’ ASCMs, so DEB (and often CDB/air strike) magazines never received an allocation in multi-shooter fights even though isolated DEB tests passed. Specialists now get a first allocation pass; hypersonic / very-long-range weapons may use a small strategic overflow after the general raid cap is full; domain-specialist target slots keep ground-only and sea-only magazines usable.
 - **Unit Workshop support for specialist / strategic fire planning.** Ammo records expose **Strategic / deep-strike**, **flight profile** (hypersonic glide), and cruise/terminal altitudes; naval/ground/aircraft expose **Strike specialist**. Custom LRHW-class munitions and arsenal-ship / coastal-battery hulls register into the same planning path as vanilla DEB/Dark Eagle (round-trip via `toInternalSpec` / `vanillaUnits`).
@@ -64,61 +60,61 @@ All notable changes to this repository will be documented in this file.
 - **CAP / path wobble.** Threat axis mean included missile tracks (raid thrash) and CAP stations rewrote every decision tick. Axis is unit-tracks-only; CAP/support stations use a waypoint deadband.
 - **Peer-fight aggression floor.** Own offense counted only MSTK/TLAM/SM-6 while enemy priors already weighted DEB×2 and air — near-equal mixed fights opened in `survive` (aggr ~0.09). Own strike depth now counts all surface munitions; parity baseline ~0.50 with light pressure penalty and fog-of-war pull only when the picture is empty/thin; focus mode can take two surface targets at healthy aggression.
 - **Frame lag spikes.** Browser catch-up could force several heavy sim ticks into one animation frame under large raids. Sim work is budgeted per frame (carry debt); debug perf/battle logging is opt-in (`?debug=1` or `localStorage dawnfall.debug=1`).
-- 修复暗鹰/专用火力被近距舰载反舰弹“占满配额”而从不发射；修复飞机对不可攻击域的错误锁定；威胁轴线与 CAP 站位不再因导弹航迹抖动；对等交战开局进攻性回到合理区间；浏览器端仿真步长按帧预算限流。新增 `tests/ai-doctrine-fixes.test.mjs` 与 `scripts/validate-ai-fixes.mjs`。
+- Added `tests/ai-doctrine-fixes.test.mjs` and `scripts/validate-ai-fixes.mjs`.
 
-### Added — RCS unification + Unit Workshop exposure / RCS 统一与单位工坊开放
+### Added — RCS unification + Unit Workshop exposure
+
 - **Every missile now has a real radar cross-section.** Detection used to rely on a hand-tuned "visibilityFactor" magic number per weapon with no relationship to any actual RCS value; every missile in the catalogue now carries a public-source-approximate `rcsM2` (a tiny WVR dogfight round through a larger long-range cruise missile), and a radar's pickup chance scales the same fourth-root radar-range-equation way already used for ships/aircraft — referenced to the largest vanilla munition rather than a destroyer, since every weapon is 3-4 orders of magnitude smaller than even a stealth fighter. Altitude/profile (sea-skim vs. lofted) remains a separate, legitimate factor on top.
 - **RCS is now editable in the Unit Workshop.** Real bug: RCS was fully implemented in the sim engine but completely invisible in the Workshop — every custom/cloned naval, ground, or aircraft unit silently got an auto-computed default with no way to see or override it. Every unit type (naval/ground/aircraft/ammo) now exposes `rcsM2` as a plain field, round-tripping the exact value the sim uses (vanilla hulls without an explicit value show the same domain/displacement-derived default the engine itself falls back to).
-- 每个导弹现在都拥有真实的雷达散射截面（RCS）：此前探测完全依赖每种武器手工调校、与任何真实 RCS 值都无关联的"可见度因子"魔数；现在弹药目录中每型导弹都携带一个开源近似的 rcsM2（从微小的近距格斗弹到较大的远程巡航导弹），雷达探测概率按舰艇/飞机已使用的同一四次方根雷达距离方程缩放——参照弹药中最大的型号而非驱逐舰，因为任何弹药都比隐身战机小 3-4 个数量级。修复真实 bug：RCS 此前已在仿真引擎中完整实现，却在单位工坊中完全不可见——每个自定义/克隆的海军、陆基或空中单位都会静默获得一个自动计算的默认值，且无法查看或修改。现在海军/陆基/空中/弹药四种单位类型均公开 rcsM2 字段，并与仿真实际使用的数值完全一致。
 
-### Changed — Aircraft naming + hardpoint polish / 空中单位命名与挂架数量整理
+### Changed — Aircraft naming + hardpoint polish
+
 - **Concise unit tags and class names, replacing the real-airframe-name-plus-parenthetical style** ("F-22 Raptor Squadron (5th-gen air-superiority) approx." → tag `G5AA`, name "5th Gen Air Supremacy"). Tags follow a Generation × Role scheme: `G5`/`G4` × `AA` (air-superiority) / `AG` (anti-ground, matching this project's own `AGM-`-prefixed weapon naming) / `AS` (anti-ship). Internal hull ids (`F22`, `F35A`, etc.) are unchanged — only the displayed tag/name changed, in both the Unit Workshop list and live gameplay (Force Inventory, ship detail card, and the placement dropdown all read the same updated label).
 - **Uniform hardpoints per generation**: every 5th-gen hull now carries 8 hardpoints and every 4.5-gen hull 14 (a deliberate uniform gameplay number, not a claim about real internal-bay capacity — external-carriage RCS impact is a possible future refinement, not modeled now), with each loadout rebalanced to fill its cap exactly.
-- 简化空中单位的编号与命名，取代此前"真实机型名+括注"的风格（如"F-22 Raptor Squadron (5th-gen air-superiority) approx."）——现采用代际×定位方案：G5/G4 × AA（空优）/AG（对地，呼应本项目自有的 AGM- 前缀武器命名）/AS（反舰）。内部机型 ID（F22、F35A 等）不变，仅显示的代号/名称更新，单位工坊列表与实际游戏内（军力清单、单位详情卡、放置下拉菜单）均已同步。全部 5 代机型统一为 8 个挂载点，全部 4.5 代机型统一为 14 个（这是刻意选定的游戏性数值，并非对真实内部弹舱容量的主张——外挂对 RCS 的影响是可能的后续方向，目前尚未建模），各机型载弹已相应调整以恰好填满挂载上限。
 
-### Added — Movement & air-combat physics polish / 机动与空战物理打磨
+### Added — Movement & air-combat physics polish
+
 - **Rough strategic bearing estimate for units with no radar contact.** Every unit now has a periodically-refreshed, deliberately imprecise sense of the enemy's general direction — representing real pre-contact battlespace awareness — instead of either a fixed compass heading (aircraft CAP fallback) or, for ships, literal RNG-jitter with no relationship to the enemy's actual position at all. Real fused tracks still take over the moment a side holds one.
 - **Real bug fixed: missile evasion never dropped altitude.** Verified in code: the defensive-break branch changed heading but never touched `targetAltitudeM`. Real BVR/WVR doctrine pairs the beam/notch maneuver with a hard dive and afterburner; the flight now does all three together.
 - **Afterburner**, modeled uniformly across every airframe (a property of the engine, not the generation): a speed/acceleration multiplier at a steep fuel-burn cost, engaged by the AI only for a defensive break or closing an air-to-air intercept — cruise/ingress/patrol/RTB still fly MIL power.
 - **Aircraft energy state (GPE↔KE).** Altitude and airspeed were fully independent integrators with zero physical coupling; a diving aircraft now genuinely gains real airspeed from gravity and a climbing one genuinely loses it, on top of the existing thrust/drag and turn-bleed model — this is what makes the new defensive dive matter kinematically, not just visually.
 - **Missile maneuver-induced energy bleed + terminal-dive speed bump.** A missile forced to pull a hard turn chasing an evading/notching target now genuinely bleeds speed doing it (most significant, and most consequential, in the terminal endgame) — the actual physical mechanism behind why notch/beam+dive defense works, previously modeled only as a PK-formula fudge factor with zero effect on the missile's own kinematics. A missile also gains a small, heavily-damped one-time speed bump at the exact tick it snaps into its terminal dive (GPE→KE, damped for a controlled guided descent rather than free-fall).
-- 为所有尚未取得雷达接触的单位新增粗略的战略方位估计：定期刷新、刻意不精确，代表真实的战前战场态势感知，取代此前战机战斗空中巡逻的固定方位假设与舰艇纯随机抖动的巡逻航向；一旦取得真实航迹融合数据则立即改用真实方位。修复真实 bug：规避机动此前从不下降高度——现在战机在规避来袭导弹时会同时压低高度、进入加力燃烧室，与横向机动组合成真实空战条令中的复合规避机动。为全部机型统一建模加力燃烧室：额外的速度/加速度倍率，代价是燃油消耗大幅上升，AI 仅在防御性规避或空空拦截接近时使用。为战机机动学补充重力势能与动能耦合：俯冲真实获得空速，爬升真实损失空速。为导弹补充机动诱导能量损耗与末端俯冲的一次性速度提升，使规避机动确实会消耗导弹自身动能，而不仅仅是命中率公式上的修正。
 
-### Fixed — Unit Workshop ammo classification / 单位工坊弹药分类修复
+### Fixed — Unit Workshop ammo classification
+
 - **Real bug: the Unit Workshop let any unit type equip any registered weapon**, including combinations that make no physical sense — most visibly, an aircraft squadron's loadout could accept `ESSM`, a ship/ground point-defense missile with no aircraft seeker or air-launch model behind it at all. The root cause: the old `anti_air` category was a single bucket shared by ship-launched SAMs (SM-2MR/ESSM) and aircraft-carried AAMs (AIM-120/AIM-9X), and nothing anywhere checked which platform type a weapon was actually built for.
 - **Split `anti_air` into `ship_sam` and `air_to_air`**, and added an explicit, modder-editable **launch-platform field** (`Ship-launched` / `Ground-launched` / `Air-launched` checkboxes on every ammo record) that is the actual gate — independent of category, since e.g. `anti_ship` already legitimately spans a ship-launched round (`MaritimeStrike`) and an air-launched one (`AGM-84`). The Workshop's "add ammo" picker now only offers weapons compatible with the unit being edited, and `validateUnit` rejects an incompatible weapon in a hand-edited/imported loadout as defense-in-depth. Every vanilla weapon's platform list matches its existing real-world role (ship SAMs: sea+ground; AAMs and air-launched strike weapons: air only); custom ammo without the field keeps working everywhere it always did (unrestricted), so no existing mod is silently broken.
-- 修复真实 bug：单位工坊此前允许任意单位类型装备任意已注册武器，包括毫无实际意义的组合——最明显的是，飞机中队的载弹可以选择 `ESSM`（一种舰载/岸基点防御导弹，既无机载导引头也无机载发射建模）。根源在于旧的 `anti_air` 类别把舰载防空弹（SM-2MR/ESSM）和机载空空弹（AIM-120/AIM-9X）混为一谈，且没有任何地方检查武器实际适配的发射平台。现将 `anti_air` 拆分为 `ship_sam` 与 `air_to_air`，并新增一个可由 modder 自行编辑的发射平台字段（舰载/岸基发射/机载三个复选框）作为真正的门槛——该字段独立于类别（因为 `anti_ship` 本就合理地横跨舰载弹与机载弹）。工坊的"添加弹药"列表现在只展示与当前单位兼容的武器，`validateUnit` 也会拒绝手改/导入的不兼容装载作为纵深防御；未设置该字段的自定义弹药保持原有的"不限平台"行为，不会破坏现有模组。
 
-### Fixed — Air-to-air combat / 空空交战修复
+### Fixed — Air-to-air combat
+
 - **Real bug: opposing flights could fly apart forever and never detect each other, no matter how close they were placed.** The fleet-command "threat axis" (which orients CAP/orbit stations before any radar contact is held) defaulted to a fixed compass heading — "BLUE's enemy is always east, RED's enemy is always west" — instead of the actual bearing to the opposing force. That default is only correct for the canonical default battle layout; any manual placement outside it (e.g. via the Unit Workshop, or a pure air-only fight with no surface OTC to anchor on) sent both flights screening *away* from each other. Since RCS-limited air-to-air radar only triggers within its own effective range, and the flights never closed that range, no detection — and no engagement — ever happened, even well inside AIM-9 range. Fixed by deriving the default threat axis from each side's actual whole-fleet position instead of a fixed heading, and by having the no-surface-OTC CAP fallback re-read that axis every decision tick (instead of committing to one straight leg and holding it forever).
-- **修复真实 bug：交战双方机队此前可能永久背向飞离，无论投放距离多近都不会互相探测到对方。** 舰队指挥的"威胁轴线"（在尚未取得任何雷达接触前用于确定战斗空中巡逻/待战盘旋站位）此前固定假设"蓝方之敌总在东侧、红方之敌总在西侧"，而非根据实际敌方位置计算方位角。该默认值仅在标准默认想定布局下成立；任何偏离该布局的手动部署（例如通过单位工坊摆放，或没有水面指挥舰可依托的纯空战场景）都会让双方战机互相背离警戒。由于受雷达截面限制的空空探测只在各自有效距离内触发，而双方从未真正接近，因此即便相距在响尾蛇导弹射程之内也不会探测、更不会交战。现已修复：默认威胁轴线改为依据己方全舰队实际位置计算的真实方位角，且在没有水面指挥舰可依托时，巡逻站位每个决策帧都会重新读取该轴线，而不是只设定一次航向后永远保持。
 
-### Changed — Air unit roster overhaul / 空中单位阵容重做
+### Changed — Air unit roster overhaul
+
 - **Replaced the generic `VFA`/`VFS` pair with six fixed-identity squadron hulls** spanning two generations and three roles: 5th-gen low-observable `F22` (air-superiority only), `F35A` (anti-ground strike), `F35C` (anti-ship strike), and 4.5-gen non-stealth `F15E` (anti-ground strike), `F15N` (anti-ship strike, fictional), `F15C` (air-superiority only). Each hull's default loadout is now **rigid** — `vlsCells` is sized to exactly fit it — so a squadron spawns as, and stays, purpose-built rather than a generic multirole hardpoint budget.
 - **Added `AGM-154` (JSOW)**, a dedicated air-launched stand-off anti-ground weapon with its own range/speed/detection profile, distinct from the anti-ship `AGM-84` (Harpoon). It reuses the existing anti-ship engagement pipeline (fixed ground emplacements were already valid targets for that category), so no new targeting logic was needed — only a genuinely separate weapon so anti-ground-loadout squadrons are no longer stuck repurposing an anti-ship missile against SAM/CDB/EWR sites.
-- 移除通用的 `VFA`/`VFS`，替换为六型固定身份的中队机型，覆盖两代、三种定位：5 代隐身 `F22`（纯空优）、`F35A`（对地打击）、`F35C`（反舰打击）；4.5 代非隐身 `F15E`（对地打击）、`F15N`（反舰打击，虚构型号）、`F15C`（纯空优）。每型飞机的默认装载现在是**固定**的——`vlsCells` 精确匹配该装载——因此中队诞生时即为专用机型，而非可自由搭配的通用多用途弹药预算。新增 `AGM-154`（JSOW）防区外对地打击武器，射程/速度/探测特征均与反舰用的 `AGM-84` 不同，复用现有反舰交战流程（陆基阵地本就是该类别的合法目标），无需新的目标分配逻辑。
 
-### Added — AWAC command hub / AWAC 预警指挥机
+### Added — AWAC command hub
+
 - **New unarmed `AWAC` (E-2D Hawkeye-style AEW&C) squadron**: the longest-ranged mobile radar in the roster, never carries a weapon, and never screens ahead of the fleet — it orbits *behind* the formation guide, on the far side from the threat axis, at a generous stand-off. It still returns to a friendly airfield to refuel like any other squadron.
 - **Generalized `commandHub` ship-class flag** (any hull can opt in via the Unit Workshop, not just the AWAC): while an alive, on-mission command-hub unit is present, its side's CEC track-sharing latency tightens from 1.8s to 0.6s, modelling a centralized high-bandwidth relay instead of every ship pair correlating tracks independently.
-- 新增无武装的 `AWAC`（仿 E-2D 预警机）中队：全阵容雷达探测距离最远，从不携带武器，也从不在编队前方警戒——而是在编队引导舰后方、远离威胁轴线的一侧盘旋待战；耗油后同样返回己方机场加油。新增通用的 `commandHub`（指挥节点）标志（任意机型均可通过单位工坊开启，不限于 AWAC）：己方存活且在执行任务的指挥节点单位在场时，协同交战（CEC）航迹共享延迟从 1.8 秒收紧至 0.6 秒。
 
-### Fixed — Aircraft AI / 空中单位 AI 修复
+### Fixed — Aircraft AI
+
 - **Target-lock "wobble."** Fighters holding a stale or momentarily-undetected track used to re-acquire a *different* nearest contact every few decision ticks instead of holding their lock, producing visibly indecisive heading changes. Locks now persist through brief detection dropouts (an 8s coast window on the last-known position) and the aim point is exponentially smoothed, instead of snapping to a fresh nearest-contact pick on every miss.
 - **Air-to-air launches now require facing the target.** A launch cone (±100° of the launcher's heading) gates every aircraft-fired `anti_air`/`dual_role` shot; ship and ground VLS launches are unaffected (they already fire omnidirectionally, realistically).
 - **Radar horizon ignored the observer's own altitude.** The 4/3-earth-radius horizon calculation only ever used the *target's* height, so a 9,000m-cruising fighter's look-down range against a sea-skimming missile was capped as if the fighter were sitting at sea level (~19NM) instead of the ~220NM its altitude actually affords. Now computed symmetrically for both sides of the detection pair.
 - **A newly-discovered "winchester" RTB loop for any zero-loadout aircraft** (most consequentially, the new `AWAC`): a squadron built with an empty default loadout read as permanently "out of ammo," so it RTB'd on its very first decision tick, parked to rearm into the same empty magazine, and immediately RTB'd again — a park-forever loop that never let it fly its actual station-keeping mission. The "out of ammo" condition now only applies to squadrons that are designed to carry a weapon in the first place; a squadron with no weapons in its base loadout, by design, is never grounded for "winchester" (it still RTBs normally on low fuel).
-- 修复战机"摇摆"问题：此前战机在目标航迹短暂丢失或质量下降时会立刻改锁最近的（往往是不同的）目标，导致航向频繁抖动；现在锁定可在短暂探测中断（8 秒）内保持，瞄准点做指数平滑，不再每次探测失败就跳目标。空空导弹发射现在要求载机朝向目标（±100° 锥角），舰载/陆基垂发不受影响。修复雷达地平线计算忽略观测方自身高度的问题：巡航中的战机对海掠导弹的探测距离此前被错误地按海平面高度计算（约 19 海里），而非其飞行高度实际能提供的约 220 海里。修复了新发现的"打光弹药"返场死循环：出厂即无武装的中队（最典型是新增的 `AWAC`）会在第一个决策帧就被误判为"打光了"，返场装填出同样为空的弹药后立刻再次返场——永远飞不了真正的驻留任务。现在"打光"判定仅适用于本就设计携带武器的机型。
 
-### Fixed — UI / UI 修复
+### Fixed — UI
+
 - **Chinese aircraft-class names now convey generation and role instead of a flavor nickname.** `F-22`/`F-35A`/`F-35C`/`F-15C`/`F-15E`/`F-15N` were labelled 猛禽/隐攻/隐舰/空鹰/攻鹰/舰鹰 in Chinese — evocative but uninformative next to their English names, which already read as generation+role. Relabeled to 5代空优/5代对地/5代反舰/4代空优/4代对地/4代反舰 (4.5-gen airframes rounded to "4代" for brevity). English names unchanged.
-- 中文机型名称此前为猛禽/隐攻/隐舰/空鹰/攻鹰/舰鹰等意译昵称，看不出代际与定位；现改为 5代空优/5代对地/5代反舰/4代空优/4代对地/4代反舰（4.5 代机型为简洁计标注为"4代"），英文名称不变。
 - **Force Inventory per-missile stock color now follows one universal, automatic rule** (independent missile columns, not the aggregate VLS column, which keeps its own separate rule): white above 67% of baseline, yellow from 33–67%, red below 33%, grey at zero — computed from each ship's actual starting loadout rather than a fixed hull-wide color.
 - **Unit detail cards are now built per unit *type*** (naval / ground / air), not per individual hull, so a custom aircraft added through the Unit Workshop automatically gets an aircraft-shaped card (flight/fuel/altitude readouts, no VLS row) without any per-unit UI code.
 - Overlapping same-type/same-faction weapon-range rings merged into one visual outline but still drew one label per underlying ring; a merged cluster now draws exactly one label (30% more transparent, 30% smaller than before) regardless of how many rings feed it.
-- 军力清单中每种导弹库存的颜色现在遵循统一的自动规则（独立导弹列，不含总垂发列——后者仍用自己的规则）：高于基准 67% 为白色，33%–67% 为黄色，低于 33% 为红色，为零则灰显；基准取自该舰的实际初始装载。单位详情卡片现在按单位**类型**（海军/陆基/空中）而非具体舰型构建，因此通过单位工坊新增的自定义飞机会自动获得飞机形态的卡片。同类型同阵营合并后的武器射程圈此前仍会按舰艇数量重复绘制标签；现在每个合并后的圈仅绘制一个标签（透明度降低 30%，字号缩小 30%）。
 
-### Fixed — Bug-fix pass / 缺陷修复
+### Fixed — Bug-fix pass
+
 - **Air squadrons could be wrongly designated OTC.** When a side had no mobile surface unit (an all-air or all-fixed-remainder force), the fleet-command guide fell back to an air squadron and marked it `isOTC`, violating the "air is never OTC" invariant. OTC/AAWC roles are now surface-only (mobile surface preferred, fixed emplacement as last resort); an all-air side simply has no surface command tier, and the threat axis still derives from the best available unit.
 - **Dead missile re-vector branch removed.** `handleTargetLoss` always deactivated the missile and returned `false`, so the `if (!handleTargetLoss(...))` re-resolution path in `updateMissiles` was unreachable. Simplified to the actual behaviour (no re-vectoring), so the code matches the documented intent.
 - **`restoreScenario` could leave `selectedId` pointing at a missing ship.** A hand-edited or stale save no longer leaves a dangling selection; it snaps to a valid hull (or `null`).
@@ -133,86 +129,93 @@ All notable changes to this repository will be documented in this file.
 - **Unit Workshop preload could reject unhandled.** `modEditor.preload()` is now `.catch()`-guarded so a blocked IndexedDB context never crashes the app.
 - **Mod save/delete mutated the live catalogue before persisting.** `saveMod` / `deleteMod` now persist first and register/unregister after, so a failed write never leaves a phantom unit live-but-unsaved (or gone-live-but-still-in-storage). `loadMods` is resilient: a blocked/broken IndexedDB falls back to vanilla-only instead of rejecting. Save/delete/import paths in the editor surface failures with a retry message instead of unhandled rejections.
 - **Undocumented single-step key.** The `.` key (advance one tick) is now listed in the About overlay and the README/REFERENCE controls.
-- 修复：全空军一侧可能被错误指定 OTC；移除不可达的导弹再瞄准分支；`restoreScenario` 不再留下指向已删单位的 selectedId；首屏状态栏文字与实际"空想定"不符；战斗状态栏未本地化；键盘快捷键在聚焦下拉框时仍触发；Tab 抢占焦点导航；确认弹窗无键盘支持且背后快捷键仍生效；重置后选择集合残留 null；自定义路径保存无错误处理且取消系统对话框会丢失表单；移除已删除面板遗留的死事件监听与死 CSS；单位工坊预加载未捕获拒绝；模组保存/删除在持久化前就改动实时目录且 IndexedDB 故障会拒绝；单步推进键 `.` 此前未在文档中说明。
 
 ## v0.3.0 — 2026-06-30
 
 ### Release summary
+
 - Third public release of the TomaHawk / 战斧 local naval sandbox. It collects every change made since `v0.2`. The headline is **air units** — aircraft squadrons as first-class entities that scout, strike, dogfight, and rearm, woven into the existing sensor / Cooperative-Engagement (CEC) / fire-planning / damage / win pipeline rather than a parallel system. Around them: a **detection-realism overhaul** (radar cross-section + altitude / radar-horizon shadow, missile altitude and energy bleed, air-to-air no-escape-zone geometry), an **anti-overcommit** rework of offensive fire planning, the **Unit Workshop** modding system, new **performance** work (spatial saturation grid, pooled fire-planning indexes, throttled DOM render path), and a read-only **debug-logging** toolkit.
 - The simulation remains deterministic, dependency-light, and build-step-free; everything below was verified through `npm test` (170 tests) and the determinism + machine-independent complexity checks in `npm run bench` (complexity score ≈ 0.8, sub-linear).
-- 第三个公开版本，汇总自 `v0.2` 以来的全部变更。核心是**空中单位**：机队作为一等实体，复用现有传感器 / 协同交战 / 火控 / 毁伤 / 胜负流程。同时带来探测拟真升级（雷达截面 + 高度雷达地平线、导弹高度与能量衰减、空空不可逃逸区几何）、反过度投射的火力规划、单位工坊、性能优化与只读调试日志工具。
 
-### Added — Air units (aircraft squadrons) / 空中单位（机队）
+### Added — Air units (aircraft squadrons)
+
 - **One squadron = one entity, several aircraft.** A flight is a single `domain:"air"` entity that costs one ship's worth of latency (one radar, one track-file, one decision, one fire plan) but renders and attrits as several aircraft: its hit-point pool **is** its plane count, so each hit downs one aircraft and combat power (volley size, relaunch cadence) scales with the survivors. Modelling each airframe individually was deliberately avoided to keep the per-tick budget flat.
 - **Two generations.** `VFA` is a 4.5-gen multirole flight (large RCS, big external load); `VFS` is a 5-gen low-observable flight (tiny `rcsM2` so radars see it only deep inside their reach, an intrinsic `airEvasionBonus`, a smaller internal-carriage magazine, a better sensor).
 - **Stand-off strike doctrine.** Flights vector on the fused CEC fleet picture (not just their own short radar), fly a **low-altitude stand-off strike** — ingress → descend for radar-horizon masking → hold at a stand-off ring (a back-and-forth racetrack) → release → **egress** — never boring into the SAM envelope. They break to air-to-air only inside self-defence range, sweep when they have no strike to fly, and otherwise screen the fleet on CAP. Altitude is a per-flight attribute (high cruise vs low ingress) that drives sensor masking only — not a movement axis.
 - **Air-to-air, evasion, and flares.** Flights fight with radar BVR and infrared WVR missiles and attrit each other; a flight is a small, fast, hard target (large inherent evasion, more while breaking) so SAMs cost many shots per kill. When a missile closes inside the reaction envelope a flight performs an **evasive break** and pops **flares** — infrared seekers can be decoyed outright. A flight will also hard-kill an inbound anti-ship missile with its radar AAM, but conservatively (keeping a reserve for the dogfight).
 - **Airfields, RTB, rearm, and fuel.** An **airfield** (`AFB`, or any ground unit with `isAirfield`) is placeable on land **or** water and serves as a rearm/refuel node. A flight flies its mission until it is Winchester, has spent its anti-ship load, or is low on fuel, then returns to the nearest friendly airfield, rearms/refuels on a timer, and relaunches; with no field reachable it limps toward friendly territory and splashes when fuel runs out. It will not rearm on a destroyed airfield. Save/restore preserves mid-flight lifecycle/fuel/flare state.
 - **UI.** The force inventory gains an air sub-table (flight strength / lifecycle state / AAW / ASUW); a selected squadron's detail card shows flight readouts (aircraft, fuel, flares, state, altitude, effector counts) instead of ship subsystems; rendering draws one dart per surviving aircraft with label level-of-detail culling.
-- 新增机队（一个实体=数架飞机，HP 即飞机数，逐机减员）：4.5 代 `VFA` 与 5 代隐身 `VFS`；按编队 CEC 态势引导，执行低空防区外打击（突防→下降规避→环绕发射→脱离），仅自卫距离内转空战，否则担任战斗空中巡逻；机动规避 + 红外诱饵；机场可置于陆/海，弹尽油尽返场再装挂。
 
-### Added — Detection & missile realism / 探测与导弹拟真
+### Added — Detection & missile realism
+
 - **RCS-based detection.** Radar range against a target scales with the fourth root of its radar cross-section (`rcsM2`, referenced to a destroyer), so a small fighter flight is only seen far closer than a ship and a low-observable hull closer still — replacing the old rigid detection distance while keeping surface-vs-surface play near-unchanged.
 - **Altitude + radar horizon (the "radar shadow").** A 4/3-Earth-radius horizon model uses each contact's altitude: high flyers are seen far, sea-skimmers and low-level ingressers are masked beyond the geometric horizon.
 - **Missile altitude + bounded energy bleed.** Missiles carry a cruise altitude (anti-ship sea-skim vs lofted air-defence/strike) and lose speed toward the end of their reach via a bounded drag model (denser low air bleeds faster), clamped so a weapon never stalls and tuned envelopes hold.
 - **Air-to-air geometry.** Per-missile no-escape-zone (`nezFraction`, editor-tunable) plus aspect/closure: a shot inside the NEZ keeps its energy and is hard to defeat, a max-range or tail-chase shot is far easier to out-run. The AI prefers high-percentage NEZ shots (a BVR→WVR progression).
 - **New air weapons.** `AIM-120` AMRAAM (BVR active radar), `AIM-9X` Sidewinder (WVR infrared, flare-decoyable), `AGM-84` Harpoon (air-launched sea-skimming anti-ship).
 - **OTC air-picture integration.** Aircraft feed and consume the same fused CEC force picture as ships (engage-on-remote both ways); they are excluded from OTC/AAWC roles and AAW sector division (mobile screeners, not pickets).
-- 探测改为基于雷达截面（探测距离 ∝ RCS^0.25）+ 高度/雷达地平线（雷达阴影）；导弹带巡航高度与有界能量衰减；空空引入不可逃逸区与进入角；新增 AIM-120 / AIM-9X / AGM-84；机队接入协同交战态势。
 
-### Added — Anti-overcommit fire planning / 反过度投射的火力规划
+### Added — Anti-overcommit fire planning
+
 - Ships prefer dedicated anti-ship weapons over the dual-role `SM-6` (conserving fleet air defence), cap raid size by target toughness outside the deliberate `saturate` doctrine, and always keep a slot for the top surface target so strikers still get to use their anti-ship rounds when an enemy flight outscores every ship.
-- 火力规划优先使用专用反舰武器（节省 SM-6 防空弹），非饱和打击下按目标耐受度限制齐射规模，并始终为最高价值水面目标保留名额。
 
-### Added — Unit modding system / 单位自定义系统
+### Added — Unit modding system
+
 - **Unit Workshop.** A new folder-icon button beside the language toggle opens a dense editor popup: a lockable unit list on the left, and a curated, schema-driven parameter form on the right (empty until a unit is selected). Edits live in a working copy — closing the popup or switching units discards unsaved changes; **Save** is the only commit path.
 - **Three unit types.** `naval` and `ground` units are deployable from the placement dropdown; `ammo` units are not deployable and instead populate the loadout pickers of naval/ground units. Selecting a type re-renders the lower fields from that type's schema.
 - **Self-contained JSON units, permanently stored in the browser.** Each unit is a self-contained JSON record kept in IndexedDB (no Downloads/Desktop, no server changes — works identically for local runs and the cloud build). Drag a unit `.json` onto the popup to import it; **Export** writes a unit back out as a file to share.
 - **Vanilla units are locked, not deletable.** All built-in hulls, ground emplacements, and weapons are seeded into the store as read-only records and re-healed to canonical values on every boot. They render read-only with a **Clone** action; custom units add **Save**/**Delete**.
 - **Live registries.** `MISSILES` and `SHIP_CLASSES` are now mutable registries (not frozen) with `registerMissile`/`registerShipClass` (+ `isBuiltin…`/`unregister…`). Custom units flow through the existing sensor/CEC/engagement/win pipeline with no parallel code path. Ground units carry an explicit `glyph` (`sam`/`radar`/`bunker`) so custom emplacements pick a map symbol.
-- 单位工坊：语言切换按钮旁的文件夹图标打开一个紧凑编辑器；左侧为可锁定的单位列表，右侧为按类型生成的参数表单。未保存的修改在切换或关闭时丢弃，只有“保存”会提交。共三种类型：`naval`/`ground` 可部署，`ammo` 仅用于载弹配置。每个单位是存于浏览器 IndexedDB 的自包含 JSON，可拖入导入、导出分享；内置单位只读且不可删除。
 
-### Added — Debug instrumentation / 调试工具
+### Added — Debug instrumentation
+
 - **`PerfRecorder` → `debug/perf-debug.log`.** A per-run performance trace: sim ms/tick (avg/p50/p95/p99/max) and browser render ms/frame, peak concurrent entities, the worst tick, heap growth, and a lag diagnosis that **attributes a slow frame to the sim step vs the canvas render path**.
 - **`BattleLogger` → `debug/sim-debug.log`.** A per-run tactical narrative sampled at a fixed cadence: every entity's position/altitude/state/stores, a one-line translation of what each unit is doing and why, the per-side command posture, and the events since the last frame — enough to "watch" how the battle and the AI unfolded offline.
 - Both are read-only (no RNG, no sim mutation, so determinism is unaffected) and written to `debug/`, overwritten every run — headless via `npm run debug:sim` (a highly asymmetric air-vs-surface scenario that resolves) and from the browser app, which POSTs them to the server (`POST /debug/save`) on every run.
-- 新增只读调试模块：性能记录（区分模拟与渲染开销）与战场叙事日志，每次运行覆盖写入 `debug/`；`npm run debug:sim` 跑一个会分出胜负的高度不对称空海战。
 
 ### Changed
+
 - **`MISSILES` / `SHIP_CLASSES` are now live registries** (not frozen objects); all built-in values are preserved exactly, so the deterministic regression suite and complexity score are unchanged.
-- **Removed the strike-cell concept.** `vlsStrikeCells` is gone from the model, the editor, and saved scenarios: every missile now draws from one shared VLS pool by its `cellCost`. Vanilla default loadouts are byte-identical (the old cap never bound any built-in hull), so determinism is unaffected. / 移除“打击单元”概念：所有导弹共用同一垂发容量。
-- **Render-path performance.** The DOM side-panels (status, inventory, event log, detail cards) now refresh at ~20 Hz instead of every frame (the canvas still draws at full frame rate), eliminating the per-frame inventory/event-log rebuild + reflow that dominated browser cost during combat. The per-missile glow (`shadowBlur`) is dropped above ~50 live missiles, and weapon-range rings entirely off-screen are culled. No simulation logic changed. / 渲染优化：侧栏面板由逐帧改为约 20Hz 刷新，拥挤交战时丢弃导弹辉光、剔除完全离屏的射程环；不改动任何模拟逻辑。
-- **Local default serving port moved from `4173` to `4172`** (`server.mjs`, `quickrun.bat`, `.claude/launch.json`, docs). / 本地默认服务端口由 `4173` 改为 `4172`。
+- **Removed the strike-cell concept.** `vlsStrikeCells` is gone from the model, the editor, and saved scenarios: every missile now draws from one shared VLS pool by its `cellCost`. Vanilla default loadouts are byte-identical (the old cap never bound any built-in hull), so determinism is unaffected.
+- **Render-path performance.** The DOM side-panels (status, inventory, event log, detail cards) now refresh at ~20 Hz instead of every frame (the canvas still draws at full frame rate), eliminating the per-frame inventory/event-log rebuild + reflow that dominated browser cost during combat. The per-missile glow (`shadowBlur`) is dropped above ~50 live missiles, and weapon-range rings entirely off-screen are culled. No simulation logic changed.
+- **Local default serving port moved from `4173` to `4172`** (`server.mjs`, `quickrun.bat`, `.claude/launch.json`, docs).
 
 ### Fixed
+
 - **Blurry map.** Root cause was a fractional `devicePixelRatio` (e.g. 1.5) leaving the canvas backing store a half-pixel off the CSS size; fixed with exact CSS sizing and an identity-transform terrain blit so the backing store maps 1:1 to device pixels.
 - Aircraft no longer own or draw an AAW sector (they are mobile strikers, not sectorised air-defence pickets).
 
 ### Performance
+
 - **Spatial missile saturation grid + raid-count memoization.** Interceptor and CIWS saturation now read a true local missile density from a pooled per-tick uniform grid (more realistic than the old same-target proxy and bounded to nearby cells), and the inbound-raid count is memoized per planning cycle — removing the dominant quadratic in a saturated defence.
 - **Pooled per-cycle engagement-index Maps.** The seven fire-planning index structures are reused and cleared in place across cycles instead of reallocated each second — provably behaviour-preserving (the event-stream hash is unchanged).
 - Per-tick entity indexes let the movement / point-defence / aircraft paths skip the full all-missiles scan when nothing is inbound.
 
 ### Removed
+
 - Naval editor: the **Hull** (length/beam/draft/displacement), **CIWS hardware**, and **Strike cells** fields — all defaulted internally to keep the form lean. Mobility fields now auto-derive from cruise speed. Ammo identity is reduced to **ID** (the weapon labels itself with its ID).
 
 ## v0.2
 
 ### Release summary
+
 - Second public release of the TomaHawk / 战斧 local naval sandbox. It collects every change made since `v0.1`: a geographic terrain layer, terrain-aware navigation, fixed land-based unit types, a fully bilingual UI, Railway deployment, a modularized simulation core, and a machine-independent performance-regression guard.
 - The simulation remains deterministic, dependency-light, and build-step-free; everything below was verified through `npm test` and the determinism check in `npm run bench`.
 
 ### Added — Terrain and maps
+
 - **Tactical maps with a real coastline.** A selectable **East China Sea** layer renders locally bundled Natural Earth 1:10m land and coastline data in a regional azimuthal-equidistant projection, alongside the original border-less **Open Sea** layer. Map selection is a setup-only control.
 - **Shared world geometry.** `src/world/map-spec.js` and `src/world/terrain.js` own the map dimensions, projection, and binary water/land queries consumed by both the renderer and the simulation. The tactical world was expanded to nine times the core map width and 9.6 times its height, and the camera now clamps to that rigid border instead of zooming past it.
 - **Kilometre scale UI.** Map coordinates, a 20 km grid, a dynamic scale bar, rulers, and visible weapon ranges all read in kilometres; internal simulation distances stay in metres.
 - `docs/MAP_DATA.md` records the Natural Earth provenance and the `npm run map:data` regeneration step.
 
 ### Added — Terrain-aware navigation
+
 - Ship movement now treats terrain as a binary navigability problem (water vs. not-water). Ships plan deterministic coastal detours around land, fall back to stopping/replanning at the last safe water point rather than crossing a coastline, and reuse a blocked-route plan for its cache window.
 - Setup placement enforces terrain: **sea units must be placed on water** and snap back to the last valid water position when dragged onto land.
 
 ### Added — Ground-based unit types
+
 - **Three fixed, land-based emplacements** modeled as stationary ship-entities so they flow through the existing sensor / CEC / engagement / win pipeline:
   - **SAM** — coastal surface-to-air battery (area + point interceptors).
   - **CDB** — coastal anti-ship defence battery with an over-the-horizon targeting radar.
@@ -222,12 +225,14 @@ All notable changes to this repository will be documented in this file.
 - The Force Inventory now groups each faction into a **naval sub-table and a ground sub-table** with their own column headers and unique unit tags (`SAM-`, `CDB-`, `EWR-`), and ground units render as distinct map glyphs (SAM triangle, EWR diamond + sweep, battery bunker).
 
 ### Added — UI, i18n, and deployment
-- **Full English/Chinese (中文) UI** with a one-click language toggle covering panels, controls, ship/role labels, and the tactical event log (including localized clipboard export).
+
+- **Full English/Chinese UI** with a one-click language toggle covering panels, controls, ship/role labels, and the tactical event log (including localized clipboard export).
 - A wired-up **RULER** tool (button + `R`) that supports multiple simultaneous range/bearing measurements.
 - **One-click Railway deployment**: a root `railway.json`, `PORT` binding, and a `/health` endpoint, with local `npm start` unchanged.
 - Overlapping weapon-range rings of the **same weapon type and faction** now render as a single union outline (internal arcs removed) instead of a tangle of crossing circles. Style, colour, and dash are unchanged; rings of different types or factions are never merged.
 
 ### Added — Tooling, tests, and license
+
 - **Modularized simulation core**: `src/sim.js` is a re-export barrel; the implementation lives in focused modules under `src/sim/` (`constants`, `math`, `events`, `missiles`, `ships`, `sensors`, `command`, `movement`, `combat`, `scenario`, `step`).
 - `src/ui/view.js` — pure, DOM-free presentation helpers (coordinate transforms, panel HTML builders, per-ship derived state), unit-tested in `tests/ui.test.mjs`.
 - **Benchmarks**: `npm run bench` reports ticks/sec by battle size plus a determinism check and a terrain-route case; `npm run bench:frontend` measures dense rendering helpers.
@@ -236,6 +241,7 @@ All notable changes to this repository will be documented in this file.
 - **License**: released under the **PolyForm Noncommercial License 1.0.0** (free for any noncommercial use; commercial use is not permitted). `package.json` declares `LicenseRef-PolyForm-Noncommercial-1.0.0`.
 
 ### Changed
+
 - **Real-scale ship motion** (`SHIP_SPEED_MULTIPLIER = 1`): tempo now comes from the UI sim-rate (time-compression) control rather than inflated platform speed.
 - The coastal defence battery's targeting radar was widened to an over-the-horizon range so its long anti-ship missiles are usable at standoff instead of leaving the battery blind and passive beyond a short radar.
 - Hot-path lookups use persistent per-tick id indexes; track ageing is lazy with an expiry heap; the cooperative force picture refreshes on a bounded cadence with incremental dirty updates. All verified deterministic (byte-identical event streams).
@@ -243,32 +249,24 @@ All notable changes to this repository will be documented in this file.
 - `README.md` was slimmed to a concise bilingual overview; the full manual lives in `docs/REFERENCE.md`.
 
 ### Fixed
+
 - Each launched missile now stores an immutable `launchRole`, so an SM-6 keeps the correct square/triangle icon and anti-ship/anti-air behaviour for its whole flight.
 - Duplicating a ground emplacement keeps the copy on land instead of letting its offset spill into the sea.
 
 ### Documentation
+
 - Reorganized and refreshed the documentation set for `v0.2`: `README.md`, `docs/REFERENCE.md`, `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/SIMULATION_ASSUMPTIONS.md`, `docs/MAP_DATA.md`, `docs/ROADMAP.md`, `src/README.md`, and `AGENTS.md`.
-
----
-
-### 中文摘要（v0.2）
-
-- **第二个公开版本**，汇总自 `v0.1` 以来的全部改动：地理地形图层、地形感知导航、固定式陆基单位、完整中英双语界面、Railway 部署、模块化仿真核心，以及与机器无关的性能回归护栏。仿真保持确定性、低依赖、零构建步骤，以上改动均通过 `npm test` 与 `npm run bench` 的确定性校验。
-- **地形与地图**：新增可选的**东海**图层，使用本地打包的 Natural Earth 1:10m 陆地/海岸线数据与等距方位投影，与原**开放海域**图层并存（仅在 `setup` 阶段切换）。共享世界几何位于 `src/world/`，世界范围扩展为核心地图的九倍宽、9.6 倍高，相机硬边界限制。坐标、20 公里网格、比例尺、标尺与可见射程统一以公里显示，内部仍以米计算。
-- **地形感知导航**：舰艇将地形视为“水/非水”的二元可航问题，会绕行确定性的沿岸航线，必要时在最后安全水域停车重规划，而不会穿越陆地；海上单位只能部署在水面。
-- **陆基单位**：新增三种固定式陆基阵地——**SAM**（岸基防空）、**CDB**（带超视距目标雷达的岸基反舰）、**EWR**（远程预警雷达，无武器）。它们必须部署在陆地、不移动、不担任编队指挥、不会被重置到水面；陆海双向协同：陆基雷达馈送 CEC 态势、舰艇可凭陆基远程航迹开火，舰载反舰火力可摧毁敌方陆基单位，岸基防空可保护友邻舰艇。编队列表按阵营拆分为**海上子表与陆基子表**（各自列头与唯一单位标签），陆基单位以独立图标渲染。
-- **界面、双语与部署**：完整中英双语界面与一键切换（含本地化日志导出）；可保留多条测量线的 `标尺` 工具；Railway 一键部署（`railway.json`、`PORT` 绑定、`/health` 健康检查）；**同武器类型且同阵营**的重叠射程圈合并为单一外轮廓（去除内部弧线），不改变线型/颜色/虚线，跨类型或跨阵营不合并。
-- **工具、测试与许可**：模块化仿真核心（`src/sim.js` 为汇总导出）；纯展示层 `src/ui/view.js`（`tests/ui.test.mjs` 覆盖）；基准测试 `npm run bench` 与 `npm run bench:frontend`；与机器无关的**复杂度评分**性能回归护栏（`scripts/perf-harness.mjs` + `tests/performance-regressions.test.mjs`，约 1.0 为线性、约 5.0 为二次，超阈值即 CI 失败）；CI 工作流；采用 **PolyForm 非商业许可证 1.0.0**。
-- **变更与修复**：真实比例舰艇运动；CDB 目标雷达扩展为超视距，使其远程反舰武器在防区外可用；持续的界面紧凑化；每枚导弹固定记录 `launchRole`（修复 SM-6 图标/行为）；复制陆基阵地时副本保持在陆地。
 
 ## v0.1
 
 ### Release summary
+
 - Establishes the current public baseline for the TomaHawk / 战斧 local naval sandbox.
 - Formalizes the repository's current release line as `v0.1`.
 - Captures the lightweight Node.js + browser runtime and deterministic simulation core already present in the repository.
 
 ### Included in v0.1
+
 - Local static server via `server.mjs` serving the application at `127.0.0.1:4173`.
 - Browser-based tactical map UI implemented in `src/app.js` and `src/styles.css`.
 - Deterministic naval combat simulation core implemented in `src/sim.js`.
@@ -281,6 +279,7 @@ All notable changes to this repository will be documented in this file.
 - Expanded top-level documentation in `README.md` for both English and Chinese readers.
 
 ### Documentation set for v0.1
+
 - `README.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DATA_MODEL.md`
@@ -289,4 +288,5 @@ All notable changes to this repository will be documented in this file.
 - `docs/ROADMAP.md`
 
 ### Notes
+
 - `docs/` contains some forward-looking `v0.2+` design notes; they remain planning/reference material and do not change the current release tag of `v0.1`.

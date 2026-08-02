@@ -77,10 +77,10 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     } else if (f.type === "multicheck") {
       const values = new Set(Array.isArray(v) ? v : []);
       input = `<div class="mods-checkgrid">${f.options.map((o) =>
-        `<label><input type="checkbox" data-multi-field="${esc(f.key)}" value="${esc(o.value)}"${values.has(o.value) ? " checked" : ""}${dis} />${esc(L(o.label))}</label>`
+        `<label class="mods-check"><input type="checkbox" data-multi-field="${esc(f.key)}" value="${esc(o.value)}"${values.has(o.value) ? " checked" : ""}${dis} /><span class="mods-check-ui" aria-hidden="true"></span><span class="mods-check-text">${esc(L(o.label))}</span></label>`
       ).join("")}</div>`;
     } else if (f.type === "checkbox") {
-      input = `<input type="checkbox" data-field="${f.key}"${v ? " checked" : ""}${dis} />`;
+      return `<label class="mods-field mods-field-check"><span class="mods-check"><input type="checkbox" data-field="${f.key}"${v ? " checked" : ""}${dis} /><span class="mods-check-ui" aria-hidden="true"></span><span class="mods-check-text">${esc(L(f.label))}${f.unit ? ` <span class="mods-uhint">${esc(f.unit)}</span>` : ""}</span></span>${f.help ? `<span class="mods-help">${esc(L(f.help))}</span>` : ""}</label>`;
     } else {
       input = `<input type="text" data-field="${f.key}" value="${esc(v)}"${f.maxlength ? ` maxlength="${f.maxlength}"` : ""}${f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : ""}${dis} />`;
     }
@@ -103,7 +103,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     // it makes any sense for that platform (e.g. an aircraft equipping ESSM).
     const avail = availableAmmoIds(UNIT_KIND_DOMAIN[form.kind]).filter((id) => !(id in lo));
     const addSel = locked
-      ? `<div class="mods-lo-hint">${esc("内置单位：点击「克隆」后即可添加/编辑载弹")}</div>`
+      ? `<div class="mods-lo-hint">${esc("内置单位：点击「复制」后即可添加/编辑载弹")}</div>`
       : `<div class="mods-lo-add"><select data-loadout-add>
         <option value="">+ ${esc("添加弹药")}</option>
         ${avail.map((id) => `<option value="${esc(id)}">${esc(MISSILES[id]?.shortLabel ?? id)}</option>`).join("")}
@@ -138,7 +138,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     const typeField = isNew
       ? `<label class="mods-field"><span class="mods-flabel">类型</span>
           <select data-type-select>${DEPLOYABLE_TYPES.concat("ammo").map((k) => `<option value="${k}"${k === form.kind ? " selected" : ""}>${esc(L(KIND_LABEL[k]))}</option>`).join("")}</select></label>`
-      : `<div class="mods-field mods-typeshow"><span class="mods-flabel">类型</span><span class="mods-typeval">${esc(L(KIND_LABEL[form.kind]))}${locked ? " · 内置（克隆后可编辑）" : ""}</span></div>`;
+      : `<div class="mods-field mods-typeshow"><span class="mods-flabel">类型</span><span class="mods-typeval">${esc(L(KIND_LABEL[form.kind]))}${locked ? " · 内置（复制后可编辑）" : ""}</span></div>`;
 
     const sections = schema.sections.map((sec) =>
       `<fieldset class="mods-section"><legend>${esc(L(sec.title))}</legend>
@@ -148,15 +148,18 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     const loadout = schema.loadout ? loadoutHtml(locked) : "";
 
     const dirtyTag = dirty ? `<span class="mods-dirty">未保存</span>` : "";
-    const footer = `<div class="mods-actions">
-      ${locked ? "" : `<button class="mods-btn primary" data-action="save">保存</button>`}
-      <button class="mods-btn" data-action="clone">克隆</button>
-      <button class="mods-btn" data-action="export">导出</button>
-      ${locked || isNew ? "" : `<button class="mods-btn danger" data-action="delete">删除</button>`}
+    // Actions sit at the top: 保存 (library), 复制 (clone), 导出 JSON as 保存 for locked-only flows.
+    // When both library-save and file-export exist, file export is labeled 保存文件.
+    const toolbar = `<div class="mods-actions mods-actions-top">
+      ${locked ? "" : `<button type="button" class="mods-btn primary" data-action="save">保存</button>`}
+      <button type="button" class="mods-btn" data-action="clone">复制</button>
+      <button type="button" class="mods-btn" data-action="export">${locked ? "保存" : "保存文件"}</button>
+      ${locked || isNew ? "" : `<button type="button" class="mods-btn danger" data-action="delete">删除</button>`}
       ${dirtyTag}<span class="mods-errs" data-errs></span></div>`;
 
     detailEl.innerHTML = `<div class="mods-form">
-      <div class="mods-toprow">${typeField}</div>${sections}${loadout}${footer}</div>`;
+      ${toolbar}
+      <div class="mods-toprow">${typeField}</div>${sections}${loadout}</div>`;
   }
 
   function showErrors(errs) {
@@ -437,7 +440,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     // expose a one-shot loader so the app can register stored units at boot
     // without opening the popup
     async preload() { if (!loaded) { units = await loadMods(); loaded = true; safeNotify(); } },
-    // Debug accessor (also wired to window.dawnfallMods): inspect or extract a
+    // Debug accessor (also wired to window.tomahawkMods): inspect or extract a
     // stored unit's JSON from the browser, and check whether it is registered.
     async dump(name) {
       if (!loaded) { units = await loadMods(); loaded = true; }

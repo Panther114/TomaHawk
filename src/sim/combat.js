@@ -3,7 +3,7 @@
 // resolution, subsystem damage, and the terminal CIWS layer.
 
 import { NM, SIDE, FLEET_ROLE, WEAPON_STATE } from "./constants.js";
-import { clamp, distance, angleTo, wrapAngle, interceptPoint, entityVelocity } from "./math.js";
+import { clamp, distance, angleTo, wrapAngle, interceptPoint, interceptTime, entityVelocity } from "./math.js";
 import { MISSILES, missileDisplayRole, missileCanTarget, missileHasSurfaceTarget, missileHasAirDefenseTarget } from "./missiles.js";
 import { availableCount, setAvailableCount, defaultLoadout, defaultRoe } from "./ships.js";
 import { addEvent } from "./events.js";
@@ -38,6 +38,7 @@ import {
 // full O(missiles) scan. The scan fallback is only for callers without an index
 // (e.g. direct unit tests). Shared frozen empty array avoids per-call allocation.
 const NO_INCOMING = [];
+const NO_BLOCKED_CHANNELS = new Set();
 function incomingMissilesFor(sim, shipId) {
   if (sim._missilesByTarget) return sim._missilesByTarget.get(shipId) ?? NO_INCOMING;
   return sim.missiles;
@@ -54,22 +55,31 @@ function incomingMissilesFor(sim, shipId) {
 const SAT_CELL_M = 8 * NM;
 function buildMissileGrid(sim, missiles) {
   let grid = sim._missileGrid;
-  if (!grid) grid = sim._missileGrid = { cells: new Map(), used: [] };
+  if (!grid) grid = sim._missileGrid = { rows: new Map(), used: [] };
   for (const bucket of grid.used) bucket.length = 0;
   grid.used.length = 0;
   for (const m of missiles) {
     if (!m.alive) continue;
-    const key = `${Math.floor(m.x / SAT_CELL_M)},${Math.floor(m.y / SAT_CELL_M)}`;
-    let bucket = grid.cells.get(key);
-    if (!bucket) { bucket = []; grid.cells.set(key, bucket); }
+    const cx = Math.floor(m.x / SAT_CELL_M);
+    const cy = Math.floor(m.y / SAT_CELL_M);
+    let row = grid.rows.get(cx);
+    if (!row) {
+      row = new Map();
+      grid.rows.set(cx, row);
+    }
+    let bucket = row.get(cy);
+    if (!bucket) {
+      bucket = [];
+      row.set(cy, bucket);
+    }
     if (bucket.length === 0) grid.used.push(bucket);
     bucket.push(m);
   }
   return grid;
 }
-// Count live missiles within `radiusM` of (x,y) that satisfy `match`. Scans only
-// the cells overlapping the radius; the count is order-independent (deterministic).
-function countNearbyMissiles(grid, x, y, radiusM, match) {
+// Count live hostile missiles within `radiusM` of (x,y). Scans only the cells
+// overlapping the radius; the count is order-independent (deterministic).
+function countNearbyHostileMissiles(grid, x, y, radiusM, friendlySide, terminalOnly = false) {
   if (!grid) return 0;
   const span = Math.ceil(radiusM / SAT_CELL_M);
   const cx = Math.floor(x / SAT_CELL_M);
@@ -77,13 +87,18 @@ function countNearbyMissiles(grid, x, y, radiusM, match) {
   const r2 = radiusM * radiusM;
   let n = 0;
   for (let ix = cx - span; ix <= cx + span; ix++) {
+    const row = grid.rows.get(ix);
+    if (!row) continue;
     for (let iy = cy - span; iy <= cy + span; iy++) {
-      const bucket = grid.cells.get(`${ix},${iy}`);
+      const bucket = row.get(iy);
       if (!bucket) continue;
       for (const m of bucket) {
         const dx = m.x - x;
         const dy = m.y - y;
-        if (dx * dx + dy * dy <= r2 && match(m)) n++;
+        if (dx * dx + dy * dy <= r2
+          && m.alive
+          && m.side !== friendlySide
+          && (!terminalOnly || m.terminal)) n++;
       }
     }
   }
@@ -269,13 +284,12 @@ function deactivateMissile(sim, missile) {
   markContactDead(sim, missile.id);
   if (sim._aliveMissiles && sim._missilesByTarget) {
     removeFromArray(sim._aliveMissiles, missile);
+    sim._missileById?.delete(missile.id);
     const bucket = sim._missilesByTarget.get(missile.targetId);
     if (bucket) {
       removeFromArray(bucket, missile);
       if (!bucket.length) sim._missilesByTarget.delete(missile.targetId);
     }
-    // Leave dead entries in _missileById until compact so same-tick id lookups
-    // still resolve; aliveMissileById already checks .alive.
   } else {
     sim._entityIndexesDirty = true;
   }
@@ -569,9 +583,9 @@ export function processLaunchQueues(sim) {
   }
 }
 
-function timeToImpact(missile, target) {
+function timeToImpact(missile, target, distanceM = null) {
   if (!target || missile.speed <= 0) return Infinity;
-  return distance(missile, target) / missile.speed;
+  return (distanceM ?? distance(missile, target)) / missile.speed;
 }
 
 function hasPendingOrActiveEngagement(sim, ship, targetId) {
@@ -908,7 +922,7 @@ function defensiveNeedProfile(sim, side, missile, track, target) {
 function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.5) {
   const rangeM = distance(ship, track);
   const hull = ship.hull || "DDG";
-  const baseLoad = defaultLoadout(hull);
+  const baseLoad = ship.baseLoadoutSnapshot ?? defaultLoadout(hull);
   // Candidates are every anti-ship-capable weapon actually in the magazine
   // (vanilla or modded) — a fixed name list would ignore custom missiles. For a
   // vanilla hull this yields the same [SM-6, MaritimeStrike, TomahawkBlockV] set
@@ -957,7 +971,7 @@ function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.
 function chooseAntiAirWeapon(ship, track, allowReserve = false, aggression = 0.5) {
   const rangeM = distance(ship, track);
   const hull = ship.hull || "DDG";
-  const baseLoad = defaultLoadout(hull);
+  const baseLoad = ship.baseLoadoutSnapshot ?? defaultLoadout(hull);
   const candidates = Object.keys(ship.loadout).filter((id) => {
     const spec = MISSILES[id];
     if (!spec) return false;
@@ -999,7 +1013,7 @@ function chooseAirInterceptWeapon(ship, threat) {
   // magazines at DarkEagle tracks with zero realistic PK.
   if (isHighEnergyThreat(threat)) return null;
   const rangeM = distance(ship, threat);
-  const baseLoad = defaultLoadout(ship.hull || "F15C");
+  const baseLoad = ship.baseLoadoutSnapshot ?? defaultLoadout(ship.hull || "F15C");
   let best = null;
   for (const id in ship.loadout) {
     const spec = MISSILES[id];
@@ -1049,14 +1063,14 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   const sm6 = MISSILES["SM-6"];
   const essm = MISSILES.ESSM;
   const hull = ship.hull || "DDG";
-  const baseLoad = defaultLoadout(hull);
+  const baseLoad = ship.baseLoadoutSnapshot ?? defaultLoadout(hull);
   const sm2Reserve = Math.ceil((baseLoad["SM-2MR"] ?? 0) * (sm2?.magazineReserveRatio || 0));
   const sm6Reserve = Math.ceil((baseLoad["SM-6"] ?? 0) * (sm6?.magazineReserveRatio || 0));
   const essmReserve = Math.ceil((baseLoad.ESSM ?? 0) * (essm?.magazineReserveRatio || 0));
   const sm2Count = availableCount(ship, "SM-2MR");
   const sm6Count = availableCount(ship, "SM-6");
   const essmCount = availableCount(ship, "ESSM");
-  const blockedChannels = options.blockedChannels ?? new Set();
+  const blockedChannels = options.blockedChannels ?? NO_BLOCKED_CHANNELS;
   const samOpen = !blockedChannels.has("sam");
   const highEnergy = isHighEnergyThreat(threat);
   // THAAD / BMD layer first for hypersonic threats (better PK, purpose-built).
@@ -1638,7 +1652,8 @@ export function planEngagements(sim) {
   if (sim.time < (sim.nextFirePlanAt ?? 0)) return;
   sim.nextFirePlanAt = sim.time + 1;
   // Per-cycle inbound-raid memo: the missile set is stable through planning.
-  sim._raidCountCache = new Map();
+  sim._raidCountCache = sim._raidCountCachePool ?? (sim._raidCountCachePool = new Map());
+  sim._raidCountCache.clear();
   sim._engagementIndex = buildEngagementIndex(sim);
   computeFleetCommand(sim);
   planDefensiveFires(sim);
@@ -1807,7 +1822,7 @@ export function updateMissiles(sim, dt) {
     }
 
     const distToTarget = distance(missile, target);
-    missile.timeToImpactEstimate = timeToImpact(missile, target);
+    missile.timeToImpactEstimate = timeToImpact(missile, target, distToTarget);
     if (missile.medium === "underwater_to_air" && missile.flownM >= (missile.waterExitDistanceM ?? 300)) {
       missile.medium = "air";
       missile.launchSpeedMps = spec.speedMps;
@@ -1889,27 +1904,29 @@ export function updateMissiles(sim, dt) {
         aimVx = fused.vx;
         aimVy = fused.vy;
       } else {
-        const tv = entityVelocity(target);
-        aimVx = tv.vx;
-        aimVy = tv.vy;
+        const targetSpeed = target.speed ?? 0;
+        aimVx = Math.cos(target.heading) * targetSpeed;
+        aimVy = Math.sin(target.heading) * targetSpeed;
       }
     } else {
       // Terminal seeker lock (or interceptor under fire-control radar): lead
       // the true target motion.
-      const tv = entityVelocity(target);
-      aimVx = tv.vx;
-      aimVy = tv.vy;
+      const targetSpeed = target.speed ?? 0;
+      aimVx = Math.cos(target.heading) * targetSpeed;
+      aimVy = Math.sin(target.heading) * targetSpeed;
     }
-    const lead = interceptPoint(missile.x, missile.y, missile.speed, aimX, aimY, aimVx, aimVy);
-    missile.aimX = lead.x;
-    missile.aimY = lead.y;
-    missile.targetX = lead.x;
-    missile.targetY = lead.y;
+    const leadTime = interceptTime(missile.x, missile.y, missile.speed, aimX, aimY, aimVx, aimVy);
+    const leadX = leadTime > 0 ? aimX + aimVx * leadTime : aimX;
+    const leadY = leadTime > 0 ? aimY + aimVy * leadTime : aimY;
+    missile.aimX = leadX;
+    missile.aimY = leadY;
+    missile.targetX = leadX;
+    missile.targetY = leadY;
 
     // Rate-limited steering toward the lead point (proportional-navigation
     // style: track the rotating line of sight within the airframe's turn
     // limit, sharper in the terminal phase).
-    const losAngle = Math.atan2(lead.y - missile.y, lead.x - missile.x);
+    const losAngle = Math.atan2(leadY - missile.y, leadX - missile.x);
     missile.losRate = wrapAngle(losAngle - (missile.losAngle ?? losAngle)) / Math.max(dt, 1e-3);
     missile.losAngle = losAngle;
     const baseTurn = (spec.maxTurnRateDps ?? 12) * Math.PI / 180;
@@ -1932,13 +1949,21 @@ export function updateMissiles(sim, dt) {
     missile.x += Math.cos(missile.heading) * travel;
     missile.y += Math.sin(missile.heading) * travel;
     missile.flownM += travel;
-    if (target && targetIsInFlightMissile && distance(missile, target) < 850) {
+    const postMoveDx = missile.x - target.x;
+    const postMoveDy = missile.y - target.y;
+    const postMoveDistanceSq = postMoveDx * postMoveDx + postMoveDy * postMoveDy;
+    if (targetIsInFlightMissile && postMoveDistanceSq < 850 * 850) {
       // Interceptor PK: base PK minus O(1) kinematic / profile / layer difficulty
       // (hypersonic boost-glide is far harder than a subsonic ASCM), sea-skim,
       // local saturation, and track cue quality. See missileInterceptHitChance.
       const interceptorSide = missile.side;
-      const concurrentThreats = countNearbyMissiles(satGrid, missile.x, missile.y, 8 * NM,
-        (m) => m.alive && m.side !== interceptorSide);
+      const concurrentThreats = countNearbyHostileMissiles(
+        satGrid,
+        missile.x,
+        missile.y,
+        8 * NM,
+        interceptorSide
+      );
       const interceptChance = missileInterceptHitChance(spec, target, {
         terminal: missile.terminal,
         trackQuality: missile.trackQualityAtLaunch ?? 0.75,
@@ -1952,7 +1977,8 @@ export function updateMissiles(sim, dt) {
         addEvent(sim, `${missile.missileId} failed to intercept ${target.missileId}.`, missile.side);
       }
       deactivateMissile(sim, missile);
-    } else if (target && !targetIsInFlightMissile && distance(missile, target) < (missile.medium === "underwater" ? 260 : 420)) {
+    } else if (!targetIsInFlightMissile
+      && postMoveDistanceSq < (missile.medium === "underwater" ? 260 * 260 : 420 * 420)) {
       const isAir = target.domain === "air";
       let hitChance;
       let decoyed = missile.medium === "underwater"
@@ -2013,9 +2039,13 @@ export function updateMissiles(sim, dt) {
       addEvent(sim, `${missile.missileId} exhausted fuel and fell into the sea.`, missile.side);
     }
   }
+  const aliveMissiles = !sim._entityIndexesDirty ? sim._aliveMissiles : null;
+  if (aliveMissiles) aliveMissiles.length = 0;
   let writeIndex = 0;
   for (const missile of sim.missiles) {
-    if (missile.alive) sim.missiles[writeIndex++] = missile;
+    if (!missile.alive) continue;
+    sim.missiles[writeIndex++] = missile;
+    aliveMissiles?.push(missile);
   }
   sim.missiles.length = writeIndex;
   // Keep alive/id indexes in lock-step with the compacted array without a full
@@ -2023,15 +2053,11 @@ export function updateMissiles(sim, dt) {
   // Use a separate array so next tick's deactivate/launch never mutates the
   // list mid-iteration of updateMissiles.
   if (!sim._entityIndexesDirty) {
-    if (sim._aliveMissiles) {
-      sim._aliveMissiles.length = 0;
-      for (const m of sim.missiles) sim._aliveMissiles.push(m);
-    } else {
+    if (!sim._aliveMissiles) {
       sim._aliveMissiles = sim.missiles.slice();
     }
-    if (sim._missileById) {
-      sim._missileById.clear();
-      for (const m of sim.missiles) sim._missileById.set(m.id, m);
+    if (!sim._missileById) {
+      sim._missileById = new Map(sim.missiles.map((missile) => [missile.id, missile]));
     }
   }
 }
@@ -2064,8 +2090,14 @@ export function pointDefense(sim) {
     // Saturation: the CIWS is overwhelmed by the local density of terminal
     // leakers in its point-defence bubble (any nearby terminal threat, not only
     // those assigned to this ship), via the shared missile grid.
-    const terminalCount = countNearbyMissiles(sim._missileGrid, ship.x, ship.y, 3 * NM,
-      (m) => m.alive && m.side !== ship.side && m.terminal);
+    const terminalCount = countNearbyHostileMissiles(
+      sim._missileGrid,
+      ship.x,
+      ship.y,
+      3 * NM,
+      ship.side,
+      true
+    );
     const saturationRatio = Math.min(1, ciwsCount / Math.max(1, terminalCount));
     const seaSkimPenalty = inbound.seaSkimming ? 0.18 : 0;
     const damagePenalty = ship.damage * 0.06;

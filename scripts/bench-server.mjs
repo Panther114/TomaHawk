@@ -60,7 +60,7 @@ try {
   const response = await fetch(`${base}/src/ui/data/east-china-sea-data.js`);
   const assetBytes = (await response.arrayBuffer()).byteLength;
   const rssBytes = residentSetBytes(child.pid);
-  console.log("Dawnfall static-server benchmark:");
+  console.log("Tomahawk static-server benchmark:");
   console.log(`  health: OK`);
   console.log(`  streamed asset: ${(assetBytes / 1024 / 1024).toFixed(2)} MiB`);
   console.log(`  resident memory: ${Number.isFinite(rssBytes) ? `${(rssBytes / 1024 / 1024).toFixed(1)} MiB` : "unavailable"}`);

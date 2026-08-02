@@ -1,0 +1,40 @@
+@font-face {
+  font-family: "Tomahawk Han";
+  src: url("fonts/chi_font.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  unicode-range:
+    U+2E80-2EFF,
+    U+3000-303F,
+    U+31C0-31EF,
+    U+3400-4DBF,
+    U+4E00-9FFF,
+    U+F900-FAFF,
+    U+FE30-FE4F,
+    U+FF00-FFEF;
+}
+
+@font-face {
+  font-family: "Tomahawk Sans";
+  src: url("fonts/SourceHanSansSC-Regular.subset.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Tomahawk Sans";
+  src: url("fonts/SourceHanSansSC-Medium.subset.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Tomahawk Sans";
+  src: url("fonts/SourceHanSansSC-Bold.subset.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 650 800;
+  font-display: swap;
+}

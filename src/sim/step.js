@@ -73,9 +73,10 @@ export function rebuildEntityIndexes(sim) {
   sim._entityIndexesDirty = false;
 }
 
-export function stepSim(sim, dt = 0.25) {
+export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
   if (sim.mode === SCENARIO_MODE.SETUP) return sim;
   if (sim.mode === SCENARIO_MODE.ENDED) return sim;
+  if (sim.paused && !allowPaused) return sim;
   if (!canRunScenario(sim)) {
     sim.paused = true;
     sim.mode = SCENARIO_MODE.SETUP;

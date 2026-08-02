@@ -1,13 +1,13 @@
 {
-  "ticks": 3710,
-  "simTimeS": 927.5,
+  "ticks": 4012,
+  "simTimeS": 1003,
   "outcome": "Red",
-  "wallMs": 599.4,
-  "avgMsTick": 0.162,
+  "wallMs": 1400.1,
+  "avgMsTick": 0.349,
   "perf": {
-    "p50": 0.076,
-    "p95": 0.594,
-    "max": 4.291,
+    "p50": 0.189,
+    "p95": 1.106,
+    "max": 7.669,
     "peakEntities": 69,
     "peakMissiles": 62
   },
@@ -32,7 +32,7 @@
     "planes": 0,
     "carriers": 0,
     "airfields": 0,
-    "offense": 54,
+    "offense": 45,
     "rearming": [],
     "rtb": [],
     "hulls": [
@@ -43,13 +43,12 @@
     ]
   },
   "launches": {
-    "MaritimeStrike": 5,
-    "TomahawkBlockV": 3,
+    "ESSM": 1,
     "SM-6": 2
   },
   "counts": {
-    "intercepts": 16,
-    "misses": 21,
+    "intercepts": 14,
+    "misses": 24,
     "decoys": 0,
     "splashes": 0,
     "rearmPhases": 0,
@@ -60,13 +59,13 @@
     "harpoon": 0,
     "aam": 0
   },
-  "eventTotal": 314,
+  "eventTotal": 346,
   "flags": [],
   "lastEvents": [
     {
       "t": 0.25,
       "side": "Red",
-      "text": "Red CG 7 queued 4x MSTK salvo at ground contact."
+      "text": "Red CG 7 queued 4x MSTK salvo at electromagnetic emitter."
     },
     {
       "t": 0.25,

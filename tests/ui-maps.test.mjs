@@ -22,6 +22,7 @@ test("coastline map uses global Natural Earth land and coastline data", () => {
   assert.ok(map.geographicExtent.north >= 90);
   assert.ok(map.landRings.length > 1000);
   assert.ok(map.coastlines.length > 300);
+  assert.ok(map.nationalBorders.length > 100);
   assert.equal(TACTICAL_MAPS.openSea.landRings.length, 0);
   assert.equal(tacticalMap("unknown"), TACTICAL_MAPS.openSea);
 });

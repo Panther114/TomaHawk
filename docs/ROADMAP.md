@@ -1,21 +1,21 @@
-# 路线图
+# Roadmap
 
-v1.0 的重点是让既有模拟真正可用：单一中文界面、装备库、专业战术符号、落地页、教程和自然中文文档已经构成新的产品基础。
+v1.0 focused on making the existing simulation actually usable: a single Simplified Chinese UI, equipment library, professional tactical symbols, landing page, tutorial, and maintained documentation form the product base.
 
-## 近期
+## Near term
 
-- 扩充真实沙盘截图与教程场景
-- 完善键盘与屏幕阅读器可访问性
-- 增加可分享的想定模板与只读结果查看页
-- 继续监控大型想定的 Canvas 平均与 p95 绘制耗时
+- More real sandbox screenshots and tutorial scenarios
+- Stronger keyboard and screen-reader accessibility
+- Shareable scenario templates and a read-only result viewer
+- Keep watching Canvas average and p95 draw time on large battles
 
-## 中期
+## Medium term
 
-- 更细的任务规划与交战规则界面
-- 可视化航迹来源、共享延迟与武器分层
-- 想定目标、计分和挑战模式
-- 更完整的战报回放与对比
+- Finer mission-planning and ROE UI
+- Visualize track sources, share latency, and weapon layers
+- Objectives, scoring, and challenge modes
+- Richer AAR replay and comparison
 
-## 暂不承诺
+## Not committed
 
-三维地球、实时多人、完整后勤、水雷、天气海况和现实指挥网络都可能显著扩大模型边界。只有在能保持确定性、可解释性与性能预算时才会进入实施阶段。
+3D globe, real-time multiplayer, full logistics, mines, weather/sea state, and real command networks would all expand the model boundary substantially. They only enter implementation if determinism, explainability, and the performance budget still hold.

@@ -356,36 +356,62 @@ function selectCommandMode(prevMode, aggression, advantage, ownOffense, enemyEst
 }
 
 export function computeFleetCommand(sim) {
-  const bySide = new Map();
+  // Reuse side buckets / sort scratch across fire-planning cycles. Cleared in
+  // place so capability order and OTC selection stay deterministic without
+  // reallocating array shells every second.
+  const pool = sim._fleetCommandPool ?? (sim._fleetCommandPool = {
+    bySide: new Map(),
+    ordered: [],
+    mobileOrdered: [],
+    surfaceOrdered: []
+  });
+  const bySide = pool.bySide;
+  for (const list of bySide.values()) list.length = 0;
   const commandState = new Map();
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
-    if (!bySide.has(ship.side)) bySide.set(ship.side, []);
-    bySide.get(ship.side).push(ship);
+    let list = bySide.get(ship.side);
+    if (!list) {
+      list = [];
+      bySide.set(ship.side, list);
+    }
+    list.push(ship);
     ship.isOTC = false;
     ship.fleetRole = FLEET_ROLE.UNIT;
   }
   const command = new Map();
   for (const [side, ships] of bySide) {
+    if (!ships.length) continue;
     // Deterministic OTC selection: most air-defence capability, ties by id.
     // The guide must be mobile (it anchors the moving formation), so fixed
     // ground emplacements are never chosen as OTC/AAWC unless no sea unit
     // survives on the side.
-    const ordered = [...ships].sort((a, b) => fleetCapability(b) - fleetCapability(a) || a.id.localeCompare(b.id));
+    const ordered = pool.ordered;
+    ordered.length = 0;
+    for (const ship of ships) ordered.push(ship);
+    ordered.sort((a, b) => fleetCapability(b) - fleetCapability(a) || a.id.localeCompare(b.id));
     // OTC/AAWC are surface command roles. A mobile surface combatant is the
     // preferred guide; a fixed emplacement may serve when no mobile unit
     // survives; an air squadron or submarine is NEVER the OTC (it is a mobile
     // striker/undersea unit, not a formation guide), so an all-air/all-sub side
-    // simply has no surface command tier.
-    const mobileOrdered = ordered.filter((ship) => !ship.isFixed && ship.domain !== "air" && ship.domain !== "subsurface");
-    const surfaceOrdered = ordered.filter((ship) => ship.domain !== "air" && ship.domain !== "subsurface");
+    // simply has no surface command tier. Partition in one pass over the
+    // capability-sorted list (same order as filter on `ordered`).
+    const mobileOrdered = pool.mobileOrdered;
+    const surfaceOrdered = pool.surfaceOrdered;
+    mobileOrdered.length = 0;
+    surfaceOrdered.length = 0;
+    for (const ship of ordered) {
+      if (ship.domain === "air" || ship.domain === "subsurface") continue;
+      surfaceOrdered.push(ship);
+      if (!ship.isFixed) mobileOrdered.push(ship);
+    }
     const otc = mobileOrdered[0] ?? surfaceOrdered[0] ?? null;
     let aawc = null;
     if (otc) {
       otc.isOTC = true;
       otc.fleetRole = FLEET_ROLE.OTC;
       // Second most capable mobile unit acts as dedicated AAW commander.
-      aawc = mobileOrdered.find((ship) => ship !== otc) ?? surfaceOrdered.find((ship) => ship !== otc) ?? null;
+      aawc = mobileOrdered[1] ?? (surfaceOrdered[0] === otc ? surfaceOrdered[1] : surfaceOrdered[0]) ?? null;
       if (aawc) aawc.fleetRole = FLEET_ROLE.AAWC;
     }
     // Geometry reference for the threat axis / formation ring. Falls back to the
@@ -421,10 +447,9 @@ export function computeFleetCommand(sim) {
     // Aircraft are mobile strikers, not sectorised air-defence pickets, so they
     // are excluded from the sector division and own no sector (a full-circle
     // half-width disables the sector overlay for them) and no formation station.
-    // Derive from `ordered` (capability-sorted) so the non-air ordering — and
-    // thus every sector assignment — is byte-identical to the pre-air behaviour
-    // when no aircraft are present.
-    const sectorShips = ordered.filter((ship) => ship.domain !== "air" && ship.domain !== "subsurface");
+    // `surfaceOrdered` is the capability-sorted non-air/non-subsurface list —
+    // byte-identical to the historical `ordered.filter(...)` sector set.
+    const sectorShips = surfaceOrdered;
     for (const ship of ships) {
       if (ship.domain === "air" || ship.domain === "subsurface") {
         ship.sectorCenter = side === SIDE.BLUE ? 0 : Math.PI;
@@ -436,10 +461,10 @@ export function computeFleetCommand(sim) {
       const n = sectorShips.length;
       const sectorWidth = (2 * Math.PI) / Math.max(1, n);
       const stationRing = 6 * NM; // screen radius around the guide
-      const sectorOrder = [otc, ...sectorShips.filter((ship) => ship !== otc)];
-      sectorOrder.forEach((ship, idx) => {
+      // idx 0 is always the OTC; remaining sector ships keep capability order.
+      let idx = 0;
+      const assignSector = (ship) => {
         if (ship.domain === "air" || ship.domain === "subsurface") return;
-        // idx 0 (OTC) -> centred on axis; others fan out alternately.
         const slot = idx === 0 ? 0 : (idx % 2 === 1 ? Math.ceil(idx / 2) : -Math.ceil(idx / 2));
         ship.sectorCenter = wrapAngle(axis + slot * sectorWidth);
         ship.sectorHalfWidth = sectorWidth / 2 + 0.12;
@@ -455,10 +480,19 @@ export function computeFleetCommand(sim) {
             y: otc.y + Math.sin(stationAng) * stationRing
           };
         }
-      });
+        idx += 1;
+      };
+      assignSector(otc);
+      for (const ship of sectorShips) {
+        if (ship !== otc) assignSector(ship);
+      }
     }
-    const ownOffense = ships.reduce((sum, ship) => sum + offensiveMissileCount(ship, true), 0);
-    const ownVls = ships.reduce((sum, ship) => sum + vlsCapacity(ship), 0);
+    let ownOffense = 0;
+    let ownVls = 0;
+    for (const ship of ships) {
+      ownOffense += offensiveMissileCount(ship, true);
+      ownVls += vlsCapacity(ship);
+    }
     const observed = observedForceMetrics(sim, side);
     const enemyOffenseEstimate = observed.offense;
     const enemyVlsEstimate = observed.vls;

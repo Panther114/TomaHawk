@@ -1,29 +1,39 @@
-# 模拟说明
+# Simulation
 
-## 核心原则
+## Core principles
 
-破晓前夜是确定性、离散时间的二维联合作战模型。模拟核心位于 `src/sim/`；界面不会直接改写交战结果。相同种子、初始状态和输入应得到相同事件序列。
+Tomahawk is a deterministic, discrete-time 2D joint-warfare model. The simulation core lives in `src/sim/`; the UI does not rewrite engagement outcomes directly. The same seed, initial state, and inputs should produce the same event sequence.
 
-## 单个时钟周期
+## One clock tick
 
-`stepSim` 依次处理传感器扫描、航迹更新与共享、指挥态势、单位决策与移动、火力规划、导弹飞行、点防御、损伤和胜负判定。顺序固定，以避免同一周期内的因果歧义。
+`stepSim` advances one deterministic tick in this order: advance time and
+rebuild entity indexes; age tracks; move surface and air units; update aircraft
+fuel, submarine depth, and electronic-warfare state; scan radar and sonar;
+share tracks when the datalink interval is due; rebuild the fused force picture;
+make unit decisions; plan engagements; process launch queues; update missiles;
+run point defence; prune dead tracks; then evaluate win/draw conditions. The UI
+does not call `stepSim` while paused, so pause is an application-level gate and
+the core function itself also respects `sim.paused`; the UI's explicit
+single-step command passes an `allowPaused` override. Decisions therefore
+consume the sensor picture produced earlier in the same tick, after movement
+has already occurred.
 
-## 传感器与航迹
+## Sensors and tracks
 
-雷达探测受距离、扫描周期、目标 RCS、高度和雷达地平线影响；潜艇主要由声呐发现；ESM 可被动发现电磁辐射源。航迹具有质量、误差、年龄和来源，不是全知真值。友军共享会产生延迟，指挥或预警节点可以缩短延迟。
+Radar detection depends on range, scan period, target RCS, altitude, and radar horizon; submarines are found mainly by sonar; ESM can passively detect emitters. Tracks have quality, error, age, and source — they are not omniscient truth. Friendly sharing adds latency; command or AEW nodes can shorten it.
 
-## 指挥与火力
+## Command and fire
 
-每一方基于融合态势评估自身与敌方的兵力、火力和威胁，调整攻势与齐射深度。武器按目标域、平台适配、射程、航迹质量、交战规则和库存选择。防御依次考虑区域防空、点防空、专用反导和 CIWS；饱和攻击可能突破防线。
+Each side scores own and enemy force, firepower, and threat from the fused picture, then adjusts aggression and raid depth. Weapons are chosen by target domain, platform fit, range, track quality, ROE, and magazine. Defence considers area SAM, point SAM, dedicated BMD, and CIWS in turn; saturation can still break through.
 
-## 机动、航空兵与潜艇
+## Movement, aircraft, and submarines
 
-水面舰艇遵守水域限制和编队站位。航空兵具有速度、高度、燃油、任务、规避、返场和再装挂状态；只有适配机型可以在航母回收。潜艇受深度、噪声、声呐与水下武器约束。
+Surface ships respect water constraints and formation stations. Aircraft carry speed, altitude, fuel, mission, evasion, RTB, and rearm state; only compatible airframes recover on a carrier. Submarines are constrained by depth, noise, sonar, and underwater weapons.
 
-## 损伤与结束条件
+## Damage and end conditions
 
-命中会降低耐久，并可能削弱雷达、动力、射控、近防、CIC、声呐、电子战能力或航空兵规模。一方无存活单位时另一方获胜；双方均无法形成有效进攻时可判定为弹药耗竭和局。
+Hits reduce hit points and may degrade radar, propulsion, fire control, CIWS, CIC, sonar, electronic warfare, or aircraft count. When one side has no living units, the other wins; when neither side can form an effective offence, the battle may end as magazine-exhaustion draw.
 
-## 模型边界
+## Model boundaries
 
-参数是开源资料基础上的公开近似和游戏化抽象，不用于现实任务规划。当前不建模水雷、后勤补给、天气海况、人员训练、通信网络拓扑或政治决策。
+Parameters are public approximations and engineering abstractions from open sources, not for real mission planning. Mines, logistics, weather/sea state, crew training, communications network topology, and political decisions are not modeled.

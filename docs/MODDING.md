@@ -1,30 +1,30 @@
-# 单位工坊
+# Unit Workshop
 
-单位工坊允许在不修改模拟源码的情况下创建舰艇、陆基阵地、航空兵和弹药。自定义记录沿用内置单位的模拟路径，不存在单独的“模组规则引擎”。
+The Unit Workshop lets you create ships, ground emplacements, aircraft, and ammo without editing simulation source. Custom records reuse the same sim paths as built-ins; there is no separate “mod rules engine.”
 
-## 使用方法
+## How to use
 
-1. 在沙盘右上角打开“工具”→“单位工坊”。
-2. 选择内置记录并“克隆”，或新建单位。
-3. 调整传感器、机动、耐久、能力与载弹。
-4. 保存后，新单位立即进入装备库。
-5. 用“导出”分享 JSON；将 JSON 拖入工坊可导入。
+1. In the sandbox, open **工具** (Tools) → **单位工坊** (Unit Workshop) at the top right.
+2. Select a built-in record and **克隆** (Clone), or create a new unit.
+3. Adjust sensors, mobility, durability, capabilities, and loadout.
+4. After save, the unit appears in the equipment library immediately.
+5. Use **导出** (Export) to share JSON; drag JSON onto the workshop to import.
 
-内置记录始终只读，并在启动时恢复为规范值。删除仅适用于自定义记录。
+Built-in records stay read-only and are restored to canonical values on startup. Delete applies only to custom records.
 
-## 四类记录
+## Four record kinds
 
-- `naval`：水面或水下平台。
-- `ground`：固定阵地与机场。
-- `aircraft`：航空兵中队。
-- `ammo`：导弹、鱼雷或其他弹药；不能直接部署。
+- `naval` — surface or subsurface platforms.
+- `ground` — fixed emplacements and airfields.
+- `aircraft` — aircraft squadrons.
+- `ammo` — missiles, torpedoes, or other munitions; not directly deployable.
 
-弹药通过目标域、发射平台、飞行剖面与分类约束适配。工坊会过滤明显不兼容的组合，导入校验仍会再次检查。
+Ammo fit is constrained by target domain, launch platform, flight profile, and category. The workshop filters obvious incompatibilities; import validation checks again.
 
-## 持久化与兼容
+## Persistence and compatibility
 
-v1 使用 IndexedDB 数据库 `dawnfall-mods`，对象仓库仍为 `units`，主键格式仍为 `kind:id`。首次启动会读取旧数据库、复制全部记录、验证写入成功，再删除旧数据库。迁移失败时旧数据保持不动，并在下次启动重试。
+v1 uses IndexedDB database `tomahawk-mods`, object store `units`, primary key still `kind:id`. On first launch it reads the legacy database, copies all records, verifies the write, then deletes the old database. On migration failure, legacy data is left in place and retried next launch.
 
-JSON 结构与 v0.3 保持兼容。自定义单位缺少新的展示字段时，装备库和战术符号会按 `domain`、`glyph` 与能力生成确定性回退。
+JSON shape stays compatible with v0.3. When a custom unit lacks new presentation fields, the equipment library and tactical symbols fall back deterministically from `domain`, `glyph`, and capabilities.
 
-浏览器控制台可用 `window.dawnfallMods.dump()` 检查已加载记录；这只用于调试。
+In the browser console, `window.tomahawkMods.dump()` lists loaded records for debugging only.

@@ -403,13 +403,15 @@ test("vanillaUnits includes all built-in air squadrons and the airfield", () => 
   assert.ok(v.some((u) => u.kind === "ground" && unitId(u) === "AFB" && u.isAirfield === true));
 });
 
-test("air inventory row reports flight strength, state and effector counts", () => {
+test("air inventory row reports flight strength, height, fuel, and effector counts", () => {
   const f15n = makeShip(SIDE.BLUE, 0, 0, "F15N");
   assert.equal(isAirUnit(f15n), true);
   assert.equal(isGroundUnit(f15n), false);
   const row = airRowHtml(f15n, false);
-  assert.match(row, /4\/4/, "shows 4/4 aircraft");
-  assert.match(row, /MSN/, "shows mission state");
+  assert.match(row, /<i data-inventory-hp style="color:#f2f4f5">4<\/i><i data-inventory-hp-cap[^>]*>\/4<\/i>/, "shows full flight strength as a fraction");
+  assert.match(row, /data-inventory-altitude>9\.0 km<\/b>/, "shows altitude in km");
+  assert.match(row, /data-inventory-fuel>100%<\/b>/, "shows fuel percentage");
+  assert.doesNotMatch(row, /data-inventory-state/);
 });
 
 test("aircraft weapons exist with correct categories (AMRAAM/Sidewinder/Harpoon/JSOW)", () => {

@@ -3,89 +3,347 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="破晓前夜 Dawnfall 玩家教程：从部署第一支编队到读懂传感器、航迹与交战结果。" />
-    <title>玩法教程｜破晓前夜 Dawnfall</title>
-    <link rel="icon" href="src/assets/dawnfall-mark.svg" />
+    <meta name="description" content="战斧 Tomahawk 交互式操作手册：完成部署、控制推演、读取航迹并使用单位工坊。" />
+    <title>操作手册｜战斧</title>
+    <link rel="icon" href="src/assets/icon.png" />
+    <link rel="preload" href="src/fonts/chi_font.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="stylesheet" href="src/fonts.css" />
     <link rel="stylesheet" href="src/guide.css" />
   </head>
   <body>
-    <header class="guide-nav">
-      <a class="guide-brand" href="/"><img src="src/assets/dawnfall-mark.svg" alt="" /><span>破晓前夜<small>DAWNFALL · 玩家教程</small></span></a>
-      <nav><a href="#first-battle">首场推演</a><a href="#sensors">机制</a><a href="#controls">操作</a><a class="launch" href="/sandbox">进入推演</a></nav>
+    <!--
+      THESIS: 把操作手册变成可执行的任务台，拒绝电影化长页和静态幻灯片。
+      OWN-WORLD: 石墨黑手册框架、浅色战术地图、蓝红阵营状态与琥珀教学焦点。
+      STORY: 玩家部署第一支部队，操作控制台，再学会保存、判读和自定义单位。
+      FIRST VIEWPORT: 左侧任务说明与进度，右侧可操作迷你控制台，下一段五步路径露出。
+      FORM: 用户批准的单页任务手册；结构基准 user-approved-guide-plan-2026-07-30。
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
+    <a class="skip-link" href="#guide-content">跳到手册正文</a>
+
+    <header class="guide-topbar">
+      <a class="guide-brand" href="/" aria-label="返回战斧首页">
+        <img src="src/assets/icon.png" alt="" />
+        <span><b>战斧</b><small>TOMAHAWK · 操作手册</small></span>
+      </a>
+      <button id="guide-menu-toggle" class="guide-menu-toggle" type="button" aria-expanded="false" aria-controls="guide-nav">
+        <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#layers"></use></svg>
+        <span>手册目录</span>
+      </button>
+      <nav id="guide-nav" class="guide-nav" aria-label="操作手册章节">
+        <a href="#quick-start">快速上手</a>
+        <a href="#console">控制台</a>
+        <a href="#deployment">部署</a>
+        <a href="#operations">运行与判读</a>
+        <a href="#system-tools">系统工具</a>
+        <a href="#workshop">单位工坊</a>
+        <a href="#reference">快捷键</a>
+      </nav>
+      <a class="launch-link" href="/sandbox">进入沙盘</a>
     </header>
 
-    <main>
-      <section class="guide-hero">
-        <p class="eyebrow">FIELD MANUAL / 01</p>
-        <h1>五分钟，完成<br />你的第一场联合作战推演。</h1>
-        <p>破晓前夜不会替任何一方提供上帝视角。你部署兵力、设置战场，然后观察双方如何发现目标、共享航迹、规划火力并承受后果。</p>
-        <div class="hero-actions"><a href="#first-battle">开始阅读</a><a href="/sandbox">直接进入沙盘 ↗</a></div>
-      </section>
+    <div class="guide-shell">
+      <aside class="chapter-rail" aria-label="章节进度">
+        <p>操作手册</p>
+        <nav>
+          <a href="#quick-start" data-section-link="quick-start"><span>1</span><b>快速上手</b><small>完成第一次推演</small></a>
+          <a href="#console" data-section-link="console"><span>2</span><b>认识控制台</b><small>试用每个区域</small></a>
+          <a href="#deployment" data-section-link="deployment"><span>3</span><b>部署兵力</b><small>阵营、装备与地形</small></a>
+          <a href="#operations" data-section-link="operations"><span>4</span><b>运行与判读</b><small>图层、航迹与战况</small></a>
+          <a href="#system-tools" data-section-link="system-tools"><span>5</span><b>系统工具</b><small>保存、载入与战报</small></a>
+          <a href="#workshop" data-section-link="workshop"><span>6</span><b>单位工坊</b><small>复制后再编辑</small></a>
+          <a href="#reference" data-section-link="reference"><span>7</span><b>快捷键与排障</b><small>随时快速查阅</small></a>
+        </nav>
+        <div class="rail-progress">
+          <span><b id="rail-progress-value">0</b> / 5 个演示步骤</span>
+          <i><span id="rail-progress-fill"></span></i>
+        </div>
+      </aside>
 
-      <section id="first-battle" class="chapter">
-        <div class="chapter-title"><small>01</small><div><p>QUICK START</p><h2>五分钟首场推演</h2></div></div>
-        <ol class="mission-steps">
-          <li><b>打开装备库</b><p>进入沙盘后点击左上角“部署装备”。先选择蓝方，再选择一艘驱逐舰 DDG。</p></li>
-          <li><b>完成双方部署</b><p>装备库关闭后，光标会携带符号预览。海军单位放在水域，陆基阵地放在陆地；红色轮廓代表位置非法。连续单击可放置同型单位，按 Esc 或右键结束。</p></li>
-          <li><b>构成可运行想定</b><p>蓝红双方至少各有一个存活单位。建议首次使用：每方 2 艘驱逐舰、1 架预警机与 2 个战斗机中队。</p></li>
-          <li><b>按下播放</b><p>底部中央点击播放，或按 Space。双方 AI 只依据本方传感器和共享航迹行动；没有被发现的目标不会被凭空攻击。</p></li>
-          <li><b>读取战况</b><p>顶部战况条显示双方存活单位、总耐久、反舰与防空库存以及当前攻势。选中单位会自动展开右侧详情。</p></li>
-        </ol>
-      </section>
-
-      <section class="chapter interface">
-        <div class="chapter-title"><small>02</small><div><p>CONTROL SURFACE</p><h2>控制台区域</h2></div></div>
-        <figure class="ui-figure">
-          <div class="screenshot-frame">
-            <img src="src/assets/guide/sandbox-overview.png" alt="破晓前夜沙盘界面总览" onerror="this.hidden=true" />
-            <span class="shot-fallback">实际沙盘界面标注图</span>
-            <i class="callout c1">1</i><i class="callout c2">2</i><i class="callout c3">3</i><i class="callout c4">4</i><i class="callout c5">5</i>
+      <main id="guide-content">
+        <section id="quick-start" class="guide-section intro-section" data-guide-section>
+          <div class="intro-copy">
+            <h1>从部署第一支部队开始</h1>
+            <p>按真实操作顺序完成第一次推演。每一步都能点、能试、能返回。</p>
+            <div class="intro-actions">
+              <a class="primary-action" href="#console">开始 5 分钟教程</a>
+              <a class="secondary-action" href="/sandbox">进入沙盘</a>
+            </div>
+            <p id="resume-note" class="resume-note" hidden>
+              <span aria-hidden="true">✓</span> 已恢复上次学习进度。
+              <button id="clear-guide-progress" type="button">重新开始</button>
+            </p>
           </div>
-          <figcaption>
-            <span><b>1</b> 部署、选择与测距</span>
-            <span><b>2</b> 双方战况总览</span>
-            <span><b>3</b> 单位详情与兵力列表</span>
-            <span><b>4</b> 图层、坐标与比例尺</span>
-            <span><b>5</b> 播放、单步与速度</span>
-          </figcaption>
-        </figure>
-      </section>
 
-      <section class="chapter terrain">
-        <div class="chapter-title"><small>03</small><div><p>DEPLOYMENT</p><h2>海、陆、空部署限制</h2></div></div>
-        <div class="rule-grid">
-          <article><span>SEA</span><h3>海上与水下</h3><p>舰艇、航母和潜艇需要开放水域。沿岸浅窄区域会考虑舰体安全间距；红色预览说明当前位置无法容纳该单位。</p></article>
-          <article><span>LAND</span><h3>陆基阵地</h3><p>雷达、防空与岸基打击阵地部署在陆地。机场是例外：为了支持抽象化想定，可部署在任意位置。</p></article>
-          <article><span>AIR</span><h3>空中编队</h3><p>航空兵可在地图任意位置生成。战斗中会消耗燃油和弹药，并按载机适配关系返回机场或航母整补。</p></article>
-        </div>
-      </section>
+          <div class="first-look" aria-label="控制台学习预览">
+            <div class="first-look-bar">
+              <span>教学控制台</span>
+              <span><b>蓝方</b> 2 · 50%</span>
+              <span><b class="red">红方</b> 2 · 46%</span>
+            </div>
+            <div class="first-look-map">
+              <button class="first-look-unit blue" type="button" data-scroll-to-demo aria-label="查看蓝方单位教学">
+                <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#force"></use></svg>
+              </button>
+              <span class="first-look-track blue"></span>
+              <button class="first-look-unit red" type="button" data-scroll-to-demo aria-label="查看红方单位教学">
+                <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#force"></use></svg>
+              </button>
+              <span class="first-look-track red"></span>
+              <div class="first-look-callout">
+                <b>选择一个单位</b>
+                <p>点选地图符号，右侧会显示当前状态与载弹。</p>
+                <button type="button" data-scroll-to-demo>进入演示</button>
+              </div>
+            </div>
+          </div>
 
-      <section id="sensors" class="chapter mechanics">
-        <div class="chapter-title"><small>04</small><div><p>SIMULATION MODEL</p><h2>你看到的，未必是战场全貌</h2></div></div>
-        <div class="mechanic-list">
-          <article><b>01 / 传感器</b><h3>探测不是开关</h3><p>雷达、声呐与电子支援拥有距离、扫描间隔和目标特征限制。航迹会积累质量，也会随时间老化并扩大误差。</p></article>
-          <article><b>02 / 航迹共享</b><h3>协同交战依赖通信</h3><p>本地航迹会进入本方融合态势。预警机与指挥节点能加快共享，使雷达静默单位仍可依据远程航迹交战。</p></article>
-          <article><b>03 / 指挥姿态</b><h3>攻势随局势变化</h3><p>指挥 AI 会评估兵力、弹药、威胁与目标广度，在保全兵力、控制节奏与饱和突击之间调整。</p></article>
-          <article><b>04 / 武器与损伤</b><h3>拦截有层次，命中有后果</h3><p>远程区域防空、点防御与近防系统依次接战。命中除降低耐久外，还可能削弱雷达、动力、射控、战情中心或航空兵规模。</p></article>
-        </div>
-      </section>
+          <ol class="quick-path" aria-label="五步完成第一次推演">
+            <li><span>1</span><div><b>选择蓝方装备</b><p>先选阵营，再选一支部队。</p></div></li>
+            <li><span>2</span><div><b>在地图部署</b><p>确认轮廓合法后单击放置。</p></div></li>
+            <li><span>3</span><div><b>切换红方部署</b><p>双方至少各有一个单位。</p></div></li>
+            <li><span>4</span><div><b>播放并观察</b><p>从慢速开始，关键时刻暂停。</p></div></li>
+            <li><span>5</span><div><b>读取航迹与战果</b><p>结合战况、详情与事件判断。</p></div></li>
+          </ol>
+        </section>
 
-      <section id="controls" class="chapter controls">
-        <div class="chapter-title"><small>05</small><div><p>REFERENCE</p><h2>快捷键与工具</h2></div></div>
-        <div class="key-grid">
-          <span><kbd>Space</kbd><b>播放 / 暂停</b></span><span><kbd>.</kbd><b>单步推进</b></span>
-          <span><kbd>R</kbd><b>测距工具</b></span><span><kbd>Esc</kbd><b>结束部署 / 取消工具</b></span>
-          <span><kbd>Tab</kbd><b>循环选择单位</b></span><span><kbd>Delete</kbd><b>部署阶段删除单位</b></span>
-          <span><kbd>滚轮</kbd><b>缩放地图</b></span><span><kbd>中键 / Alt 拖动</kbd><b>平移地图</b></span>
-        </div>
-        <div class="support-grid">
-          <article><h3>保存与战报</h3><p>“工具”菜单可保存或载入想定。AAR 战报保留原始事件字段，并附带中文显示文本，便于继续使用既有分析脚本。</p></article>
-          <article><h3>单位工坊</h3><p>内置单位不可直接修改。先克隆，再调整参数或载弹；自定义记录保存在浏览器的 <code>dawnfall-mods</code> 数据库，也可导出 JSON。</p></article>
-          <article><h3>常见问题</h3><p>无法开始通常意味着某一方没有存活单位；无法部署通常是地形不匹配，或推演已经开始。刷新页面前请先保存重要想定。</p></article>
-        </div>
-      </section>
-    </main>
+        <section id="console" class="guide-section console-section" data-guide-section>
+          <header class="section-heading">
+            <div>
+              <h2>认识控制台</h2>
+              <p>黄色边框表示可讲解区域。悬停或键盘聚焦即可查看说明。</p>
+            </div>
+          </header>
 
-    <footer><span>破晓前夜 Dawnfall v1.0</span><a href="/">返回首页</a><a href="/sandbox">进入推演</a></footer>
+          <div class="demo-layout">
+            <div id="demo-console" class="demo-console" data-demo-console aria-label="可操作的控制台教学演示">
+              <div id="demo-deploy" class="demo-primary-tools" data-guide-lesson="side">
+                <button class="demo-tool active" type="button" data-demo-mode="deploy">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#deploy"></use></svg>部署兵力
+                </button>
+                <button class="demo-tool" type="button" data-demo-mode="select">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#select"></use></svg>选择
+                </button>
+                <button class="demo-tool" type="button" data-demo-mode="ruler">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#ruler"></use></svg>测距
+                </button>
+              </div>
+
+              <div id="demo-summary" class="demo-summary" aria-label="演示战况总览" tabindex="0" data-guide-lesson="summary">
+                <span class="blue">蓝方</span><small>存活</small><b id="demo-blue-count">2</b><small>总生命</small><b>4/4</b>
+                <i class="blue"></i><b>50%</b>
+                <i class="red"></i><b>46%</b><small>总生命</small><b>4/4</b><small>存活</small><b id="demo-red-count">2</b><span class="red">红方</span>
+              </div>
+
+              <div id="demo-tools" class="demo-utility-tools" data-demo-tip="系统工具|保存、载入、导出战报与进入单位工坊。">
+                <button id="demo-tools-toggle" type="button" aria-expanded="false" aria-controls="demo-tools-menu" aria-label="打开系统工具">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#tools"></use></svg>
+                </button>
+                <div id="demo-tools-menu" class="demo-pop-menu" hidden>
+                  <b>推演与系统工具</b>
+                  <button type="button"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#save"></use></svg>保存推演</button>
+                  <button type="button"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#load"></use></svg>载入推演</button>
+                  <button type="button"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#report"></use></svg>导出战报 AAR</button>
+                  <button type="button"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#workshop"></use></svg>单位工坊</button>
+                </div>
+              </div>
+
+              <div id="demo-map" class="demo-map grid-on tracks-on" data-mode="deploy">
+                <div class="demo-land land-left"></div>
+                <div class="demo-land land-top"></div>
+                <span class="demo-range blue"></span>
+                <span class="demo-range red"></span>
+                <button class="demo-unit blue selected" type="button" data-demo-unit="蓝方驱逐舰 DDG" data-demo-tip="地图单位|点击单位符号查看状态、任务与载弹。" style="--x:42%;--y:52%" aria-label="蓝方驱逐舰 DDG">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#force"></use></svg>
+                </button>
+                <button class="demo-unit blue air" type="button" data-demo-unit="蓝方 F-35C 中队" data-demo-tip="航空兵单位|三角符号代表航空兵编队。" style="--x:35%;--y:69%" aria-label="蓝方 F-35C 中队">△</button>
+                <button class="demo-unit red" type="button" data-demo-unit="红方驱逐舰 DDG" data-demo-tip="地图单位|红色符号属于红方，点击可切换详情。" style="--x:69%;--y:41%" aria-label="红方驱逐舰 DDG">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#force"></use></svg>
+                </button>
+                <button class="demo-unit red air" type="button" data-demo-unit="红方 F-22 中队" data-demo-tip="航空兵单位|点击符号查看剩余飞机与任务状态。" style="--x:76%;--y:62%" aria-label="红方 F-22 中队">△</button>
+                <span class="demo-track blue" style="--x:53%;--y:47%"></span>
+                <span class="demo-track red" style="--x:61%;--y:58%"></span>
+                <div id="demo-deploy-palette" class="demo-deploy-palette" hidden>
+                  <div role="group" aria-label="演示部署阵营">
+                    <button class="active blue" type="button" data-demo-side="blue">蓝方</button>
+                    <button class="red" type="button" data-demo-side="red">红方</button>
+                  </div>
+                  <button class="active" type="button" data-demo-hull="DDG">驱逐舰 DDG</button>
+                  <button type="button" data-demo-hull="F-35C">F-35C 中队</button>
+                </div>
+                <p id="demo-map-message" class="demo-map-message" role="status" hidden></p>
+              </div>
+
+              <div id="demo-layers" class="demo-layer-control" data-guide-lesson="layers">
+                <button id="demo-layers-toggle" type="button" aria-expanded="false" aria-controls="demo-layer-menu">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#layers"></use></svg>图层
+                </button>
+                <div id="demo-layer-menu" class="demo-layer-menu" hidden>
+                  <label><span>网格</span><input type="checkbox" data-demo-layer="grid" checked /></label>
+                  <label><span>航迹</span><input type="checkbox" data-demo-layer="tracks" checked /></label>
+                  <label><span>雷达范围</span><input type="checkbox" data-demo-layer="radar" /></label>
+                  <label><span>武器射程</span><input type="checkbox" data-demo-layer="ranges" /></label>
+                </div>
+                <span>50 km</span>
+              </div>
+
+              <div id="demo-playback" class="demo-playback" data-guide-lesson="playback">
+                <button id="demo-play" type="button" aria-label="播放演示">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#play"></use></svg>
+                </button>
+                <button id="demo-step" type="button" aria-label="单步推进演示">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#step"></use></svg>
+                </button>
+                <span><small>推演时间</small><b id="demo-time">00:00</b></span>
+                <label>速度 <b id="demo-speed-value">8×</b><input id="demo-speed" type="range" min="1" max="60" value="8" /></label>
+              </div>
+
+              <aside id="demo-force" class="demo-force" aria-label="演示兵力详情" data-guide-lesson="context">
+                <button id="demo-force-toggle" type="button" aria-expanded="false">
+                  <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#force"></use></svg><span>兵力</span>
+                </button>
+                <div>
+                  <small>当前选择</small>
+                  <h3 id="demo-force-name">蓝方驱逐舰 DDG</h3>
+                  <dl><div><dt>生命</dt><dd>2 / 2</dd></div><div><dt>任务</dt><dd>区域防空</dd></div><div><dt>载弹</dt><dd>96 单元</dd></div></dl>
+                </div>
+              </aside>
+
+              <div id="demo-hover-popover" class="demo-hover-popover" role="tooltip" hidden>
+                <b></b>
+                <p></p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="deployment" class="guide-section" data-guide-section>
+          <header class="section-heading">
+            <div><h2>装备部署</h2><p>选择阵营和装备，再到地图确认位置是否合法。</p></div>
+          </header>
+          <div class="shot-viewer" data-shot-set="deployment">
+            <div class="shot-tabs" role="tablist" aria-label="部署截图">
+              <button type="button" role="tab" data-shot-state="library" aria-selected="true">装备库</button>
+              <button type="button" role="tab" data-shot-state="valid" aria-selected="false">合法位置</button>
+              <button type="button" role="tab" data-shot-state="invalid" aria-selected="false">非法位置</button>
+            </div>
+            <div class="shot-layout">
+              <figure>
+                <div class="shot-media">
+                  <div class="shot-canvas">
+                    <img class="shot-image" src="src/assets/guide/deployment-library.png" alt="当前 Tomahawk 装备部署库" />
+                    <div class="shot-rect-layer" aria-hidden="true"></div>
+                  </div>
+                </div>
+                <figcaption>真实界面截图；矩形与说明由手册单独绘制。</figcaption>
+              </figure>
+              <aside class="shot-notes" aria-label="部署截图标注">
+                <h3>看这几个位置</h3>
+                <ol></ol>
+                <button class="shot-full-toggle" type="button" aria-pressed="false">查看全图</button>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section id="operations" class="guide-section" data-guide-section>
+          <header class="section-heading">
+            <div><h2>运行判读</h2><p>结合顶部战况、地图航迹和单位详情判断局势。</p></div>
+          </header>
+          <div class="shot-viewer" data-shot-set="operations">
+            <div class="shot-tabs" role="tablist" aria-label="运行与判读截图">
+              <button type="button" role="tab" data-shot-state="overview" aria-selected="true">控制台总览</button>
+              <button type="button" role="tab" data-shot-state="details" aria-selected="false">单位与兵力详情</button>
+            </div>
+            <div class="shot-layout">
+              <figure>
+                <div class="shot-media"><div class="shot-canvas">
+                  <img class="shot-image" src="src/assets/guide/sandbox-overview.png" alt="运行中的 Tomahawk 控制台总览" />
+                  <div class="shot-rect-layer" aria-hidden="true"></div>
+                </div></div>
+                <figcaption>把汇总数据与地图上的具体变化对应起来。</figcaption>
+              </figure>
+              <aside class="shot-notes" aria-label="运行截图标注"><h3>按顺序读取</h3><ol></ol><button class="shot-full-toggle" type="button" aria-pressed="false">查看全图</button></aside>
+            </div>
+          </div>
+        </section>
+
+        <section id="system-tools" class="guide-section" data-guide-section>
+          <header class="section-heading">
+            <div><h2>系统工具</h2><p>保存、载入、导出战报或进入单位工坊。</p></div>
+          </header>
+          <div class="shot-viewer" data-shot-set="tools">
+            <div class="shot-layout">
+              <figure>
+                <div class="shot-media"><div class="shot-canvas">
+                  <img class="shot-image" src="src/assets/guide/system-tools.png" alt="当前 Tomahawk 系统工具菜单" />
+                  <div class="shot-rect-layer" aria-hidden="true"></div>
+                </div></div>
+                <figcaption>清空并重置前，先保存尚未完成的推演。</figcaption>
+              </figure>
+              <aside class="shot-notes" aria-label="系统工具截图标注"><h3>工具分组</h3><ol></ol><button class="shot-full-toggle" type="button" aria-pressed="false">查看全图</button></aside>
+            </div>
+          </div>
+        </section>
+
+        <section id="workshop" class="guide-section" data-guide-section>
+          <header class="section-heading">
+            <div><h2>单位工坊</h2><p>内置单位只读。复制后修改参数并保存。</p></div>
+          </header>
+          <div class="shot-viewer" data-shot-set="workshop">
+            <div class="shot-tabs" role="tablist" aria-label="单位工坊截图">
+              <button type="button" role="tab" data-shot-state="builtin" aria-selected="true">内置模板</button>
+              <button type="button" role="tab" data-shot-state="custom" aria-selected="false">复制后编辑</button>
+            </div>
+            <div class="shot-layout">
+              <figure>
+                <div class="shot-media"><div class="shot-canvas">
+                  <img class="shot-image" src="src/assets/guide/workshop-builtin.png" alt="单位工坊内置单位只读状态" />
+                  <div class="shot-rect-layer" aria-hidden="true"></div>
+                </div></div>
+                <figcaption>内置记录保持只读；复制后才能保存修改。</figcaption>
+              </figure>
+              <aside class="shot-notes" aria-label="单位工坊截图标注"><h3>快速自定义</h3><ol></ol><button class="shot-full-toggle" type="button" aria-pressed="false">查看全图</button></aside>
+            </div>
+          </div>
+        </section>
+
+        <section id="reference" class="guide-section reference-section" data-guide-section>
+          <header class="section-heading">
+            <div><h2>快捷键与排障</h2><p>遇到问题时，先检查当前模式、双方兵力和部署地形。</p></div>
+          </header>
+          <div class="reference-layout">
+            <dl class="key-list">
+              <div><dt><kbd>Space</kbd></dt><dd><b>播放 / 暂停</b><span>开始推演或停在当前时刻。</span></dd></div>
+              <div><dt><kbd>.</kbd></dt><dd><b>单步推进</b><span>暂停并推进一个短时间片。</span></dd></div>
+              <div><dt><kbd>R</kbd></dt><dd><b>测距</b><span>切换地图测距工具。</span></dd></div>
+              <div><dt><kbd>Esc</kbd></dt><dd><b>结束部署</b><span>取消当前工具或连续部署。</span></dd></div>
+              <div><dt><kbd>Tab</kbd></dt><dd><b>循环选择单位</b><span>地图获得焦点时依次切换。</span></dd></div>
+              <div><dt><kbd>Delete</kbd></dt><dd><b>删除单位</b><span>仅部署阶段可用。</span></dd></div>
+              <div><dt><kbd>滚轮</kbd></dt><dd><b>缩放地图</b><span>以光标位置为中心调整比例。</span></dd></div>
+              <div><dt><kbd>中键 / Alt 拖动</kbd></dt><dd><b>平移地图</b><span>不改变单位位置。</span></dd></div>
+            </dl>
+            <div class="troubleshooting">
+              <details open><summary>为什么不能开始推演？</summary><p>蓝红双方至少各需要一个存活单位。查看顶部战况是否仍有一方为 0。</p></details>
+              <details><summary>为什么不能部署？</summary><p>推演开始后不能添加单位。部署阶段出现红色轮廓时，按提示更换地形或位置。</p></details>
+              <details><summary>为什么看不到目标？</summary><p>单位只依据本方传感器和共享航迹行动。打开航迹与雷达图层，检查探测范围和航迹质量。</p></details>
+              <details><summary>如何避免丢失进度？</summary><p>在系统工具中保存到本地推演库，或下载 JSON 文件。重置或刷新前先保存。</p></details>
+            </div>
+          </div>
+          <div class="guide-close">
+            <p>现在可以在完整沙盘中完成同样的步骤。</p>
+            <a class="primary-action" href="/sandbox">进入沙盘开始推演</a>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <footer class="guide-footer">
+      <span>战斧 Tomahawk v1.0</span>
+      <a href="/">返回首页</a>
+      <a href="/sandbox">进入推演</a>
+    </footer>
+    <noscript><p class="noscript-note">本手册的全部文字仍可阅读；启用 JavaScript 后可使用控制台演示和截图热点。</p></noscript>
+    <script type="module" src="src/guide.js"></script>
   </body>
 </html>

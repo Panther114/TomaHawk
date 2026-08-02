@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 
 import { createScenario, clearSide, placeShip, SIDE, NM } from "../src/sim.js";
-import { clusterProximityLabels, inventoryHtml } from "../src/ui/view.js";
+import { clusterProximityLabels, inventoryHtml, inventoryRowState } from "../src/ui/view.js";
 
 function measure(fn, iterations) {
   let sink = 0;
@@ -101,7 +101,22 @@ const cachedPanels = measure(() => {
   return inventory.length;
 }, 600);
 
+const changingShip = orderedShips[0];
+const changingWeapon = Object.keys(changingShip.loadout)[0];
+const changingStart = changingShip.loadout[changingWeapon];
+const rebuiltChangingPanels = measure((iteration) => {
+  changingShip.loadout[changingWeapon] = Math.max(0, changingStart - (iteration % 2));
+  return inventoryHtml(orderedShips).length;
+}, 600);
+const patchedChangingRows = measure((iteration) => {
+  changingShip.loadout[changingWeapon] = Math.max(0, changingStart - (iteration % 2));
+  const state = inventoryRowState(changingShip);
+  return state.vls + state.aaw + state.asuw;
+}, 600);
+changingShip.loadout[changingWeapon] = changingStart;
+
 console.log("frontend hot-path microbenchmark (40 ships / 400 missiles):");
 console.log(`  target lookup: ${linearLookup.ms.toFixed(1)} -> ${indexedLookup.ms.toFixed(1)} ms (${improvement(linearLookup.ms, indexedLookup.ms).toFixed(1)}% faster)`);
 console.log(`  label clustering: ${naiveLabelTime.ms.toFixed(1)} -> ${spatialLabelTime.ms.toFixed(1)} ms (${improvement(naiveLabelTime.ms, spatialLabelTime.ms).toFixed(1)}% faster)`);
 console.log(`  stable inventory frames: ${uncachedPanels.ms.toFixed(1)} -> ${cachedPanels.ms.toFixed(1)} ms (${improvement(uncachedPanels.ms, cachedPanels.ms).toFixed(1)}% faster)`);
+console.log(`  changing-ammo panel work: ${rebuiltChangingPanels.ms.toFixed(1)} -> ${patchedChangingRows.ms.toFixed(1)} ms (${improvement(rebuiltChangingPanels.ms, patchedChangingRows.ms).toFixed(1)}% faster)`);

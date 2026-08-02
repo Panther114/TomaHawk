@@ -1,28 +1,30 @@
-# 资料来源与标注原则
+# Sources and attribution
 
-破晓前夜使用公开资料建立游戏化近似。数值并非机密数据，也不代表任何机构的正式评估。
+Tomahawk builds engineering approximations from public material. Values are not classified data and do not represent any official assessment by a government or agency.
 
-## 主要来源类型
+## Main source types
 
-- 美国国防部、海军、空军与导弹防御局公开事实页
-- 制造商公开产品页与新闻资料
-- NATO 与美国国防后勤局发布的公开符号规范
-- Natural Earth 公共领域海岸线数据
-- 公开研究论文和政府报告中的雷达地平线、RCS 与运动学基础模型
+- Public fact sheets from the U.S. DoD, Navy, Air Force, and Missile Defense Agency
+- Manufacturer public product pages and press material
+- Public symbol standards published by NATO and the U.S. Defense Logistics Agency
+- Natural Earth public-domain coastline data
+- Open research papers and government reports on radar horizon, RCS, and kinematics basics
 
-## 战术符号
+## Tactical symbols
 
-地图符号参考：
+Map symbols draw on:
 
 - MIL-STD-2525E Change 1
 - NATO APP-06 Edition E
 
-实现明确称为“标准风格受控子集”，只覆盖本游戏需要的隶属关系、域、主要功能与少量修饰符，不宣称完整标准兼容。
+The implementation is explicitly a “controlled subset in a standard-inspired style.” It covers affiliation, domain, major function, and a few modifiers needed by this game, and does not claim full standard compliance.
 
-## 视觉素材
+## Visual assets
 
-落地页主视觉由 GPT Image 2 生成，要求无文字、无商标、无水印，并采用虚构的无品牌装备。地图战术符号和回退技术图由代码生成，不使用许可不明的照片或图标包。
+The landing-page hero and the 22 built-in equipment-card assets were generated with GPT Image 2 under constraints of no text, trademarks, or watermarks, and unbranded equipment composition. Map tactical symbols and technical fallback art are code-generated; no photo or icon packs of unclear license are used.
 
-## 数据解释
+UI Chinese typefaces use a local subset of Adobe Source Han Sans SC 2.005R, distributed under the SIL Open Font License 1.1. Full license text is in `src/fonts/OFL-SourceHanSans.txt`. The project does not load fonts from the network.
 
-射程、速度、RCS、命中概率、载弹和耐久经过统一单位换算与游戏平衡。缺少可靠公开数据时，会采用保守的类别近似；文档中出现的真实装备名称仅用于识别模拟对象。
+## Data interpretation
+
+Range, speed, RCS, hit probability, magazines, and durability are converted to common units and calibrated to the simulation scale. Where solid public data is missing, conservative class approximations are used. Real equipment names in docs only identify the simulated object.

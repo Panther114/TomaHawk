@@ -2,7 +2,7 @@
   "name": "tomahawk",
   "version": "1.0.0",
   "private": true,
-  "description": "破晓前夜 Dawnfall——确定性、本地优先的现代联合作战推演游戏。",
+  "description": "Tomahawk — a deterministic, local-first modern joint-warfare sandbox.",
   "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "engines": {
@@ -16,7 +16,13 @@
     "bench:server": "node scripts/bench-server.mjs",
     "bench:terrain": "node scripts/bench-terrain.mjs",
     "bench:frontend": "node scripts/bench-frontend.mjs",
+    "font:ui": "node scripts/build-ui-font.mjs",
     "debug:sim": "node --expose-gc scripts/sim-debug.mjs",
-    "map:data": "node scripts/build-east-china-sea-map.mjs"
+    "map:data": "node scripts/build-east-china-sea-map.mjs",
+    "screenshot:equipment": "node scripts/screenshot-equipment.mjs",
+    "screenshot:guide": "node scripts/screenshot-guide.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.0"
   }
 }

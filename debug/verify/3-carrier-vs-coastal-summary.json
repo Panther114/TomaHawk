@@ -2,29 +2,28 @@
   "ticks": 24000,
   "simTimeS": 6000,
   "outcome": "ongoing",
-  "wallMs": 5464.2,
-  "avgMsTick": 0.228,
+  "wallMs": 8815.6,
+  "avgMsTick": 0.367,
   "perf": {
-    "p50": 0.05,
-    "p95": 1.069,
-    "max": 7.548,
-    "peakEntities": 139,
-    "peakMissiles": 123
+    "p50": 0.063,
+    "p95": 1.652,
+    "max": 20.584,
+    "peakEntities": 135,
+    "peakMissiles": 119
   },
   "blue": {
-    "alive": 7,
-    "ships": 3,
+    "alive": 6,
+    "ships": 2,
     "ground": 0,
     "air": 3,
-    "planes": 6,
+    "planes": 5,
     "carriers": 1,
     "airfields": 1,
-    "offense": 12,
+    "offense": 24,
     "rearming": [],
     "rtb": [],
     "hulls": [
       "CVN",
-      "DDG",
       "DDG",
       "FFG",
       "F35C",
@@ -44,21 +43,24 @@
     "rearming": [],
     "rtb": [],
     "hulls": [
-      "SAM"
+      "DEB"
     ]
   },
   "launches": {
-    "TomahawkBlockV": 36,
-    "MaritimeStrike": 19
+    "ESSM": 2,
+    "TomahawkBlockV": 52,
+    "MaritimeStrike": 11,
+    "SM-6": 2,
+    "SM-2MR": 1
   },
   "counts": {
-    "intercepts": 31,
-    "misses": 94,
+    "intercepts": 22,
+    "misses": 90,
     "decoys": 0,
     "splashes": 0,
-    "rearmPhases": 1,
+    "rearmPhases": 3,
     "deckWait": 0,
-    "rtbPhases": 1,
+    "rtbPhases": 3,
     "darkEagle": 0,
     "jsow": 0,
     "harpoon": 0,
@@ -68,64 +70,64 @@
   "flags": [],
   "lastEvents": [
     {
-      "t": 860.5,
+      "t": 889.25,
       "side": "Blue",
-      "text": "SM-6 failed to intercept DarkEagle."
+      "text": "Blue DDG 4 launched ESSM at MaritimeStrike."
     },
     {
-      "t": 860.25,
+      "t": 889.25,
+      "side": "Blue",
+      "text": "Blue DDG 4 queued 1x ESSM salvo at MaritimeStrike."
+    },
+    {
+      "t": 888.75,
+      "side": "Blue",
+      "text": "ESSM failed to intercept MaritimeStrike."
+    },
+    {
+      "t": 886.25,
       "side": "Red",
-      "text": "SM-2MR failed to intercept MaritimeStrike."
+      "text": "Red DDG 16 launched ESSM at TomahawkBlockV."
     },
     {
-      "t": 860.25,
+      "t": 886.25,
+      "side": "Red",
+      "text": "Red DDG 16 queued 1x ESSM salvo at TomahawkBlockV."
+    },
+    {
+      "t": 886,
+      "side": "Red",
+      "text": "ESSM received a midcourse abort and self-destructed after its target was destroyed."
+    },
+    {
+      "t": 886,
+      "side": "Red",
+      "text": "ESSM intercepted incoming MaritimeStrike."
+    },
+    {
+      "t": 882.75,
       "side": "Red",
       "text": "Red DDG 16 launched ESSM at MaritimeStrike."
     },
     {
-      "t": 860.25,
-      "side": "Red",
-      "text": "Red SAM 12 launched ESSM at MaritimeStrike."
-    },
-    {
-      "t": 860.25,
-      "side": "Red",
-      "text": "Red SAM 12 queued 1x ESSM salvo at MaritimeStrike."
-    },
-    {
-      "t": 860.25,
+      "t": 882.25,
       "side": "Red",
       "text": "Red DDG 16 queued 1x ESSM salvo at MaritimeStrike."
     },
     {
-      "t": 859.5,
+      "t": 882,
       "side": "Red",
-      "text": "SM-2MR failed to intercept MaritimeStrike."
+      "text": "ESSM failed to intercept TomahawkBlockV."
     },
     {
-      "t": 859.25,
+      "t": 881.75,
       "side": "Red",
-      "text": "ESSM failed to intercept MaritimeStrike."
+      "text": "ESSM intercepted incoming MaritimeStrike."
     },
     {
-      "t": 858.25,
+      "t": 881.25,
       "side": "Red",
-      "text": "Red Coast Strike 13 launched MSTK at surface combatant."
-    },
-    {
-      "t": 856.75,
-      "side": "Blue",
-      "text": "Blue CVN 3 launched ESSM at MaritimeStrike."
-    },
-    {
-      "t": 855.25,
-      "side": "Blue",
-      "text": "Blue CVN 3 launched ESSM at MaritimeStrike."
-    },
-    {
-      "t": 855.25,
-      "side": "Blue",
-      "text": "Blue CVN 3 queued 1x ESSM salvo at MaritimeStrike."
+      "text": "Red DDG 16 launched ESSM at MaritimeStrike."
     }
   ],
   "name": "carrier-vs-coastal",

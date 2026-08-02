@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 
 const root = resolve(process.cwd());
 const host = process.env.HOST || "0.0.0.0";
-const port = Number(process.env.PORT || 4172);
+const port = Number(process.env.PORT || 4202);
 const scenarioDir = resolve(root, "saves", "scenarios");
 const hosted = Boolean(process.env.RAILWAY_ENVIRONMENT);
 const scenarioStoreEnabled = !hosted;
@@ -194,5 +194,5 @@ createServer(async (req, res) => {
   const localUrl = `http://127.0.0.1:${port}`;
   const bindLabel = host === "0.0.0.0" ? `${host}:${port}` : localUrl;
   const localHint = host === "0.0.0.0" ? ` (local access: ${localUrl})` : "";
-  console.log(`破晓前夜 Dawnfall v1.0 running on ${bindLabel}${localHint}`);
+  console.log(`Tomahawk v1.0 running on ${bindLabel}${localHint}`);
 });

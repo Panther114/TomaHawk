@@ -2,9 +2,9 @@ import { MISSILES, NM, SHIP_CLASSES } from "../sim.js";
 
 export const UNIT_CATEGORIES = [
   { id: "all", label: "全部装备" },
-  { id: "sea", label: "海上" },
+  { id: "sea", label: "水面" },
   { id: "subsurface", label: "水下" },
-  { id: "ground", label: "陆基" },
+  { id: "ground", label: "地面" },
   { id: "air", label: "空中" }
 ];
 
@@ -53,9 +53,10 @@ function statsFor(cls) {
   const speed = Math.round(cls.maxSpeedKt || 0);
   const weaponRange = loadedRange(cls);
   if (cls.domain === "air") {
+    const mach = speed ? (speed / 661).toFixed(1) : "—";
     return [
       `${cls.damageResist || 1} 架`,
-      speed ? `${speed} 节等效` : "固定翼",
+      `速度${mach}马赫`,
       radar ? `雷达 ${radar} 海里` : "无主动雷达"
     ];
   }
@@ -73,8 +74,13 @@ function statsFor(cls) {
   ];
 }
 
-export function unitCatalog() {
-  return Object.entries(SHIP_CLASSES).map(([id, cls]) => {
+let _catalogCache = null;
+let _catalogSize = -1;
+let _presentationById = null;
+
+function rebuildCatalogCache() {
+  const entries = Object.entries(SHIP_CLASSES);
+  _catalogCache = entries.map(([id, cls]) => {
     const preset = BUILTIN[id];
     const category = preset?.[0] || categoryForClass(cls);
     const zhName = preset?.[1] || cls.prefixZh || cls.prefix || id;
@@ -94,10 +100,23 @@ export function unitCatalog() {
       custom: !preset
     };
   });
+  _presentationById = new Map(_catalogCache.map((item) => [item.id, item]));
+  _catalogSize = entries.length;
+}
+
+export function unitCatalog() {
+  // Invalidate when the live registry grows/shrinks (Unit Workshop register*).
+  if (!_catalogCache || _catalogSize !== Object.keys(SHIP_CLASSES).length) {
+    rebuildCatalogCache();
+  }
+  return _catalogCache;
 }
 
 export function unitPresentation(id, cls = SHIP_CLASSES[id]) {
-  return unitCatalog().find((item) => item.id === id) || {
+  if (!_presentationById || _catalogSize !== Object.keys(SHIP_CLASSES).length) {
+    rebuildCatalogCache();
+  }
+  return _presentationById.get(id) || {
     id,
     category: categoryForClass(cls || {}),
     zhName: cls?.prefixZh || cls?.prefix || id,
@@ -105,9 +124,15 @@ export function unitPresentation(id, cls = SHIP_CLASSES[id]) {
     role: "自定义作战单位",
     artwork: "",
     symbolId: `${categoryForClass(cls || {})}-${cls?.glyph || "unit"}`,
-    searchTerms: id.toLowerCase(),
+    searchTerms: String(id).toLowerCase(),
     statSummary: statsFor(cls || {}),
     custom: true
   };
 }
 
+/** Force catalog rebuild after register/unregister of custom units. */
+export function invalidateUnitCatalog() {
+  _catalogCache = null;
+  _presentationById = null;
+  _catalogSize = -1;
+}

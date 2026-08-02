@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 
 import { SHIP_CLASSES } from "../src/sim.js";
 import { UNIT_CATEGORIES, unitCatalog, unitPresentation } from "../src/ui/catalog.js";
-import { TUTORIAL_STEPS } from "../src/ui/tutorial.js";
+import { GUIDE_LESSONS, TUTORIAL_STEPS } from "../src/ui/tutorial.js";
 import * as language from "../src/ui/lang.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -51,6 +51,76 @@ test("tutorial steps share the required stable data shape", () => {
   }
 });
 
+test("interactive guide lessons project onto the stable sandbox spotlight data", () => {
+  assert.equal(GUIDE_LESSONS.length, TUTORIAL_STEPS.length);
+  for (const [index, lesson] of GUIDE_LESSONS.entries()) {
+    assert.deepEqual(
+      TUTORIAL_STEPS[index],
+      {
+        id: lesson.id,
+        target: lesson.target,
+        title: lesson.title,
+        body: lesson.body,
+        placement: lesson.placement
+      }
+    );
+    assert.deepEqual(
+      Object.keys(lesson.guide).sort(),
+      ["action", "error", "focus", "label", "result"]
+    );
+  }
+});
+
+test("guide is a semantic interactive manual with complete current-UI assets", () => {
+  const html = read("../guide.html");
+  const script = read("../src/guide.js");
+  const css = read("../src/guide.css");
+  const chapters = [
+    "quick-start",
+    "console",
+    "deployment",
+    "operations",
+    "system-tools",
+    "workshop",
+    "reference"
+  ];
+  for (const chapter of chapters) assert.match(html, new RegExp(`id="${chapter}"`));
+  assert.match(html, /src="src\/guide\.js"/);
+  assert.match(html, /data-demo-console/);
+  assert.match(html, /data-guide-lesson=/);
+  assert.match(html, /id="demo-hover-popover"/);
+  assert.match(html, /data-shot-set="deployment"/);
+  assert.match(html, /data-shot-set="workshop"/);
+  assert.match(script, /tomahawk\.guideProgress\.v1/);
+  assert.match(script, /localStorage/);
+  assert.match(script, /IntersectionObserver/);
+  for (const event of ["pointerenter", "pointerleave", "focusin", "focusout"]) {
+    assert.match(script, new RegExp(event));
+  }
+  assert.match(css, /font-size:\s*18px/);
+  assert.match(css, /@media \(max-width:\s*820px\)[\s\S]*body\s*\{[\s\S]*font-size:\s*17px/);
+  assert.doesNotMatch(css, /transition:\s*all\b/);
+  assert.doesNotMatch(`${html}\n${script}`, /Dawnfall|dawnfall|onerror\s*=/i);
+  assert.doesNotMatch(html, /<h[1-3][^>]*>[^<]*[:：]/);
+  assert.doesNotMatch(html, /lesson-tabs|demo-coach|task-strip|operation-rules|workshop-flow/);
+
+  for (const asset of [
+    "deployment-library.png",
+    "placement-valid.png",
+    "placement-invalid.png",
+    "sandbox-overview.png",
+    "unit-details.png",
+    "system-tools.png",
+    "workshop-builtin.png",
+    "workshop-custom.png"
+  ]) {
+    const file = new URL(`../src/assets/guide/${asset}`, import.meta.url);
+    assert.equal(existsSync(file), true, asset);
+    assert.ok(statSync(file).size > 30_000, asset);
+    assert.match(`${html}\n${script}`, new RegExp(`src/assets/guide/${asset.replace(".", "\\.")}`));
+  }
+});
+
 test("sandbox shell has continuous deployment, drawer, layers and tutorial controls", () => {
   const html = read("../sandbox.html");
   for (const id of ["equipment-overlay", "placement-chip", "placement-message", "right-panel", "map-options", "bottom-bar", "tour-overlay"]) {
@@ -68,18 +138,20 @@ test("continuous placement uses existing public placement validation and reports
   assert.match(source, /event\.button === 2[\s\S]*endPlacement\(\)/);
 });
 
-test("tutorial preference and Dawnfall debugging keys use the v1 namespace", () => {
+test("Tomahawk debugging keys use the v1 namespace and first-run prompts are removed", () => {
   const source = read("../src/app.js");
-  assert.match(source, /dawnfall\.tutorialDismissed/);
-  assert.match(source, /dawnfall\.debug/);
-  assert.match(source, /window\.dawnfallMods/);
-  assert.doesNotMatch(source, /window\.tomahawkMods|localStorage\.getItem\("tomahawk\.debug"/);
+  const html = read("../sandbox.html");
+  assert.doesNotMatch(source, /initiative\.tutorialDismissed/);
+  assert.doesNotMatch(html, /id="empty-state"|id="tutorial-prompt"/);
+  assert.match(source, /tomahawk\.debug/);
+  assert.match(source, /window\.tomahawkMods/);
+  assert.doesNotMatch(source, /window\.initiativeMods|localStorage\.getItem\("initiative\.debug"/);
 });
 
-test("mod persistence defines verified legacy migration into dawnfall-mods", () => {
+test("mod persistence defines verified legacy migration into Tomahawk storage", () => {
   const source = read("../src/mods/store.js");
-  assert.match(source, /const DB_NAME = "dawnfall-mods"/);
-  assert.match(source, /const LEGACY_DB_NAME = "tomahawk-mods"/);
+  assert.match(source, /const DB_NAME = "tomahawk-mods"/);
+  assert.match(source, /const LEGACY_DB_NAME = "initiative-mods"/);
   assert.match(source, /for \(const record of records\) await dbPut\(targetDb, record\)/);
   assert.ok(source.indexOf("dbPut(targetDb, record)") < source.indexOf("deleteNamedDb(LEGACY_DB_NAME)"));
 });
@@ -91,9 +163,69 @@ test("server exposes the three public pages with pretty routes", () => {
   assert.match(source, /"\/guide": "guide\.html"/);
 });
 
-test("AAR preserves source events and adds Chinese display text under a Dawnfall filename", () => {
+test("landing shell is a centered game menu with three cinematic depth layers", () => {
+  const html = read("../index.html");
+  const css = read("../src/landing.css");
+  const script = read("../src/landing.js");
+
+  assert.equal(html.match(/href="\/sandbox"/g)?.length, 1);
+  assert.match(html, /href="\/guide"/);
+  assert.match(html, /github\.com\/Panther114\/TomaHawk/);
+  for (const asset of [
+    "tomahawk-storm-sunset.webp",
+    "tomahawk-carrier-v2.webp",
+    "tomahawk-hornet-v2.webp",
+  ]) {
+    assert.match(html, new RegExp(asset.replace(".", "\\.")));
+    const file = new URL(`../src/assets/landing/${asset}`, import.meta.url);
+    assert.equal(existsSync(file), true);
+    assert.ok(statSync(file).size > 100_000);
+  }
+  assert.equal(existsSync(new URL("../src/assets/hero/carrier-group.webp", import.meta.url)), false);
+  assert.match(html, /src="src\/landing\.js"/);
+  assert.match(html, /data-parallax-x="6"[\s\S]*data-parallax-y="4"/);
+  assert.match(html, /data-parallax-x="22"[\s\S]*data-parallax-y="14"/);
+  assert.match(html, /data-parallax-x="67"[\s\S]*data-parallax-y="43"/);
+  assert.match(script, /querySelectorAll\("\[data-parallax-x\]\[data-parallax-y\]"\)/);
+  assert.match(script, /x \* depthX/);
+  assert.match(script, /y \* depthY/);
+  assert.match(script, /event\.pointerType === "touch"/);
+  assert.match(script, /pointerout/);
+  assert.match(script, /event\.screenX/);
+  assert.doesNotMatch(script, /landing\.addEventListener\("pointerleave"/);
+  assert.match(script, /if \(reducedMotion\.matches\) \{[\s\S]*applyDepth\(currentX, currentY\)/);
+  assert.doesNotMatch(css, /@media \(pointer: coarse\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(
+    css.match(/@media \(prefers-reduced-motion: reduce\)[\s\S]*$/)?.[0] || "",
+    /\.scene-(?:background|carrier|aircraft)[\s\S]*transform:\s*none/
+  );
+  assert.doesNotMatch(html, /hero-specs|hero-fallback|carrier-group\.webp|landing-foot/);
+  assert.doesNotMatch(css, /transition:\s*all\b/);
+});
+
+test("public shells share the Tomahawk logo and CJK-only display font", () => {
+  const fonts = read("../src/fonts.css");
+  for (const page of ["../index.html", "../sandbox.html", "../guide.html"]) {
+    const html = read(page);
+    assert.match(html, /href="src\/fonts\.css"/);
+    assert.match(html, /src\/assets\/icon\.png/);
+    assert.doesNotMatch(html, /initiative-mark\.svg/);
+    assert.doesNotMatch(html, /dawnfall-mark\.svg/);
+  }
+  assert.equal(existsSync(new URL("../src/assets/dawnfall-mark.svg", import.meta.url)), false);
+  assert.match(fonts, /font-family:\s*"Tomahawk Han"/);
+  assert.match(fonts, /src:\s*url\("fonts\/chi_font\.ttf"\)/);
+  assert.match(fonts, /unicode-range:[\s\S]*U\+4E00-9FFF/);
+  assert.doesNotMatch(
+    fonts.match(/@font-face\s*\{[\s\S]*?font-family:\s*"Tomahawk Han"[\s\S]*?\}/)?.[0] || "",
+    /U\+0000-00FF/
+  );
+});
+
+test("AAR preserves source events and adds Chinese display text under a Tomahawk filename", () => {
   const source = read("../src/app.js");
   assert.match(source, /aar\.events = aar\.events\.map/);
   assert.match(source, /displayTextZh/);
-  assert.match(source, /dawnfall-aar-/);
+  assert.match(source, /tomahawk-aar-/);
 });

@@ -529,12 +529,22 @@ export function clearSide(sim, side) {
 }
 
 export function canRunScenario(sim) {
-  const aliveSides = new Set(sim.ships.filter((ship) => ship.alive).map((ship) => ship.side));
-  return aliveSides.has(SIDE.BLUE) && aliveSides.has(SIDE.RED);
+  let blueAlive = false;
+  let redAlive = false;
+  for (const ship of sim.ships) {
+    if (!ship.alive) continue;
+    if (ship.side === SIDE.BLUE) blueAlive = true;
+    else if (ship.side === SIDE.RED) redAlive = true;
+    if (blueAlive && redAlive) return true;
+  }
+  return false;
 }
 
 export function canAddAssets(sim) {
-  return sim?.mode === SCENARIO_MODE.SETUP;
+  // Deployment remains available while a battle is paused or running. The UI
+  // pauses the sim while the armory/placement flow is open, so insertion is
+  // deterministic and cannot occur halfway through a simulation tick.
+  return sim?.mode === SCENARIO_MODE.SETUP || sim?.mode === SCENARIO_MODE.RUNNING;
 }
 
 export function setScenarioMap(sim, mapId) {

@@ -488,7 +488,7 @@ test("battle summary counts classify SM-6 by current target and stay single-line
   assert.ok(canAddAssets(createScenario(2)));
   const running = createScenario(2);
   running.mode = SCENARIO_MODE.RUNNING;
-  assert.equal(canAddAssets(running), false);
+  assert.equal(canAddAssets(running), true);
 });
 
 test("launch scheduler spaces a four-missile salvo across ticks", () => {
@@ -521,6 +521,15 @@ test("launch scheduler spaces a four-missile salvo across ticks", () => {
   assert.ok(blue.launchQueue.length >= 2);
   for (let i = 0; i < 16; i++) stepSim(sim, 0.25);
   assert.ok(sim.missiles.filter((m) => m.side === SIDE.BLUE).length >= 2);
+});
+
+test("stepSim respects a paused running state unless explicitly single-stepped", () => {
+  const sim = runningScenarioMode(31);
+  sim.paused = true;
+  stepSim(sim, 0.25);
+  assert.equal(sim.time, 0);
+  stepSim(sim, 0.25, { allowPaused: true });
+  assert.equal(sim.time, 0.25);
 });
 
 test("weapon range entries include only loaded weapons", () => {
@@ -595,11 +604,11 @@ test("visual tactical symbols are intentionally compact", () => {
   assert.ok(VISUAL_CONFIG.shipLabelPx >= 8.75);
 });
 
-test("HTML keeps WEZ as a single toggle and 60x maximum speed", () => {
+test("HTML keeps WEZ as a single toggle and 100x maximum speed", () => {
   const html = fs.readFileSync(new URL("../sandbox.html", import.meta.url), "utf8");
   assert.match(html, /id="filter-ranges"/);
   assert.doesNotMatch(html, /id="ranges-mode"/);
-  assert.match(html, /id="speed"[^>]*max="60"/);
+  assert.match(html, /id="speed"[^>]*max="100"/);
   assert.doesNotMatch(html, /id="copy-fire-log"|id="event-console"/);
   assert.doesNotMatch(html, /id="duplicate"|id="clear-blue"|id="clear-red"/);
 });
@@ -615,7 +624,6 @@ test("right panel renderer is contextual and the UI is Chinese-only", () => {
   assert.match(ui, /sunk/);
   assert.match(ui, /inventory-divider/);
   assert.match(app, /panel\?\.classList\.remove\("retracted"\)/);
-  assert.match(app, /selectContextTab/);
   assert.match(ui, /force-summary/);
   assert.doesNotMatch(app, /copyLogToClipboard|setFeedCollapsed|toggle-feed/);
   assert.match(app, /document\.documentElement\.lang = 'zh-CN'/);

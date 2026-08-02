@@ -1,4 +1,4 @@
-// 破晓前夜的集中式简体中文消息目录。军事型号与通用缩写保留原文。
+// 战斧的集中式简体中文消息目录。军事型号与通用缩写保留原文。
 const strings = {
   "scale.grid": "网格 {n} 公里",
   "status.ready": "部署就绪",
@@ -49,9 +49,9 @@ const strings = {
   "ship.f16v": "F-16V",
   "ship.ea18g": "EA-18G 电子战机",
   "ship.awac": "预警机",
-  "naval.group": "海上",
+  "naval.group": "水面",
   "subsurface.group": "水下",
-  "ground.group": "陆基",
+  "ground.group": "地面",
   "air.group": "空中",
   "inv.ship": "舰名",
   "inv.unit": "单位",
@@ -69,13 +69,13 @@ const strings = {
   "side.sys": "系",
   "confirm.yes": "确定",
   "save.cancel": "取消",
-  "save.overwrite": "已存在名为“{n}”的想定，是否覆盖？",
-  "save.done": "想定已保存。",
+  "save.overwrite": "已存在名为“{n}”的推演，是否覆盖？",
+  "save.done": "推演已保存。",
   "save.failed": "保存失败。",
-  "load.empty": "暂无已保存的想定。",
+  "load.empty": "暂无已保存的推演。",
   "load.delete": "删除",
-  "load.deleteConfirm": "删除想定“{n}”？",
-  "load.failed": "无法加载想定列表。",
+  "load.deleteConfirm": "删除推演“{n}”？",
+  "load.failed": "无法加载推演列表。",
   "opt.tracks": "锁定"
 };
 
@@ -128,8 +128,8 @@ export function translateEventText(rawText) {
     [/^(.*?) missed (.*?)\.?$/, "$1 未命中 $2。"],
     [/^(.*?) placed\.$/, "$1 已部署。"],
     [/^(.*?) duplicated from (.*?)\.$/, "$1 已复制自 $2。"],
-    [/^(.*?) removed from scenario\.$/, "$1 已从想定中移除。"],
-    [/^(BLUE|RED) side cleared from scenario\.$/, "$1已从想定中清除。"],
+    [/^(.*?) removed from scenario\.$/, "$1 已从推演中移除。"],
+    [/^(BLUE|RED) side cleared from scenario\.$/, "$1已从推演中清除。"],
     [/^(BLUE|RED) side controls the battlespace\. Simulation ended\.$/, "$1控制战场，推演结束。"]
   ];
   for (const [pattern, replacement] of sentencePatterns) {

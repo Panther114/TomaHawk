@@ -3,71 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="破晓前夜 Dawnfall——现代联合作战推演沙盘。" />
-    <title>推演沙盘｜破晓前夜 Dawnfall</title>
-    <link rel="icon" href="src/assets/dawnfall-mark.svg" />
+    <meta name="description" content="战斧 Tomahawk——现代联合作战推演沙盘。" />
+    <title>推演沙盘</title>
+    <link rel="icon" href="src/assets/icon.png" />
+    <link rel="preload" href="src/fonts/chi_font.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="stylesheet" href="src/fonts.css" />
     <link rel="stylesheet" href="src/styles.css" />
-    <link rel="stylesheet" href="src/dawnfall.css" />
+    <link rel="stylesheet" href="src/tomahawk.css" />
   </head>
   <body class="sandbox-page">
     <a class="skip-link" href="#map">跳到战术地图</a>
     <main id="app">
-      <canvas id="map" aria-label="破晓前夜战术地图" tabindex="0"></canvas>
+      <canvas id="map" aria-label="战斧战术地图" tabindex="0"></canvas>
 
       <header id="brand-panel" class="hud-panel">
-        <a class="brand-lockup" href="/" aria-label="返回破晓前夜首页">
-          <img src="src/assets/dawnfall-mark.svg" alt="" />
-          <span><b>破晓前夜</b><small>DAWNFALL · v1.0</small></span>
+        <a class="brand-lockup" href="/" aria-label="返回战斧首页">
+          <img src="src/assets/icon.png" alt="" />
+          <span><b>战斧</b><small>TOMAHAWK · V1.0</small></span>
         </a>
         <div class="primary-actions" aria-label="主要工具">
-          <button id="deploy-open" class="hud-button primary" type="button"><span class="button-mark">＋</span>部署装备</button>
-          <button class="hud-button active" data-tool="select" type="button"><span class="button-mark">⌖</span>选择</button>
-          <button class="hud-button" data-tool="ruler" type="button"><span class="button-mark">↗</span>测距</button>
+          <button id="deploy-open" class="hud-button primary" type="button"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#deploy"></use></svg><span>部署兵力</span></button>
+          <button id="map-tool-toggle" class="map-tool-toggle" type="button" data-tool-toggle="select" aria-pressed="false" aria-label="切换选择与测距">
+            <span class="map-tool-option active"><b>选择</b><small>模式</small></span><span class="map-tool-option"><b>测距</b><small>模式</small></span><i class="map-tool-thumb" aria-hidden="true"></i>
+          </button>
         </div>
       </header>
 
       <section id="battle-overview" class="hud-panel battle-overview" aria-label="双方战况">
-        <button id="summary-collapse" class="icon-control" type="button" aria-expanded="true" aria-label="收起战况总览">⌃</button>
+        <button id="summary-collapse" class="icon-control summary-collapse" type="button" aria-expanded="true" aria-label="收起战况总览"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#chevron"></use></svg></button>
         <div id="status"></div>
       </section>
+      <button id="top-reset" class="top-reset" data-reset type="button" aria-label="重置沙盘" title="重置沙盘"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#reset"></use></svg><span>重置沙盘</span></button>
 
       <div class="top-actions">
-        <a class="icon-control" href="/guide" aria-label="打开玩法教程" title="玩法教程">?</a>
-        <button id="tools-toggle" class="icon-control" type="button" aria-expanded="false" aria-controls="tools-menu" title="工具">⋯</button>
+        <a class="icon-control" href="/guide" aria-label="打开操作手册" title="操作手册"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#help"></use></svg></a>
       </div>
-      <aside id="tools-menu" class="hud-popover tools-menu" hidden>
-        <div class="popover-kicker">想定与工具</div>
-        <button id="save" type="button">保存想定 <kbd>Ctrl S</kbd></button>
-        <button id="load" type="button">载入想定</button>
-        <button id="aar" type="button">导出战报 AAR</button>
-        <button id="mods-toggle" type="button">单位工坊</button>
-        <button id="reset" class="danger" type="button">清空并重置</button>
-        <a href="/">返回首页</a>
+      <aside id="tools-menu" class="hud-popover tools-menu is-open">
+        <button id="save" type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#save"></use></svg>保存推演</span><kbd>Ctrl S</kbd></button>
+        <button id="load" type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#load"></use></svg>载入推演</span></button>
+        <button id="aar" type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#report"></use></svg>导出战报 AAR</span></button>
+        <button id="mods-toggle" type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#workshop"></use></svg>单位工坊</span></button>
+        <button id="tools-reset" class="danger" data-reset type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#reset"></use></svg>清空并重置</span></button>
+        <a href="/"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#home"></use></svg>返回首页</span></a>
       </aside>
 
       <aside id="right-panel" class="hud-panel context-panel retracted" aria-label="单位信息">
         <button class="context-handle rp-collapse" type="button" aria-label="展开单位信息" aria-expanded="false">
-          <span>兵力</span><i>‹</i>
+          <svg class="ui-icon context-expand-icon"><use href="src/assets/ui-icons.svg#chevron"></use></svg><span>兵力列表</span>
         </button>
         <div class="context-content">
           <div class="context-head">
-            <div>
-              <small>战术态势</small>
-              <strong>单位与兵力</strong>
-            </div>
-            <button id="context-close" class="icon-control" type="button" aria-label="收起">×</button>
+            <strong>兵力列表</strong>
+            <button id="context-close" class="icon-control" type="button" aria-label="收起"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#close"></use></svg></button>
           </div>
-          <div class="context-tabs" role="tablist">
-            <button id="context-details-tab" class="active" role="tab" aria-selected="true" type="button">单位详情</button>
-            <button id="context-force-tab" role="tab" aria-selected="false" type="button">兵力列表</button>
-          </div>
-          <div id="ship-detail-overlay" class="context-view"></div>
-          <div id="unit-tab" class="context-view" hidden></div>
+          <div id="unit-tab" class="context-view"></div>
         </div>
       </aside>
 
       <section id="map-hud" class="map-hud" aria-label="地图信息">
-        <button id="layers-toggle" class="hud-button" type="button" aria-expanded="false" aria-controls="map-options">图层</button>
+        <button id="layers-toggle" class="hud-button" type="button" aria-expanded="false" aria-controls="map-options"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#layers"></use></svg><span>图层</span></button>
         <section id="map-scale" aria-label="地图比例尺">
           <span id="scale-distance">50 km</span>
           <div class="scale-rule"><i id="scale-rule-fill"></i></div>
@@ -82,21 +76,15 @@
         <label><span><b>雷达范围</b><small>传感器探测包线</small></span><input id="filter-radar" type="checkbox" /></label>
         <label><span><b>武器射程</b><small>当前可用武器包线</small></span><input id="filter-ranges" type="checkbox" checked /></label>
         <label><span><b>飞行武器</b><small>导弹与鱼雷轨迹</small></span><input id="filter-missiles" type="checkbox" checked /></label>
-        <label class="map-choice"><span><b>战场地图</b></span>
-          <select id="map-select" title="战术地图">
-            <option value="eastChinaSea">东海沿岸</option>
-            <option value="openSea">开放海域</option>
-          </select>
-        </label>
       </section>
 
       <section id="bottom-bar" class="hud-panel playback" aria-label="推演时间控制">
-        <button id="play" class="play-button" type="button" aria-label="开始或暂停推演">▶</button>
-        <button id="step" class="step-button" type="button" aria-label="单步推进">▹|</button>
+        <button id="play" class="play-button" type="button" aria-label="开始或暂停推演"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#play"></use></svg></button>
+        <button id="reset" class="reset-button" data-reset type="button" aria-label="重置沙盘" title="重置沙盘"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#reset"></use></svg></button>
         <div class="time-readout"><small>推演时间</small><span id="clock">00:00</span></div>
         <label class="speed-control">
           <span>速度 <b id="speed-value">8×</b></span>
-          <input id="speed" type="range" min="1" max="60" value="8" />
+          <input id="speed" type="range" min="1" max="100" value="8" />
         </label>
       </section>
 
@@ -104,14 +92,6 @@
         <span class="side-dot"></span><b id="placement-name">蓝方 · 驱逐舰 DDG</b><small>单击连续部署 · Esc 结束</small>
       </button>
       <div id="placement-message" class="placement-message" role="status" aria-live="polite"></div>
-
-      <section id="empty-state" class="empty-state">
-        <span>新建想定</span>
-        <h1>部署双方兵力，开始第一次推演</h1>
-        <p>先选择阵营与装备，再在海面、陆地或空域中完成部署。</p>
-        <button id="empty-deploy" type="button">打开装备库</button>
-        <a href="/guide">阅读五分钟教程</a>
-      </section>
 
       <select id="ship-class" hidden aria-hidden="true"></select>
       <input id="load-file" type="file" accept="application/json" hidden />
@@ -121,18 +101,13 @@
       <div class="equipment-shell" role="dialog" aria-modal="true" aria-labelledby="equipment-title">
         <header class="equipment-head">
           <div>
-            <small>ORDER OF BATTLE</small>
             <h1 id="equipment-title">选择部署装备</h1>
           </div>
-          <div class="side-selector" aria-label="部署阵营">
-            <button class="active blue" data-deploy-side="blue" type="button">蓝方</button>
-            <button class="red" data-deploy-side="red" type="button">红方</button>
-          </div>
-          <button id="equipment-close" class="equipment-close" type="button" aria-label="关闭装备库">×</button>
+          <button id="equipment-close" class="equipment-close" type="button" aria-label="关闭装备库"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#close"></use></svg></button>
         </header>
         <div class="equipment-controls">
           <nav id="equipment-categories" aria-label="装备分类"></nav>
-          <label class="equipment-search"><span>⌕</span><input id="equipment-search" type="search" placeholder="搜索型号、名称或用途" /></label>
+          <label class="equipment-search"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#search"></use></svg><input id="equipment-search" type="search" placeholder="搜索型号、名称或任务类型" /></label>
         </div>
         <div id="equipment-grid" class="equipment-grid"></div>
         <footer class="equipment-footer"><span id="equipment-count">22 种装备</span><span>选择装备后返回地图部署</span></footer>
@@ -142,9 +117,15 @@
     <div id="mods-overlay" class="mods-overlay" hidden>
       <div class="mods-card">
         <div class="mods-head">
-          <span class="mods-title">单位工坊</span>
-          <span class="mods-hint">拖入单位 JSON 文件即可导入</span>
-          <button class="mods-close" id="mods-close">关闭</button>
+          <div class="mods-head-text">
+            <span class="mods-title">单位工坊</span>
+            <span class="mods-hint">编辑、复制或下载单位 · 也可将 JSON 拖入此窗口导入</span>
+          </div>
+          <button class="mods-close" id="mods-close" type="button">关闭</button>
+        </div>
+        <div class="mods-dropzone" aria-hidden="true">
+          <strong>松开以导入 JSON</strong>
+          <span>支持单位与弹药定义文件</span>
         </div>
         <div class="mods-body">
           <aside class="mods-list" id="mods-list"></aside>
@@ -155,10 +136,10 @@
 
     <div id="save-overlay" class="about-overlay" hidden>
       <div class="about-card save-card">
-        <h1>保存想定</h1>
-        <label class="save-field"><span>想定名称</span><input id="save-name" type="text" placeholder="未命名想定" /></label>
+        <h1>保存推演</h1>
+        <label class="save-field"><span>推演名称</span><input id="save-name" type="text" placeholder="未命名推演" /></label>
         <div class="save-location">
-          <label><input type="radio" name="save-location" value="default" checked /> 保存到本地想定库</label>
+          <label><input type="radio" name="save-location" value="default" checked /> 保存到本地推演库</label>
           <label><input type="radio" name="save-location" value="custom" /> 下载到指定位置</label>
         </div>
         <div class="save-actions">
@@ -169,7 +150,7 @@
     </div>
     <div id="load-overlay" class="about-overlay" hidden>
       <div class="about-card save-card">
-        <h1>载入想定</h1>
+        <h1>载入推演</h1>
         <div id="load-list" class="load-list"></div>
         <div class="save-actions">
           <button class="about-close" id="load-import">从文件导入…</button>
@@ -178,12 +159,6 @@
       </div>
     </div>
 
-    <aside id="tutorial-prompt" class="tutorial-prompt" hidden>
-      <small>首次推演？</small>
-      <strong>用两分钟认识控制台</strong>
-      <p>不会改动你的想定，随时可以退出。</p>
-      <div><button id="tutorial-start">开始引导</button><button id="tutorial-later">稍后</button><button id="tutorial-dismiss">不再提示</button></div>
-    </aside>
     <div id="tour-overlay" class="tour-overlay" hidden>
       <div id="tour-spotlight" class="tour-spotlight"></div>
       <aside id="tour-card" class="tour-card">
@@ -195,10 +170,10 @@
     </div>
 
     <div class="mobile-gate">
-      <img src="src/assets/dawnfall-mark.svg" alt="" />
+      <img src="src/assets/icon.png" alt="" />
       <h1>沙盘需要更大的桌面视口</h1>
-      <p>请使用至少 1280×720 的桌面浏览器。你仍可在当前设备阅读玩法教程。</p>
-      <a href="/guide">查看教程</a>
+      <p>请使用至少 960×560 的桌面浏览器窗口。你仍可在当前设备阅读操作手册。</p>
+      <a href="/guide">查看操作手册</a>
     </div>
 
     <script type="module" src="src/app.js"></script>

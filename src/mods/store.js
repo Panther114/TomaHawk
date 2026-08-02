@@ -6,8 +6,8 @@
 
 import { vanillaUnits, registerUnit, unregisterUnit, unitId, isBuiltinUnit } from "./registry.js";
 
-const DB_NAME = "dawnfall-mods";
-const LEGACY_DB_NAME = "tomahawk-mods";
+const DB_NAME = "tomahawk-mods";
+const LEGACY_DB_NAME = "initiative-mods";
 const DB_VERSION = 1;
 const STORE = "units";
 

@@ -78,8 +78,19 @@ function unclassifiedContactLabel(domain) {
 // platform version (RCS only shortens detection, it never extends a radar
 // beyond its rated reach).
 const MISSILE_REF_RCS_M2 = 0.6;
+const missileRcsFactorCache = new WeakMap();
 export function missileRcsRangeFactor(rcsM2) {
-  return clamp(Math.pow((rcsM2 ?? MISSILE_REF_RCS_M2) / MISSILE_REF_RCS_M2, 0.25), 0.18, 1.0);
+  const ratio = (rcsM2 ?? MISSILE_REF_RCS_M2) / MISSILE_REF_RCS_M2;
+  return clamp(Math.sqrt(Math.sqrt(ratio)), 0.18, 1.0);
+}
+
+function cachedMissileRcsRangeFactor(spec) {
+  const rcsM2 = spec.rcsM2;
+  const cached = missileRcsFactorCache.get(spec);
+  if (cached?.rcsM2 === rcsM2) return cached.factor;
+  const factor = missileRcsRangeFactor(rcsM2);
+  missileRcsFactorCache.set(spec, { rcsM2, factor });
+  return factor;
 }
 
 // Radar-reflective height for the geometric horizon: a flying entity uses its
@@ -106,7 +117,7 @@ function radarDetectionChance(rangeM, radarRangeM, target) {
   return clamp(base - damagePenalty, 0.05, 0.96);
 }
 
-export function missileDetectionEnvelope(observer, missile) {
+export function missileDetectionEnvelope(observer, missile, out = null) {
   const spec = MISSILES[missile?.missileId];
   if (!spec) return { detectRangeM: 0, horizonM: 0, targetHeightM: 8, visibilityFactor: 0.34, baseChance: 0.8 };
   // Altitude/profile and detection-confidence still vary by weapon (a
@@ -176,10 +187,16 @@ export function missileDetectionEnvelope(observer, missile) {
   if (Number.isFinite(missile.altitudeM)) {
     targetHeightM = Math.max(1, missile.altitudeM);
   }
-  const visibilityFactor = missileRcsRangeFactor(spec.rcsM2);
+  const visibilityFactor = cachedMissileRcsRangeFactor(spec);
   const horizonM = radarHorizonM(scatterHeightM(observer), targetHeightM);
   const detectRangeM = Math.min(observer.radarRangeM * visibilityFactor, horizonM * 1.1);
-  return { detectRangeM, horizonM, targetHeightM, visibilityFactor, baseChance };
+  const result = out ?? {};
+  result.detectRangeM = detectRangeM;
+  result.horizonM = horizonM;
+  result.targetHeightM = targetHeightM;
+  result.visibilityFactor = visibilityFactor;
+  result.baseChance = baseChance;
+  return result;
 }
 
 function missileRadarDetectionChance(rangeM, detectRangeM, missile, profile) {
@@ -196,39 +213,58 @@ function missileRadarDetectionChance(rangeM, detectRangeM, missile, profile) {
 // math. The grid is pure broad-phase; detection outcomes are unchanged because
 // every candidate still passes the same RCS/horizon/chance tests. Candidate
 // order stays deterministic via a stable index sort.
-function sensorGrid(entities, _usefulRangeM) {
+function sensorGrid(entities, _usefulRangeM, reuse = null) {
+  const grid = reuse ?? { entities, rows: new Map(), used: [], candidates: [], aliveCount: 0, active: false };
+  grid.entities = entities;
   let aliveCount = 0;
   for (const entity of entities) if (entity.alive) aliveCount++;
-  if (aliveCount === 0) return { entities, cells: null, aliveCount: 0 };
+  grid.aliveCount = aliveCount;
+  if (aliveCount === 0) {
+    grid.active = false;
+    return grid;
+  }
   // Tiny force: grid overhead exceeds the linear scan.
-  if (aliveCount <= 8) return { entities, cells: null, aliveCount };
-  const cells = new Map();
+  if (aliveCount <= 8) {
+    grid.active = false;
+    return grid;
+  }
+  for (const bucket of grid.used) bucket.length = 0;
+  grid.used.length = 0;
+  grid.active = true;
   for (let index = 0; index < entities.length; index++) {
     const entity = entities[index];
     if (!entity.alive) continue;
     const x = Math.floor(entity.x / SENSOR_GRID_CELL_M);
     const y = Math.floor(entity.y / SENSOR_GRID_CELL_M);
-    const key = `${x},${y}`;
-    let bucket = cells.get(key);
+    let row = grid.rows.get(x);
+    if (!row) {
+      row = new Map();
+      grid.rows.set(x, row);
+    }
+    let bucket = row.get(y);
     if (!bucket) {
       bucket = [];
-      cells.set(key, bucket);
+      row.set(y, bucket);
     }
+    if (bucket.length === 0) grid.used.push(bucket);
     bucket.push(index);
   }
-  return { entities, cells, aliveCount };
+  return grid;
 }
 
 function sensorCandidates(grid, observer, rangeM) {
-  if (!grid.cells) return grid.entities;
+  if (!grid.active) return grid.entities;
   const minX = Math.floor((observer.x - rangeM) / SENSOR_GRID_CELL_M);
   const maxX = Math.floor((observer.x + rangeM) / SENSOR_GRID_CELL_M);
   const minY = Math.floor((observer.y - rangeM) / SENSOR_GRID_CELL_M);
   const maxY = Math.floor((observer.y + rangeM) / SENSOR_GRID_CELL_M);
-  const indexes = [];
+  const indexes = grid.candidates;
+  indexes.length = 0;
   for (let x = minX; x <= maxX; x++) {
+    const row = grid.rows.get(x);
+    if (!row) continue;
     for (let y = minY; y <= maxY; y++) {
-      const bucket = grid.cells.get(`${x},${y}`);
+      const bucket = row.get(y);
       if (!bucket) continue;
       for (const index of bucket) indexes.push(index);
     }
@@ -238,9 +274,8 @@ function sensorCandidates(grid, observer, rangeM) {
   // walk the full list (alive entities are still filtered by the caller).
   if (indexes.length >= aliveCount * 0.7) return grid.entities;
   indexes.sort((a, b) => a - b);
-  const out = new Array(indexes.length);
-  for (let i = 0; i < indexes.length; i++) out[i] = grid.entities[indexes[i]];
-  return out;
+  for (let i = 0; i < indexes.length; i++) indexes[i] = grid.entities[indexes[i]];
+  return indexes;
 }
 
 function sharedTrackMap(sim, side) {
@@ -368,6 +403,19 @@ export function* iterateTracksForShip(sim, ship) {
   }
 }
 
+export function tracksForShipInto(sim, ship, out) {
+  out.length = 0;
+  for (const [id] of ship.tracks) {
+    const best = trackForShip(sim, ship, id);
+    if (best) out.push(best);
+  }
+  for (const [id, shared] of sim.sharedTracksBySide?.get(ship.side) ?? []) {
+    if (ship.tracks.has(id)) continue;
+    out.push(currentTrack(shared, sim.time));
+  }
+  return out;
+}
+
 export function tracksForShip(sim, ship) {
   return [...iterateTracksForShip(sim, ship)];
 }
@@ -391,8 +439,15 @@ export function scanSensors(sim, dt) {
     observers.push(observer);
   }
   const maxRadarRangeM = observers.reduce((range, observer) => Math.max(range, observer.radarRangeM), 0);
-  const ships = observers.length ? sensorGrid(sim.ships, maxRadarRangeM) : null;
-  const missiles = observers.length ? sensorGrid(sim._aliveMissiles ?? sim.missiles, maxRadarRangeM) : null;
+  const ships = observers.length
+    ? sensorGrid(sim.ships, maxRadarRangeM, sim._sensorShipGrid)
+    : null;
+  const missiles = observers.length
+    ? sensorGrid(sim._aliveMissiles ?? sim.missiles, maxRadarRangeM, sim._sensorMissileGrid)
+    : null;
+  if (ships && !sim._sensorShipGrid) sim._sensorShipGrid = ships;
+  if (missiles && !sim._sensorMissileGrid) sim._sensorMissileGrid = missiles;
+  const missileProfile = {};
   for (const observer of observers) {
     const eaPressure = electronicAttackPressure(observer, sim.ships);
     for (const target of sensorCandidates(ships, observer, observer.radarRangeM)) {
@@ -404,8 +459,9 @@ export function scanSensors(sim, dt) {
       const effectiveRangeM = observer.radarRangeM * rcsRangeFactor(target.rcsM2, targetDomain);
       const dx = observer.x - target.x;
       const dy = observer.y - target.y;
-      if (dx * dx + dy * dy > effectiveRangeM * effectiveRangeM) continue;
-      const rangeM = distance(observer, target);
+      const rangeSq = dx * dx + dy * dy;
+      if (rangeSq > effectiveRangeM * effectiveRangeM) continue;
+      const rangeM = Math.sqrt(rangeSq);
       // Radar horizon: a high-altitude target is visible far; a low one (ship,
       // sea-skimmer) is masked beyond the geometric horizon (the radar shadow).
       const horizon = radarHorizonM(scatterHeightM(observer), scatterHeightM(target));
@@ -444,12 +500,13 @@ export function scanSensors(sim, dt) {
     for (const missile of sensorCandidates(missiles, observer, observer.radarRangeM)) {
       if (missile.side === observer.side) continue;
       if (missile.medium?.startsWith("underwater") || MISSILES[missile.missileId]?.medium === "underwater") continue;
-      const profile = missileDetectionEnvelope(observer, missile);
+      const profile = missileDetectionEnvelope(observer, missile, missileProfile);
       const detectRangeM = profile.detectRangeM;
       const dx = observer.x - missile.x;
       const dy = observer.y - missile.y;
-      if (dx * dx + dy * dy > detectRangeM * detectRangeM) continue;
-      const rangeM = distance(observer, missile);
+      const rangeSq = dx * dx + dy * dy;
+      if (rangeSq > detectRangeM * detectRangeM) continue;
+      const rangeM = Math.sqrt(rangeSq);
       const horizon = profile.horizonM;
       const horizonFactor = rangeM > horizon ? clamp(1.0 - (rangeM - horizon) / (70 * NM), 0.15, 1.0) : 1.0;
       const jammingPenalty = radarJammingPenalty(eaPressure, rangeM, observer.radarRangeM);

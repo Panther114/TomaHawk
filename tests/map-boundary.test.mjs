@@ -71,10 +71,11 @@ test("ship labels shrink and fade out as the map scale bar advances", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
 
   assert.match(appSource, /function shipLabelScale\(\)/);
-  assert.match(appSource, /scaleMeters <= 20 \* KM/);
-  assert.match(appSource, /scaleMeters <= 50 \* KM/);
+  assert.match(appSource, /scaleMeters <= 40 \* KM/);
+  assert.match(appSource, /scaleMeters <= 100 \* KM/);
   assert.match(appSource, /scaleMeters <= 100 \* KM/);
   assert.match(appSource, /scaleMeters <= 200 \* KM/);
+  assert.match(appSource, /scaleMeters <= 400 \* KM/);
 });
 
 test("launched missiles display zoom-fading text labels beside their icons", () => {
@@ -86,13 +87,18 @@ test("launched missiles display zoom-fading text labels beside their icons", () 
   assert.match(appSource, /const groupKey = `\$\{missile\.side\}:\$\{missile\.missileId\}`;/);
 });
 
-test("cached tactical symbols and missile icons keep a fixed readable size", () => {
+test("cached tactical symbols scale continuously within readable bounds", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
   const symbolSource = readFileSync(new URL("../src/ui/symbols.js", import.meta.url), "utf8");
 
   assert.match(appSource, /drawTacticalSymbol\(ctx/);
-  assert.match(symbolSource, /const FRAME_CACHE = new Map\(\)/);
-  assert.match(symbolSource, /path\.rect\(-14, -10, 28, 20\)/);
+  // Descriptive pictograms (not NATO frames) with Path2D cache + screen-space scale.
+  assert.match(symbolSource, /const ICON_CACHE = new Map\(\)/);
+  assert.match(symbolSource, /function pathDestroyer/);
+  assert.match(symbolSource, /function pathJet/);
+  assert.match(appSource, /const UNIT_ICON_MIN_SCALE = 0\.56/);
+  assert.match(appSource, /const UNIT_ICON_MAX_SCALE = 1\.55/);
+  assert.match(appSource, /const iconScale = unitIconScale\(selected\)/);
   assert.match(appSource, /Math\.max\(2\.2, VISUAL_CONFIG\.missileMinPx \* \(isAntiAir \? 0\.85 : 1\)\)/);
 });
 
@@ -104,6 +110,7 @@ test("terrain rendering reuses a cached offscreen layer when the camera is uncha
   assert.match(appSource, /const TERRAIN_BUCKET_M = 4_000_000;/);
   assert.match(appSource, /terrainItemsInView\(paths\.landBuckets, viewBounds\)/);
   assert.match(appSource, /terrainItemsInView\(paths\.coastBuckets, viewBounds\)/);
+  assert.match(appSource, /terrainItemsInView\(paths\.borderBuckets, viewBounds\)/);
   // The cached layer is blitted 1:1 in device space (identity transform) so a
   // fractional devicePixelRatio does not resample/soften the coastline.
   assert.match(appSource, /ctx\.drawImage\(terrainLayer, 0, 0\);/);
@@ -112,13 +119,13 @@ test("terrain rendering reuses a cached offscreen layer when the camera is uncha
 test("setup mode suppresses ship direction arrows until battle starts", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
 
-  assert.match(appSource, /sim\.mode !== SCENARIO_MODE\.SETUP && ship\.alive && \(ship\.speed > 0\.1 \|\| ship\.desiredSpeed > 0\.1\)/);
+  assert.match(appSource, /sim\.mode !== SCENARIO_MODE\.SETUP[\s\S]*ship\.alive && \(ship\.speed > 0\.1 \|\| ship\.desiredSpeed > 0\.1\)/);
 });
 
 test("multi-selection radar rendering iterates every selected ship", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
 
-  assert.match(appSource, /for \(const ship of sim\.ships\) \{\s*if \(selectedIds\.has\(ship\.id\)\) drawSectorResponsibility\(ship\);\s*\}/s);
+  assert.match(appSource, /if \(selectedIds\.has\(ship\.id\)\) drawSectorResponsibility\(ship\);/);
   assert.doesNotMatch(appSource, /drawSectorResponsibility\(focus\)/);
 });
 

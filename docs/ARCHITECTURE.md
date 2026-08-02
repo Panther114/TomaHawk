@@ -1,60 +1,65 @@
-# 架构说明
+# Architecture
 
-## 总览
+## Overview
 
-破晓前夜采用原生 HTML、CSS、JavaScript 与 Canvas，没有打包器和前端框架。浏览器负责界面与绘制；模拟核心保持无 DOM、可在 Node.js 中直接测试。
+Tomahawk uses plain HTML, CSS, JavaScript, and Canvas — no bundler and no frontend framework. The browser owns UI and drawing; the simulation core stays DOM-free and is testable directly in Node.js.
 
 ```text
-页面与交互（index / sandbox / guide）
+Pages and interaction (index / sandbox / guide)
         ↓
-UI 适配层（src/app.js、src/ui/*）
+UI adapter layer (src/app.js, src/ui/*)
         ↓
-稳定公开入口（src/sim.js）
+Stable public entry (src/sim.js)
         ↓
-确定性模拟核心（src/sim/*）
+Deterministic simulation core (src/sim/*)
 ```
 
-## 页面层
+## Page layer
 
-- `index.html`：产品落地页，只负责品牌与导航。
-- `sandbox.html`：沙盘 DOM 外壳；`src/app.js` 连接 Canvas、控件、存档与工坊。
-- `guide.html`：响应式中文教程。
-- `server.mjs`：解析 `/`、`/sandbox`、`/guide`，流式发送静态文件；想定存取与调试日志端点仅在本地启用。
+- `index.html` — product landing page (brand and navigation only).
+- `sandbox.html` — sandbox DOM shell; `src/app.js` wires Canvas, controls, saves, and the workshop.
+- `guide.html` — semantic, no-script-readable shell for the responsive Simplified Chinese task manual.
+- `src/guide.js` — optional interaction enhancement for the mini console, chapter state, screenshot annotations, and versioned progress.
+- `src/guide.css` — the manual's large-type layout, responsive chapter navigation, demo console, and HTML annotation system.
+- `server.mjs` — routes `/`, `/sandbox`, and `/guide`, streams static files; scenario I/O and debug log endpoints are enabled only locally.
 
-## UI 层
+## UI layer
 
-- `src/ui/lang.js`：单一简体中文消息目录与事件格式化。
-- `src/ui/catalog.js`：22 个内置装备及自定义单位的展示目录；只引用模拟类数据，不向核心添加展示字段。
-- `src/ui/symbols.js`：标准风格受控子集战术符号，使用缓存 `Path2D`。
-- `src/ui/tutorial.js`：教程页与沙盘引导共享的步骤数据。
-- `src/ui/view.js`：无 DOM 的 HTML 片段和投影辅助函数。
+- `src/ui/lang.js` — single Simplified Chinese message catalogue and event formatting.
+- `src/ui/catalog.js` — display catalogue for 22 built-in platforms plus custom units; reads sim class data only and does not push presentation fields into the core.
+- `src/ui/symbols.js` — controlled tactical-symbol subset in a standard-inspired style, using cached `Path2D`.
+- `src/ui/tutorial.js` — shared guide lesson data. `TUTORIAL_STEPS` is a stable five-field projection used by the existing in-sandbox spotlight tour.
+- `src/ui/view.js` — DOM-free HTML fragments and projection helpers.
 
-## 模拟核心
+The manual's mini console deliberately does not import or run the simulation core. It models only UI state so a reader can rehearse controls without modifying a scenario. Current-UI screenshot assets live in `src/assets/guide/`; `scripts/screenshot-guide.mjs` drives normal sandbox controls with Playwright and regenerates them at a fixed 1600×900, 1× device scale.
 
-`src/sim.js` 仅为稳定导出入口。逻辑按职责拆分在：
+## Simulation core
 
-- `scenario.js`：想定创建、部署、序列化、恢复与 AAR。
-- `step.js`：固定顺序的时钟调度。
-- `sensors.js`、`command.js`：探测、航迹与融合态势。
-- `movement.js`、`aircraft.js`：舰艇与航空兵生命周期。
-- `combat.js`、`missiles.js`：火力规划、飞行与防御。
-- `ships.js`：内置与自定义单位注册表。
+`src/sim.js` is only a stable re-export barrel. Logic is split by responsibility:
 
-UI 不得绕过公开入口修改核心规则。v1 的页面、符号和教程改造不改变保存格式或模拟 API。
+- `scenario.js` — scenario create/place/serialize/restore and AAR.
+- `step.js` — fixed-order tick scheduler.
+- `sensors.js`, `command.js` — detection, tracks, and fused force picture.
+- `movement.js`, `aircraft.js` — ship and aircraft lifecycle.
+- `combat.js`, `missiles.js` — fire planning, flight, and defence.
+- `ships.js` — built-in and custom unit registry.
 
-## 性能策略
+UI must not bypass the public entry to change core rules. The v1 page, symbol, and tutorial work did not change save format or simulation API.
 
-Canvas 每帧绘制，DOM 面板约 20 Hz 更新。地图对象先做视口裁剪；标签使用 LOD 与聚类；战术符号的几何路径预构建后复用。模拟性能由 `scripts/perf-harness.mjs` 的机器无关复杂度分数约束。
+## Performance strategy
 
-## 数据与持久化
+Canvas draws every frame; DOM panels refresh at about 20 Hz. Map objects are viewport-culled first; labels use LOD and clustering; tactical-symbol geometry is prebuilt and reused. Simulation performance is guarded by the machine-independent complexity score from `scripts/perf-harness.mjs`.
 
-- 想定：兼容原有 JSON 结构。
-- 单位工坊：IndexedDB `dawnfall-mods`；首次启动复制并验证旧数据库后删除旧库。
-- 教程状态：`localStorage["dawnfall.tutorialDismissed"]`。
-- 调试开关：`localStorage["dawnfall.debug"]` 或 `?debug=1`。
+## Data and persistence
 
-## 托管边界
+- Scenarios: compatible with the existing JSON shape.
+- Unit Workshop: IndexedDB `tomahawk-mods`; on first launch, legacy DB records are copied and verified before the old DB is removed.
+- Tutorial state: `localStorage["tomahawk.tutorialDismissed"]`.
+- Interactive manual progress: `localStorage["tomahawk.guideProgress.v1"]`; unavailable storage falls back to in-memory state.
+- Debug switch: `localStorage["tomahawk.debug"]` or `?debug=1`.
 
-Railway 运行 `npm start`，服务监听平台注入的 `0.0.0.0:$PORT`，并通过 `/health` 接受部署健康检查。Node 堆限制为 64 MiB；静态资源按流发送，不建立服务端资源缓存。
+## Hosting boundary
 
-检测到 `RAILWAY_ENVIRONMENT` 后，`/scenario/*` 与 `/debug/save` 会保持关闭。浏览器承担模拟时钟、AI、绘制、单位工坊、教程状态、想定导入导出和战报生成，因此生产服务不保存用户状态，也不会随想定规模增加内存占用。
+Railway runs `npm start`. The service listens on the platform-injected `0.0.0.0:$PORT` and accepts deploy health checks on `/health`. The Node heap is limited to 64 MiB; static assets are streamed with no server-side asset cache.
+
+When `RAILWAY_ENVIRONMENT` is set, `/scenario/*` and `/debug/save` stay closed. The browser owns the sim clock, AI, drawing, Unit Workshop, tutorial state, scenario import/export, and AAR generation, so production does not store user state and memory does not grow with scenario size on the server.

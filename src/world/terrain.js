@@ -24,7 +24,7 @@ const WATER_SAMPLE_ANGLES = Object.freeze([
   -Math.PI / 4
 ]);
 
-const emptyData = Object.freeze({ landRings: [], coastlines: [] });
+const emptyData = Object.freeze({ landRings: [], waterRings: [], coastlines: [], nationalBorders: [] });
 
 export {
   CORE_MAP_HEIGHT_M,
@@ -53,7 +53,9 @@ export const TACTICAL_MAPS = {
     },
     geographicExtent: geographicExtentForProjectedBounds(MAP_WIDTH_M, MAP_HEIGHT_M),
     landRings: EAST_CHINA_SEA_DATA.landRings,
-    coastlines: EAST_CHINA_SEA_DATA.coastlines
+    waterRings: EAST_CHINA_SEA_DATA.waterRings ?? [],
+    coastlines: EAST_CHINA_SEA_DATA.coastlines,
+    nationalBorders: EAST_CHINA_SEA_DATA.nationalBorders ?? []
   }
 };
 
@@ -67,6 +69,8 @@ export function normalizeMapId(id) {
 
 export function isLandPoint(point, map = TACTICAL_MAPS.openSea) {
   const index = terrainIndex(map);
+  // Water rings take priority: a point inside a water ring is never land.
+  if (pointInWaterRing(point, index.waterRingEntries)) return false;
   return entriesAtPoint(index, point).some((entry) => pointInRing(point, entry));
 }
 
@@ -99,13 +103,14 @@ export function terrainCollision(start, end, mapOrId = TACTICAL_MAPS.openSea, cl
   const map = typeof mapOrId === "string" ? tacticalMap(mapOrId) : (mapOrId ?? TACTICAL_MAPS.openSea);
   const index = terrainIndex(map);
   if (!index.ringEntries.length) return null;
+  const pointClear = (p, clr) => pointInWaterRing(p, index.waterRingEntries) || waterMaskCellIsClear(index, p, clr);
   const segmentLength = Math.hypot(end.x - start.x, end.y - start.y);
   if (segmentLength <= WATER_MASK_CELL_M) {
     const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
     if (
-      waterMaskCellIsClear(index, start, clearanceM)
-      && waterMaskCellIsClear(index, mid, clearanceM)
-      && waterMaskCellIsClear(index, end, clearanceM)
+      pointClear(start, clearanceM)
+      && pointClear(mid, clearanceM)
+      && pointClear(end, clearanceM)
     ) {
       return null;
     }
@@ -129,7 +134,7 @@ export function terrainCollision(start, end, mapOrId = TACTICAL_MAPS.openSea, cl
   for (const offset of offsets) {
     const shiftedStart = { x: start.x + offset.x, y: start.y + offset.y };
     const shiftedEnd = { x: end.x + offset.x, y: end.y + offset.y };
-    if (!waterMaskCellIsClear(index, shiftedStart, 0)) {
+    if (!pointClear(shiftedStart, 0)) {
       for (const entry of candidates) {
         if (pointInRing(shiftedStart, entry)) return { fraction: 0, ring: entry.polygon };
       }
@@ -147,14 +152,22 @@ function terrainIndex(map) {
   let cached = landCache.get(normalized);
   if (!cached) {
     const ringEntries = (normalized.landRings ?? []).map((polygon) => ({ polygon, bbox: ringBounds(polygon) }));
+    const waterRingEntries = (normalized.waterRings ?? []).map((polygon) => ({ polygon, bbox: ringBounds(polygon) }));
     const edgeEntries = buildEdgeEntries(ringEntries);
+    const waterEdgeEntries = buildEdgeEntries(waterRingEntries);
     cached = {
       ringEntries,
+      waterRingEntries,
       cells: buildSpatialCells(ringEntries),
+      waterCells: buildSpatialCells(waterRingEntries),
       edgeEntries,
+      waterEdgeEntries,
       edgeCells: buildSpatialCells(edgeEntries),
+      waterEdgeCells: buildSpatialCells(waterEdgeEntries),
       ringQueryMarks: new Uint32Array(ringEntries.length),
+      waterRingQueryMarks: new Uint32Array(waterRingEntries.length),
       edgeQueryMarks: new Uint32Array(edgeEntries.length),
+      waterEdgeQueryMarks: new Uint32Array(waterEdgeEntries.length),
       queryStamp: 0,
       safeWaterMask: new Map()
     };
@@ -175,6 +188,13 @@ function ringBounds(polygon) {
     if (y > maxY) maxY = y;
   }
   return { minX, maxX, minY, maxY };
+}
+
+function pointInWaterRing(point, waterRingEntries) {
+  for (const entry of waterRingEntries) {
+    if (pointInRing(point, entry)) return true;
+  }
+  return false;
 }
 
 function gridCoordinate(value) {

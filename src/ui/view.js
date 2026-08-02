@@ -6,8 +6,8 @@
 // and is the first step of separating rendering from `src/app.js`.
 
 import {
-  SIDE, NM, MISSILES, SHIP_CLASSES, usedCells, vlsCapacity, battleSummaryCounts,
-  aliveAircraftCount, squadronSize, missileHasSurfaceTarget
+  SIDE, NM, KNOT, MISSILES, SHIP_CLASSES, usedCells, vlsCapacity, battleSummaryCounts,
+  aliveAircraftCount, squadronSize, missileCanTarget, missileHasSurfaceTarget
 } from "../sim.js";
 import { t } from "./lang.js";
 
@@ -29,13 +29,12 @@ export function escapeHtml(value) {
   })[char]);
 }
 
-// Canonical naval weapon columns, kept in this order when in use. Custom
-// (modded) missiles are appended after these so a new weapon adds a column.
+// Canonical naval weapons, kept in this order for callers that need a stable
+// catalogue view. Custom (modded) missiles are appended automatically.
 const VANILLA_COLUMNS = ["SM-2MR", "SM-6", "ESSM", "MaritimeStrike", "TomahawkBlockV"];
 
-// The weapon columns to show: every missile actually carried (count > 0) by the
-// given naval units — vanilla first (canonical order), then custom (sorted). So
-// a column appears automatically when a weapon is deployed, vanilla or modded.
+// Every missile actually carried (count > 0) by the given naval units —
+// vanilla first (canonical order), then custom (sorted).
 export function weaponColumns(navalUnits) {
   const present = new Set();
   for (const unit of navalUnits) {
@@ -48,21 +47,15 @@ export function weaponColumns(navalUnits) {
   return [...vanilla, ...custom];
 }
 
-// Fixed-width naval grid: ship/HP/VLS keep their size and the weapon columns
-// share the remainder, compressing as more are added (minmax floor of 0).
-function navalGridStyle(weaponCount) {
-  const weapons = weaponCount > 0 ? ` repeat(${weaponCount}, minmax(0, 0.66fr))` : "";
-  return `grid-template-columns: minmax(42px,1.25fr) minmax(25px,0.72fr) minmax(45px,1fr)${weapons}`;
-}
-
 // --- colors ----------------------------------------------------------------
 
+// Deep force colors for monochrome sandbox: saturated only for side identity.
 export function sideColor(side) {
-  return side === SIDE.BLUE ? "#65a7ff" : "#ff6b63";
+  return side === SIDE.BLUE ? "#2d579f" : "#9f3838";
 }
 
 export function sideSoftColor(side) {
-  return side === SIDE.BLUE ? "rgba(101,167,255,.18)" : "rgba(255,107,99,.16)";
+  return side === SIDE.BLUE ? "rgba(45,87,159,.16)" : "rgba(159,56,56,.14)";
 }
 
 // --- camera / viewport transforms ------------------------------------------
@@ -81,9 +74,20 @@ export function screenToWorld(x, y, camera, viewW, viewH) {
   };
 }
 
+// Reused union-find / grid scratch so dense missile-label clustering does not
+// allocate parent arrays and string cell keys on every draw.
+const _clusterParent = [];
+const _clusterRows = new Map();
+const _clusterUsed = [];
+const _clusterGroups = new Map();
+
 export function clusterProximityLabels(items, thresholdPx) {
-  if (items.length < 2) return items.map((item) => ({ items: [item], x: item.cx, y: item.cy }));
-  const parent = items.map((_, index) => index);
+  if (items.length < 2) {
+    return items.map((item) => ({ items: [item], x: item.cx, y: item.cy }));
+  }
+  const parent = _clusterParent;
+  parent.length = items.length;
+  for (let index = 0; index < items.length; index++) parent[index] = index;
   const find = (index) => {
     while (parent[index] !== index) {
       parent[index] = parent[parent[index]];
@@ -96,40 +100,66 @@ export function clusterProximityLabels(items, thresholdPx) {
     const rootB = find(b);
     if (rootA !== rootB) parent[Math.max(rootA, rootB)] = Math.min(rootA, rootB);
   };
-  const cells = new Map();
+  for (const bucket of _clusterUsed) bucket.length = 0;
+  _clusterUsed.length = 0;
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
     const cellX = Math.floor(item.x / thresholdPx);
     const cellY = Math.floor(item.y / thresholdPx);
     for (let x = cellX - 1; x <= cellX + 1; x++) {
+      const row = _clusterRows.get(x);
+      if (!row) continue;
       for (let y = cellY - 1; y <= cellY + 1; y++) {
-        for (const otherIndex of cells.get(`${x},${y}`) ?? []) {
+        const neighbors = row.get(y);
+        if (!neighbors) continue;
+        for (const otherIndex of neighbors) {
           const other = items[otherIndex];
-          if (Math.abs(item.y - other.y) <= thresholdPx && Math.abs(item.x - other.x) <= thresholdPx) unite(index, otherIndex);
+          if (Math.abs(item.y - other.y) <= thresholdPx && Math.abs(item.x - other.x) <= thresholdPx) {
+            unite(index, otherIndex);
+          }
         }
       }
     }
-    const key = `${cellX},${cellY}`;
-    const bucket = cells.get(key) ?? [];
+    let row = _clusterRows.get(cellX);
+    if (!row) {
+      row = new Map();
+      _clusterRows.set(cellX, row);
+    }
+    let bucket = row.get(cellY);
+    if (!bucket) {
+      bucket = [];
+      row.set(cellY, bucket);
+    }
+    if (bucket.length === 0) _clusterUsed.push(bucket);
     bucket.push(index);
-    cells.set(key, bucket);
   }
-  const grouped = new Map();
+  for (const group of _clusterGroups.values()) group.length = 0;
+  _clusterGroups.clear();
   for (let index = 0; index < items.length; index++) {
     const root = find(index);
-    const group = grouped.get(root) ?? [];
+    let group = _clusterGroups.get(root);
+    if (!group) {
+      group = [];
+      _clusterGroups.set(root, group);
+    }
     group.push(items[index]);
-    grouped.set(root, group);
   }
-  return [...grouped.values()].map((clusterItems) => {
+  const out = [];
+  for (const clusterItems of _clusterGroups.values()) {
+    if (!clusterItems.length) continue;
     let x = 0;
     let y = 0;
     for (const item of clusterItems) {
       x += item.cx;
       y += item.cy;
     }
-    return { items: clusterItems, x: x / clusterItems.length, y: y / clusterItems.length };
-  });
+    out.push({
+      items: clusterItems.slice(),
+      x: x / clusterItems.length,
+      y: y / clusterItems.length
+    });
+  }
+  return out;
 }
 
 // --- per-ship derived state ------------------------------------------------
@@ -150,45 +180,32 @@ export function vlsLoadState(ship) {
 
 export function inventoryHpColor(ship) {
   const hp = shipHpState(ship);
-  if (hp.currentHp <= 0) return "#4e6972";
-  if (hp.currentHp >= hp.maxHp) return "#5fd58c";
-  return "#f7b955";
+  return remainingStockColor(hp.currentHp, hp.maxHp);
 }
 
 export function inventoryVlsColor(ship) {
   const vls = vlsLoadState(ship);
-  if (vls.used <= 0) return "#4e6972";
-  if (vls.fill > 2 / 3) return "#5fd58c";
-  if (vls.fill > 1 / 3) return "#f7b955";
-  return "#f28d4e";
+  return remainingStockColor(vls.used, vls.cap);
 }
 
-// Universal remaining-stock color rule for any INDIVIDUAL munition count shown
-// anywhere in the UI (a single weapon type's rounds left, or a same-category
-// aggregate like a ground/air unit's AAW or ASUW total) — deliberately the
-// *opposite* scale from inventoryVlsColor (total-load "fuller is greener"):
-// here full/plentiful is neutral white and the color only appears as a
-// warning while stock runs low, ending at "empty" grey. Applies uniformly by
-// construction (a percentage of `baseline`), so it needs no per-hull or
-// per-unit-type special-casing — any custom weapon or modded unit gets
-// correct coloring automatically.
-//   > 67% of baseline -> white     (plenty left)
-//   33-67% of baseline -> yellow  (getting low; inclusive of both edges)
-//   < 33% of baseline -> red      (critical)
-//   0                  -> grey    (empty)
-// Literal 67/33 percentages (not the mathematical thirds 2/3 / 1/3, which
-// round to 66.67/33.33 and would misclassify an exact 67 or 33 reading).
-const STOCK_HIGH_FRAC = 0.67;
-const STOCK_LOW_FRAC = 0.33;
+// One source of truth for every remaining-value readout in the force inventory
+// and unit cards. Because the calculation only depends on current/baseline,
+// custom units and future ammunition definitions inherit it automatically.
+//   100%       -> white
+//   50–<100%   -> green
+//   25–<50%    -> yellow
+//   >0–<25%    -> red
+//   0          -> dark grey
 export function remainingStockColor(count, baseline) {
-  const c = Math.max(0, count);
-  if (c <= 0) return "#4e6972";
-  const b = Math.max(0, baseline);
-  if (b <= 0) return "#ffffff";
-  const frac = c / b;
-  if (frac > STOCK_HIGH_FRAC) return "#ffffff";
-  if (frac >= STOCK_LOW_FRAC) return "#f7b955";
-  return "#ff6b63";
+  const c = Math.max(0, Number(count) || 0);
+  if (c <= 0) return "#5c6369";
+  const b = Math.max(0, Number(baseline) || 0);
+  if (b <= 0) return "#f2f4f5";
+  const frac = Math.min(1, c / b);
+  if (frac >= 1) return "#f2f4f5";
+  if (frac >= 0.5) return "#64b982";
+  if (frac >= 0.25) return "#d6ad45";
+  return "#c95757";
 }
 
 export function inventoryMissileColor(ship, missileId) {
@@ -232,9 +249,43 @@ export function postureBar(side, posture) {
   `;
 }
 
-export function renderBattleStatus(sim, counts = null) {
+// Keep a UI-only ledger because the simulation compacts resolved missiles.
+// Launches aimed at another missile are defensive and excluded from the
+// offensive denominator; successful interceptor and CIWS events are hard kills.
+function interceptionStats(sim) {
+  const ledger = sim._uiInterceptionStats ||= {
+    seen: new Set(),
+    sides: {
+      [SIDE.BLUE]: { launched: 0, intercepted: 0 },
+      [SIDE.RED]: { launched: 0, intercepted: 0 }
+    }
+  };
+  for (const event of sim.events || []) {
+    const key = `${event.t}|${event.side}|${event.text}`;
+    if (ledger.seen.has(key)) continue;
+    ledger.seen.add(key);
+    const text = String(event.text || "");
+    const side = event.side === SIDE.RED || event.side === SIDE.BLUE ? event.side : null;
+    if (!side) continue;
+    if (/ launched /.test(text) && !/ queued /.test(text)) {
+      const target = text.split(" at ").pop().replace(/\.+$/, "");
+      const isMissileTarget = Object.entries(MISSILES).some(([id, spec]) => (
+        id === target || spec.shortLabel === target
+      ));
+      if (!isMissileTarget) ledger.sides[side].launched++;
+    }
+    if (/intercepted incoming|CIWS destroyed incoming/i.test(text)) {
+      ledger.sides[side].intercepted++;
+    }
+  }
+  return ledger.sides;
+}
+
+export function battleStatusState(sim, counts = null) {
   const c = counts ?? battleSummaryCounts(sim);
-  const force = (side, label) => {
+  const intercepts = interceptionStats(sim);
+  const state = {};
+  for (const side of [SIDE.BLUE, SIDE.RED]) {
     const prefix = side === SIDE.BLUE ? "blue" : "red";
     const posture = commandPosture(sim, side);
     const ships = c[`${prefix}Ships`];
@@ -242,21 +293,46 @@ export function renderBattleStatus(sim, counts = null) {
     const hpMax = c[`${prefix}HpMax`];
     const antiShip = c[`${prefix}AntiShip`];
     const antiAir = c[`${prefix}AntiAir`];
-    const hpPct = hpMax ? Math.round(hp / hpMax * 100) : 0;
+    // An empty force is not damaged: keep its overview meter visually full
+    // until the first unit exists and supplies a real denominator.
+    const hpPct = hpMax ? Math.round(hp / hpMax * 100) : 100;
     const offensePct = Math.round((posture.aggression ?? 0.5) * 100);
+    const enemySide = side === SIDE.BLUE ? SIDE.RED : SIDE.BLUE;
+    const enemyOffensive = intercepts[enemySide]?.launched ?? 0;
+    const interceptionRate = enemyOffensive
+      ? Math.round((intercepts[side]?.intercepted ?? 0) / enemyOffensive * 100)
+      : 0;
+    state[prefix] = {
+      units: { value: String(ships), pct: null },
+      hp: { value: `${hp}/${hpMax}`, pct: hpPct },
+      asuw: { value: String(antiShip), pct: null },
+      aaw: { value: String(antiAir), pct: null },
+      intercept: { value: `${interceptionRate}%`, pct: interceptionRate },
+      offense: { value: `${offensePct}%`, pct: offensePct }
+    };
+  }
+  return state;
+}
+
+export function renderBattleStatus(sim, counts = null) {
+  const state = battleStatusState(sim, counts);
+  const force = (side, label) => {
+    const prefix = side === SIDE.BLUE ? "blue" : "red";
+    const values = state[prefix];
     const stat = (className, name, value, pct = null) => `<span class="summary-stat ${className}">
-      <small>${name}</small><b>${value}</b>${pct == null ? "" : `<span class="mini-meter"><i style="width:${pct}%"></i></span>`}
+      <small>${Array.isArray(name) ? name.map((line) => `<span>${line}</span>`).join("") : name}</small><b>${value}</b>${pct == null ? "" : `<span class="mini-meter"><i style="width:${pct}%"></i></span>`}
     </span>`;
     return `<div class="force-summary ${prefix}">
-      <span class="force-side"><small>${side === SIDE.BLUE ? "BLUE" : "RED"}</small><b>${label}</b></span>
-      ${stat("units", "存活", ships)}
-      ${stat("hp", "总耐久", `${hp}/${hpMax}`, hpPct)}
-      ${stat("asuw", "反舰库存", antiShip)}
-      ${stat("aaw", "防空库存", antiAir)}
-      ${stat("offense", "攻势", `${offensePct}%`, offensePct)}
+      <span class="force-side" aria-label="${label}"><b aria-hidden="true"></b></span>
+      ${stat("units", "存活目标", values.units.value)}
+      ${stat("hp", "总生命", values.hp.value, values.hp.pct)}
+      ${stat("asuw", "在空反舰", values.asuw.value)}
+      ${stat("aaw", "在空防空", values.aaw.value)}
+      ${stat("intercept", "拦截率", values.intercept.value, values.intercept.pct)}
+      ${stat("offense", "攻势", values.offense.value, values.offense.pct)}
     </div>`;
   };
-  return `${force(SIDE.BLUE, "蓝方")}${force(SIDE.RED, "红方")}`;
+  return `${force(SIDE.BLUE, "蓝")}${force(SIDE.RED, "红")}`;
 }
 
 // Column header for an inventory sub-table. Naval ("sea") and ground tables
@@ -265,34 +341,20 @@ export function renderBattleStatus(sim, counts = null) {
 export function inventoryHeadHtml(domain = "sea", columns = VANILLA_COLUMNS) {
   if (domain === "ground") {
     return `<div class="inventory-head ground">`
-      + `<span data-i18n="inv.unit">UNIT</span>`
-      + `<span data-i18n="inv.hp">HP</span>`
-      + `<span data-i18n="inv.rdr">RDR</span>`
-      + `<span data-i18n="inv.aaw">AAW</span>`
-      + `<span data-i18n="inv.asuw">ASUW</span>`
+      + `<span>单位</span><span>生命</span><span>雷达</span><span>防空弹药</span><span>打击弹药</span><span>模式</span>`
       + `</div>`;
   }
   if (domain === "air") {
-    // Reuses the 5-column ground grid; columns: unit, flight strength, state,
-    // air-to-air count, air-to-surface count.
     return `<div class="inventory-head ground air">`
-      + `<span data-i18n="inv.unit">UNIT</span>`
-      + `<span data-i18n="inv.ac">A/C</span>`
-      + `<span data-i18n="inv.state">STATE</span>`
-      + `<span data-i18n="inv.aaw">AAW</span>`
-      + `<span data-i18n="inv.asuw">ASUW</span>`
+      + `<span>航空</span><span>编组</span><span>高度</span><span>燃料</span><span>防空弹药</span><span>打击弹药</span>`
       + `</div>`;
   }
-  // Weapon headers use the missile short label directly (military nomenclature,
-  // not translated); the full id is on the title for hover/identification.
-  const weaponHeads = columns
-    .map((id) => `<span class="inv-wpn" title="${escapeHtml(id)}">${escapeHtml(MISSILES[id]?.shortLabel ?? id)}</span>`)
-    .join("");
-  return `<div class="inventory-head" style="${navalGridStyle(columns.length)}">`
-    + `<span data-i18n="inv.ship">SHIP</span><span data-i18n="inv.hp">HP</span><span data-i18n="inv.vls">VLS</span>`
-    + weaponHeads
+  return `<div class="inventory-head naval">`
+    + `<span>单位</span><span>生命</span><span>垂发</span><span>防空弹药</span><span>打击弹药</span><span>速度</span>`
     + `</div>`;
 }
+
+const INFO_ICON = `<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8.5" fill="currentColor"/><path d="M10 9v5" fill="none" stroke="var(--panel-solid)" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="6.1" r="1" fill="var(--panel-solid)"/></svg>`;
 
 export function inventoryDividerHtml() {
   return `<div class="inventory-divider" aria-hidden="true"></div>`;
@@ -326,17 +388,28 @@ export function shipDisplayName(ship, separator = "-") {
   return suffix ? `${label}${separator}${suffix}` : label;
 }
 
-export function inventoryRowHtml(ship, selected = false, columns = VANILLA_COLUMNS) {
-  const hp = shipHpState(ship);
-  const weaponCells = columns
-    .map((id) => `<b style="color:${inventoryMissileColor(ship, id)}">${displayCount(ship, id)}</b>`)
-    .join("");
+// The roster already carries the class in the localized name. Repeating the
+// hull code in front of it ("DDG 驱逐舰-2") wastes the narrow first column and
+// makes aircraft names especially noisy, so list rows use one compact label.
+export function unitListName(unit, displayNumber = null) {
+  const name = shipDisplayName(unit, "·");
+  if (displayNumber == null) return name;
+  const separator = name.lastIndexOf("·");
+  const base = separator >= 0 ? name.slice(0, separator) : name;
+  return `${base}·${displayNumber}`;
+}
+
+export function inventoryRowHtml(ship, selected = false, columns = VANILLA_COLUMNS, displayNumber = null) {
+  const state = inventoryRowState(ship);
+  const name = unitListName(ship, displayNumber);
   return `
-      <button class="inventory-row ${ship.side === SIDE.BLUE ? "blue" : "red"} ${ship.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${escapeHtml(ship.id)}" style="${navalGridStyle(columns.length)}">
-        <span>${escapeHtml(shipDisplayName(ship, "-"))}</span>
-        <b style="color:${inventoryHpColor(ship)}">${hp.currentHp}/${hp.maxHp}</b>
-        <b style="color:${inventoryVlsColor(ship)}">${Math.round(usedCells(ship.loadout))}/${ship.vlsCells ?? 96}</b>
-        ${weaponCells}
+      <button class="inventory-row naval ${ship.side === SIDE.BLUE ? "blue" : "red"} ${ship.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${escapeHtml(ship.id)}">
+        <span class="inventory-unit"><span class="inventory-info" data-info-ship="${escapeHtml(ship.id)}" role="button" tabindex="0" aria-label="查看单位详细信息">${INFO_ICON}</span><strong>${escapeHtml(name)}</strong></span>
+        <span class="inventory-cell"><b><i data-inventory-hp style="color:${state.hpColor}">${state.hp}</i><i data-inventory-hp-cap class="inventory-denominator inventory-hp-denominator">/${state.hpMax}</i></b></span>
+        <span class="inventory-cell"><b><i data-inventory-vls style="color:${state.vlsColor}">${state.vls}</i><i data-inventory-vls-cap class="inventory-denominator">/${state.vlsCap}</i></b></span>
+        <span class="inventory-cell"><b data-inventory-aaw style="color:${state.aawColor}">${state.aaw}</b></span>
+        <span class="inventory-cell"><b data-inventory-asuw style="color:${state.asuwColor}">${state.asuw}</b></span>
+        <span class="inventory-cell"><b class="inventory-neutral" data-inventory-speed>${state.speedKts} kt</b></span>
       </button>
     `;
 }
@@ -358,27 +431,69 @@ export function aawAsuwAggregate(unit) {
     if (!spec) continue;
     const count = displayCount(unit, id);
     const base = Math.max(0, Math.round(snapshot[id] ?? 0));
-    if (missileHasSurfaceTarget(spec)) { asuw += count; asuwBase += base; }
-    else { aaw += count; aawBase += base; }
+    const supportsAirDefense = missileCanTarget(spec, "missile") || missileCanTarget(spec, "air");
+    if (supportsAirDefense) { aaw += count; aawBase += base; }
+    if (missileHasSurfaceTarget(spec) || missileCanTarget(spec, "subsurface")) {
+      asuw += count;
+      asuwBase += base;
+    }
   }
   return { aaw, aawBase, asuw, asuwBase };
+}
+
+export function inventoryRowState(unit) {
+  const hp = shipHpState(unit);
+  const { aaw, aawBase, asuw, asuwBase } = aawAsuwAggregate(unit);
+  const vls = vlsLoadState(unit);
+  const speedKts = Math.max(0, Math.round((Number(unit.speed) || 0) / KNOT));
+  const altitudeKm = Math.max(0, Math.round((Number(unit.altitudeM) || 0) / 100) / 10);
+  const endurance = Math.max(0, Number(unit.enduranceS) || 0);
+  const fuelS = Math.max(0, Number(unit.fuelS) || 0);
+  const fuelPct = endurance > 0 ? Math.max(0, Math.min(100, Math.round((fuelS / endurance) * 100))) : 0;
+  return {
+    hp: hp.currentHp,
+    hpMax: hp.maxHp,
+    hpPct: hp.maxHp ? Math.round((hp.currentHp / hp.maxHp) * 100) : 0,
+    hpColor: remainingStockColor(hp.currentHp, hp.maxHp),
+    vls: vls.used,
+    vlsCap: vls.cap,
+    vlsColor: remainingStockColor(vls.used, vls.cap),
+    aaw,
+    aawColor: remainingStockColor(aaw, aawBase),
+    asuw,
+    asuwColor: remainingStockColor(asuw, asuwBase),
+    airState: AIR_STATE_ABBR[unit.airState] ?? "MSN",
+    speedKts,
+    altitudeKm,
+    fuelPct,
+    fuelS
+  };
 }
 
 // Inventory row for a ground emplacement: tag, HP, radar reach (nm), and the
 // counts of air-defence (AAW) and anti-surface (ASUW) effectors it carries. A
 // radar site shows no weapons; a SAM site shows AAW; a battery shows ASUW.
-export function groundRowHtml(unit, selected = false) {
-  const hp = shipHpState(unit);
-  const { aaw, aawBase, asuw, asuwBase } = aawAsuwAggregate(unit);
+function groundRole(unit) {
+  if (unit?.isAirfield || unit?.hull === "AFB") return "基地";
+  if (unit?.hull === "EWR") return "预警";
+  if (unit?.hull === "THAAD") return "反导";
+  if (unit?.strikeSpecialist || unit?.hull === "CDB" || unit?.hull === "DEB") return "打击";
+  if (unit?.hull === "SAM") return "防空";
+  return "支援";
+}
+
+export function groundRowHtml(unit, selected = false, displayNumber = null) {
+  const state = inventoryRowState(unit);
   const rdr = Math.round((unit.radarRangeM ?? 0) / NM);
-  const cell = (value, base) => `<b style="color:${remainingStockColor(value, base)}">${value > 0 ? value : "·"}</b>`;
+  const name = unitListName(unit, displayNumber);
   return `
       <button class="inventory-row ground ${unit.side === SIDE.BLUE ? "blue" : "red"} ${unit.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${escapeHtml(unit.id)}">
-        <span>${escapeHtml(shipDisplayName(unit, "-"))}</span>
-        <b style="color:${inventoryHpColor(unit)}">${hp.currentHp}/${hp.maxHp}</b>
-        <b>${rdr}</b>
-        ${cell(aaw, aawBase)}
-        ${cell(asuw, asuwBase)}
+        <span class="inventory-unit"><span class="inventory-info" data-info-ship="${escapeHtml(unit.id)}" role="button" tabindex="0" aria-label="查看单位详细信息">${INFO_ICON}</span><strong>${escapeHtml(name)}</strong></span>
+        <span class="inventory-cell"><b><i data-inventory-hp style="color:${state.hpColor}">${state.hp}</i><i data-inventory-hp-cap class="inventory-denominator inventory-hp-denominator">/${state.hpMax}</i></b></span>
+        <span class="inventory-cell"><b class="inventory-neutral">${rdr}</b></span>
+        <span class="inventory-cell"><b data-inventory-aaw style="color:${state.aawColor}">${state.aaw}</b></span>
+        <span class="inventory-cell"><b data-inventory-asuw style="color:${state.asuwColor}">${state.asuw}</b></span>
+        <span class="inventory-cell"><b class="inventory-neutral">${groundRole(unit)}</b></span>
       </button>
     `;
 }
@@ -387,20 +502,94 @@ export function groundRowHtml(unit, selected = false) {
 // lifecycle state, and air-to-air / air-to-surface effector counts. HP state
 // doubles as flight strength (the squadron's hit-point pool is its plane count).
 const AIR_STATE_ABBR = { mission: "MSN", rtb: "RTB", rearming: "RRM" };
-export function airRowHtml(unit, selected = false) {
-  const hp = shipHpState(unit);
-  const { aaw, aawBase, asuw, asuwBase } = aawAsuwAggregate(unit);
-  const state = AIR_STATE_ABBR[unit.airState] ?? "MSN";
-  const cell = (value, base) => `<b style="color:${remainingStockColor(value, base)}">${value > 0 ? value : "·"}</b>`;
+export function airRowHtml(unit, selected = false, displayNumber = null) {
+  const state = inventoryRowState(unit);
+  const name = unitListName(unit, displayNumber);
   return `
       <button class="inventory-row ground air ${unit.side === SIDE.BLUE ? "blue" : "red"} ${unit.alive ? "" : "sunk"} ${selected ? "selected" : ""}" data-select-ship="${escapeHtml(unit.id)}">
-        <span>${escapeHtml(shipDisplayName(unit, "-"))}</span>
-        <b style="color:${inventoryHpColor(unit)}">${hp.currentHp}/${hp.maxHp}</b>
-        <b>${state}</b>
-        ${cell(aaw, aawBase)}
-        ${cell(asuw, asuwBase)}
+        <span class="inventory-unit"><span class="inventory-info" data-info-ship="${escapeHtml(unit.id)}" role="button" tabindex="0" aria-label="查看单位详细信息">${INFO_ICON}</span><strong>${escapeHtml(name)}</strong></span>
+        <span class="inventory-cell"><b><i data-inventory-hp style="color:${state.hpColor}">${state.hp}</i><i data-inventory-hp-cap class="inventory-denominator inventory-hp-denominator">/${state.hpMax}</i></b></span>
+        <span class="inventory-cell"><b class="inventory-neutral" data-inventory-altitude>${state.altitudeKm.toFixed(1)} km</b></span>
+        <span class="inventory-cell"><b class="inventory-neutral" data-inventory-fuel>${state.fuelPct}%</b></span>
+        <span class="inventory-cell"><b data-inventory-aaw style="color:${state.aawColor}">${state.aaw}</b></span>
+        <span class="inventory-cell"><b data-inventory-asuw style="color:${state.asuwColor}">${state.asuw}</b></span>
       </button>
     `;
+}
+
+function infoMetric(label, value) {
+  return `<span class="inventory-info-metric"><small>${escapeHtml(label)}</small><b>${escapeHtml(value)}</b></span>`;
+}
+
+function infoLoadout(unit) {
+  const entries = Object.entries(unit?.loadout || {})
+    .filter(([, count]) => Number(count) > 0)
+    .map(([id, count]) => `${MISSILES[id]?.shortLabel || id} ${Math.max(0, Math.round(Number(count)))}`);
+  return entries.length ? entries.join(" · ") : "无";
+}
+
+function infoSubsystems(unit) {
+  const labels = [
+    ["radar", "雷达"], ["propulsion", "动力"], ["fireControl", "射控"],
+    ["ciws", "近防"], ["cic", "战情"], ["sonar", "声呐"], ["electronicWarfare", "电侦"]
+  ];
+  return labels
+    .filter(([key]) => Number.isFinite(unit?.subsystems?.[key]))
+    .map(([key, label]) => `${label} ${Math.round(unit.subsystems[key] * 100)}%`)
+    .join(" · ") || "无数据";
+}
+
+// Compact, quantitative hover card for the roster's info icon. It intentionally
+// excludes coordinates, waypoints, and track geometry: those belong on the map
+// and would make a hover card noisy rather than useful.
+export function unitInfoPopoverHtml(unit, sim = null) {
+  if (!unit) return "";
+  const state = inventoryRowState(unit);
+  const title = unitListName(unit);
+  const rows = [infoMetric("生命", `${state.hp}/${state.hpMax}`)];
+  if (unit.domain === "air") {
+    const base = sim?.ships?.find((candidate) => candidate.id === unit.homeBaseId);
+    rows.push(
+      infoMetric("编组", `${state.hp}/${state.hpMax}`),
+      infoMetric("高度", `${state.altitudeKm.toFixed(1)} km`),
+      infoMetric("速度", `${state.speedKts} kt`),
+      infoMetric("燃料", `${state.fuelPct}% (${Math.round(state.fuelS)} s)`),
+      infoMetric("状态", AIR_STATE_ABBR[unit.airState] ?? "MSN"),
+      infoMetric("基地", base ? unitListName(base) : "未指定"),
+      infoMetric("诱饵", `${Math.max(0, Math.round(unit.flares ?? 0))}/${Math.max(0, Math.round(unit.flaresMax ?? 0))}`),
+      infoMetric("弹药", infoLoadout(unit))
+    );
+  } else if (unit.domain === "subsurface") {
+    rows.push(
+      infoMetric("速度", `${state.speedKts} kt`),
+      infoMetric("深度", `${Math.round(unit.depthM ?? 0)} m`),
+      infoMetric("垂发", `${state.vls}/${state.vlsCap}`),
+      infoMetric("弹药", infoLoadout(unit)),
+      infoMetric("子系统", infoSubsystems(unit))
+    );
+  } else if (unit.isFixed || unit.domain === "ground") {
+    rows.push(
+      infoMetric("雷达", `${Math.round((unit.radarRangeM ?? 0) / NM)} nm`),
+      infoMetric("防空弹药", `${state.aaw}`),
+      infoMetric("打击弹药", `${state.asuw}`),
+      infoMetric("弹药", infoLoadout(unit)),
+      infoMetric("子系统", infoSubsystems(unit))
+    );
+  } else {
+    rows.push(
+      infoMetric("速度", `${state.speedKts} kt`),
+      infoMetric("雷达", `${Math.round((unit.radarRangeM ?? 0) / NM)} nm`),
+      infoMetric("垂发", `${state.vls}/${state.vlsCap}`),
+      infoMetric("防空弹药", `${state.aaw}`),
+      infoMetric("打击弹药", `${state.asuw}`),
+      infoMetric("弹药", infoLoadout(unit)),
+      infoMetric("子系统", infoSubsystems(unit))
+    );
+  }
+  return `<div class="inventory-info-card" style="--unit-accent:${sideColor(unit.side)}">
+    <div class="inventory-info-heading"><b>${escapeHtml(title)}</b><small>${unit.alive ? "在线" : "失效"}</small></div>
+    <div class="inventory-info-grid">${rows.join("")}</div>
+  </div>`;
 }
 
 // Build the full force inventory markup. Units are grouped by faction (BLUE
@@ -421,17 +610,25 @@ export function inventoryHtml(orderedShips, isSelected = () => false) {
     const sea = sideUnits.filter((unit) => !isGroundUnit(unit) && !isAirUnit(unit));
     const ground = sideUnits.filter((unit) => isGroundUnit(unit));
     const air = sideUnits.filter((unit) => isAirUnit(unit));
+    const rosterNumbers = new Map();
+    const categoryCounts = new Map();
+    for (const unit of sideUnits) {
+      const category = unit.hull || unit.domain || "unit";
+      const next = (categoryCounts.get(category) || 0) + 1;
+      categoryCounts.set(category, next);
+      rosterNumbers.set(unit.id, next);
+    }
     if (sea.length) {
       out.push(inventoryHeadHtml("sea", columns));
-      for (const unit of sea) out.push(inventoryRowHtml(unit, isSelected(unit.id), columns));
+      for (const unit of sea) out.push(inventoryRowHtml(unit, isSelected(unit.id), columns, rosterNumbers.get(unit.id)));
     }
     if (ground.length) {
       out.push(inventoryHeadHtml("ground"));
-      for (const unit of ground) out.push(groundRowHtml(unit, isSelected(unit.id)));
+      for (const unit of ground) out.push(groundRowHtml(unit, isSelected(unit.id), rosterNumbers.get(unit.id)));
     }
     if (air.length) {
       out.push(inventoryHeadHtml("air"));
-      for (const unit of air) out.push(airRowHtml(unit, isSelected(unit.id)));
+      for (const unit of air) out.push(airRowHtml(unit, isSelected(unit.id), rosterNumbers.get(unit.id)));
     }
   }
   return out.join("");
@@ -445,7 +642,7 @@ export function inventoryHtml(orderedShips, isSelected = () => false) {
 //   ground  -> fixed-emplacement readouts (no propulsion; CIWS/FCS/LOAD only
 //              if the unit actually has them)
 //   (else)  -> full naval subsystem readout
-// A percentage bar's color is independent of remainingStockColor's four-tier
+// A percentage bar's color is independent of remainingStockColor's five-state
 // rule (that rule is for a single munition COUNT, e.g. AAW/ASUW); a bar shows
 // fractional health/load with its own simpler 2-threshold scheme.
 function detailSubBar(val, mode = "health") {

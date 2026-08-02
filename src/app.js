@@ -24,7 +24,6 @@ import {
   placeShip,
   restoreScenario,
   serializeScenario,
-  setScenarioMap,
   stepSim,
   tracksForShip,
   weaponRangeEntries
@@ -34,9 +33,11 @@ import {
   sideColor,
   sideSoftColor,
   shipDisplayName,
-  shipDetailCardHtml,
+  battleStatusState,
   renderBattleStatus,
   inventoryHtml,
+  inventoryRowState,
+  unitInfoPopoverHtml,
   clusterProximityLabels,
   escapeHtml,
   worldToScreen as projectWorldToScreen,
@@ -70,11 +71,13 @@ const clock = document.querySelector("#clock");
 const cursor = document.querySelector("#cursor");
 const status = document.querySelector("#status");
 const unitTab = document.querySelector("#unit-tab");
-const mapSelect = document.querySelector("#map-select");
+const unitInfoPopover = document.createElement("div");
+unitInfoPopover.className = "inventory-info-popover";
+unitInfoPopover.hidden = true;
+document.body.appendChild(unitInfoPopover);
 const scaleDistance = document.querySelector("#scale-distance");
 const scaleGrid = document.querySelector("#scale-grid");
 const scaleRule = document.querySelector(".scale-rule");
-const shipDetailOverlay = document.querySelector("#ship-detail-overlay");
 const filters = {
   grid: document.querySelector("#filter-grid"),
   tracks: document.querySelector("#filter-tracks"),
@@ -83,7 +86,7 @@ const filters = {
   missiles: document.querySelector("#filter-missiles")
 };
 
-let sim = createDefaultScenario(undefined, mapSelect?.value);
+let sim = createDefaultScenario();
 let tool = "select";
 // Camera coordinates are metres; the tactical readout presents kilometres.
 let camera = { x: 13_900 * KM, y: -3_600 * KM, scale: 0.00125 };
@@ -102,36 +105,26 @@ let last = performance.now();
 // canvas battlefield keeps rendering every frame (so animation stays smooth).
 let lastPanelRenderAt = 0;
 const PANEL_RENDER_INTERVAL_MS = 50;
-// Above this many live missiles, drop the per-missile glow (canvas shadowBlur is
-// very expensive and indistinguishable in a crowded raid — exactly when frame
-// budget is tight).
-const MISSILE_GLOW_CAP = 50;
-// Guide-lines (dashed missile→target strokes) are free at low density but
-// dominate canvas cost in large raids. Only draw them when few missiles, or the
-// related unit is selected, or the camera is zoomed in for tactical reading.
-const MISSILE_GUIDE_LINE_CAP = 40;
-// Above this count, thin non-terminal icons with a stable id hash (terminal and
-// selection-related missiles always drawn). Purely visual; sim unchanged.
-const MISSILE_ICON_THIN_CAP = 120;
+// Dirty flag: when the sim is paused and no user interaction has happened,
+// skip the expensive canvas redraw entirely. Set true on any state change
+// (sim step, camera pan/zoom, selection, placement, filter toggle, resize).
+let canvasDirty = true;
 // When many hulls and ranges are on, only selected ships draw WEZ rings.
 const WEAPON_RING_SELECT_SHIP_CAP = 18;
 // Reused label buckets to avoid per-frame Map/array churn in drawMissiles.
 const _missileLabelBuckets = new Map();
 const _missileLabelWidths = new Map();
-
-function stableMissileHash(id) {
-  // Deterministic visual thinning — not crypto; just spreads ids across buckets.
-  let h = 0;
-  const s = String(id);
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return h >>> 0;
-}
+const _missileLabelPool = [];
+// Stable Path2D batches for missile guides/symbols (few style keys, recreated
+// in place each frame instead of allocating fresh Maps/objects).
+const _missileGuideBatches = new Map();
+const _missileSymbolBatches = new Map();
 
 // --- per-run debug capture --------------------------------------------------
 // Two read-only collectors observe each running simulation and are persisted to
 // debug/ (perf-debug.log + sim-debug.log) via the server, OVERWRITTEN every run,
 // so the AI behaviour and device cost of the last run can be inspected offline.
-// Opt-in only: enable with ?debug=1 in the URL or localStorage dawnfall.debug=1
+// Opt-in only: enable with ?debug=1 in the URL or localStorage tomahawk.debug=1
 // so normal play does not pay logging / network cost on every fight.
 // A "run" is one SETUP→RUNNING→ENDED lifecycle; the collectors reset when a new
 // run starts and the logs are saved when it ends (and periodically while live).
@@ -144,7 +137,7 @@ let simTimeDebt = 0;
 
 function debugCaptureEnabled() {
   try {
-    if (typeof localStorage !== "undefined" && localStorage.getItem("dawnfall.debug") === "1") return true;
+    if (typeof localStorage !== "undefined" && localStorage.getItem("tomahawk.debug") === "1") return true;
   } catch { /* private mode */ }
   try {
     return typeof location !== "undefined" && /(?:\?|&)debug=1(?:&|$)/.test(location.search || "");
@@ -182,9 +175,16 @@ function minimumCameraScale() {
   return Math.max(innerWidth / MAP_WIDTH_M, innerHeight / MAP_HEIGHT_M);
 }
 const TACTICAL_SYMBOL_SCALE = 26;
+const UNIT_ICON_MIN_SCALE = 0.56;
+const UNIT_ICON_MAX_SCALE = 1.55;
+const UNIT_ICON_MIN_CAMERA_SCALE = 0.00025;
+const UNIT_ICON_MAX_CAMERA_SCALE = 0.004;
+const UNIT_LABEL_MIN_PX = 8.5;
+const UNIT_LABEL_MAX_PX = 13;
 const CANVAS_FONT_FAMILY = '"Segoe UI", Arial, sans-serif';
 const canvasFont = (px) => `${px}px ${CANVAS_FONT_FAMILY}`;
 const terrainPathCache = new WeakMap();
+let gridPathCache = { key: "", major: null, minor: null };
 const TERRAIN_BUCKET_M = 4_000_000;
 const weaponRangeCache = new WeakMap();
 const terrainLayer = document.createElement("canvas");
@@ -207,6 +207,88 @@ const RUN_STATUS = {
 
 function replaceHtmlIfChanged(element, html) {
   if (element.innerHTML !== html) element.innerHTML = html;
+}
+
+let statusDomCache = null;
+let inventoryDomRows = new Map();
+const inventoryValueKeys = new Map();
+
+function cacheStatusDom() {
+  const cache = {};
+  for (const side of ["blue", "red"]) {
+    const force = status.querySelector(`.force-summary.${side}`);
+    if (!force) return null;
+    cache[side] = {};
+    for (const field of ["units", "hp", "asuw", "aaw", "intercept", "offense"]) {
+      const stat = force.querySelector(`.summary-stat.${field}`);
+      cache[side][field] = {
+        value: stat?.querySelector("b") ?? null,
+        meter: stat?.querySelector(".mini-meter i") ?? null
+      };
+    }
+  }
+  return cache;
+}
+
+function patchBattleStatus(state) {
+  if (!statusDomCache) statusDomCache = cacheStatusDom();
+  if (!statusDomCache) return;
+  for (const side of ["blue", "red"]) {
+    for (const field of ["units", "hp", "asuw", "aaw", "intercept", "offense"]) {
+      const next = state[side][field];
+      const refs = statusDomCache[side][field];
+      if (refs.value && refs.value.textContent !== next.value) refs.value.textContent = next.value;
+      if (refs.meter && next.pct != null) {
+        const width = `${next.pct}%`;
+        if (refs.meter.style.width !== width) refs.meter.style.width = width;
+      }
+    }
+  }
+}
+
+function cacheInventoryDomRows() {
+  inventoryDomRows = new Map();
+  for (const row of unitTab.querySelectorAll("[data-select-ship]")) {
+    inventoryDomRows.set(row.dataset.selectShip, {
+      root: row,
+      hp: row.querySelector("[data-inventory-hp]"),
+      hpCap: row.querySelector("[data-inventory-hp-cap]"),
+      vls: row.querySelector("[data-inventory-vls]"),
+      vlsCap: row.querySelector("[data-inventory-vls-cap]"),
+      aaw: row.querySelector("[data-inventory-aaw]"),
+      asuw: row.querySelector("[data-inventory-asuw]"),
+      speed: row.querySelector("[data-inventory-speed]"),
+      altitude: row.querySelector("[data-inventory-altitude]"),
+      fuel: row.querySelector("[data-inventory-fuel]")
+    });
+  }
+}
+
+function setText(element, value) {
+  if (element && element.textContent !== String(value)) element.textContent = String(value);
+}
+
+function setColor(element, color) {
+  if (element && element.style.color !== color) element.style.color = color;
+}
+
+function patchInventoryRow(ship, refs) {
+  const state = inventoryRowState(ship);
+  refs.root.classList.toggle("selected", selectedIds.has(ship.id));
+  refs.root.classList.toggle("sunk", !ship.alive);
+  setText(refs.hp, state.hp);
+  setColor(refs.hp, state.hpColor);
+  setText(refs.hpCap, `/${state.hpMax}`);
+  setText(refs.vls, state.vls);
+  setColor(refs.vls, state.vlsColor);
+  setText(refs.vlsCap, `/${state.vlsCap}`);
+  setText(refs.aaw, state.aaw);
+  setColor(refs.aaw, state.aawColor);
+  setText(refs.asuw, state.asuw);
+  setColor(refs.asuw, state.asuwColor);
+  setText(refs.speed, `${state.speedKts} kt`);
+  setText(refs.altitude, `${state.altitudeKm.toFixed(1)} km`);
+  setText(refs.fuel, `${state.fuelPct}%`);
 }
 
 function filterEnabled(filter) {
@@ -250,35 +332,73 @@ function screenToWorld(x, y) {
 }
 
 function screenPointVisible(point, margin = 32) {
-  return point.x >= -margin && point.x <= innerWidth + margin
-    && point.y >= -margin && point.y <= innerHeight + margin;
+  return screenCoordinatesVisible(point.x, point.y, margin);
 }
 
-function segmentIntersectsViewport(a, b, margin = 0) {
+function screenCoordinatesVisible(x, y, margin = 32) {
+  return x >= -margin && x <= innerWidth + margin
+    && y >= -margin && y <= innerHeight + margin;
+}
+
+function segmentCoordinatesIntersectViewport(ax, ay, bx, by, margin = 0) {
   const minX = -margin;
   const maxX = innerWidth + margin;
   const minY = -margin;
   const maxY = innerHeight + margin;
-  if (screenPointVisible(a, margin) || screenPointVisible(b, margin)) return true;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
+  if (screenCoordinatesVisible(ax, ay, margin) || screenCoordinatesVisible(bx, by, margin)) return true;
+  const dx = bx - ax;
+  const dy = by - ay;
   let low = 0;
   let high = 1;
-  for (const [p, q] of [[-dx, a.x - minX], [dx, maxX - a.x], [-dy, a.y - minY], [dy, maxY - a.y]]) {
-    if (p === 0) {
-      if (q < 0) return false;
-      continue;
-    }
+  let p = -dx;
+  let q = ax - minX;
+  if (p === 0) {
+    if (q < 0) return false;
+  } else {
     const t = q / p;
     if (p < 0) low = Math.max(low, t);
     else high = Math.min(high, t);
     if (low > high) return false;
   }
-  return true;
+  p = dx;
+  q = maxX - ax;
+  if (p === 0) {
+    if (q < 0) return false;
+  } else {
+    const t = q / p;
+    if (p < 0) low = Math.max(low, t);
+    else high = Math.min(high, t);
+    if (low > high) return false;
+  }
+  p = -dy;
+  q = ay - minY;
+  if (p === 0) {
+    if (q < 0) return false;
+  } else {
+    const t = q / p;
+    if (p < 0) low = Math.max(low, t);
+    else high = Math.min(high, t);
+    if (low > high) return false;
+  }
+  p = dy;
+  q = maxY - ay;
+  if (p === 0) {
+    return q >= 0;
+  } else {
+    const t = q / p;
+    if (p < 0) low = Math.max(low, t);
+    else high = Math.min(high, t);
+    return low <= high;
+  }
+}
+
+function segmentIntersectsViewport(a, b, margin = 0) {
+  return segmentCoordinatesIntersectViewport(a.x, a.y, b.x, b.y, margin);
 }
 
 function drawSceneBase() {
-  ctx.fillStyle = "#07141b";
+  // Light sea theater (monochrome CIC): cool mist gray, not pure white.
+  ctx.fillStyle = "#cfd6db";
   ctx.fillRect(0, 0, innerWidth, innerHeight);
 }
 
@@ -297,20 +417,37 @@ function worldSize(meters, minPx = 2, maxPx = 24, multiplier = TACTICAL_SYMBOL_S
 
 function shipLabelScale() {
   const scaleMeters = niceScaleDistanceM(camera.scale, 72).meters;
-  if (scaleMeters <= 20 * KM) return { scale: 1, alpha: 1 };
-  if (scaleMeters <= 50 * KM) {
-    const t = (scaleMeters - 20 * KM) / (30 * KM);
-    return { scale: 1 - t * 0.16, alpha: 1 };
-  }
+  if (scaleMeters <= 40 * KM) return { scale: 1, alpha: 1 };
   if (scaleMeters <= 100 * KM) {
-    const t = (scaleMeters - 50 * KM) / (50 * KM);
-    return { scale: 0.84 - t * 0.34, alpha: 1 - t * 0.18 };
+    const t = (scaleMeters - 40 * KM) / (60 * KM);
+    return { scale: 1 - t * 0.16, alpha: 1 };
   }
   if (scaleMeters <= 200 * KM) {
     const t = (scaleMeters - 100 * KM) / (100 * KM);
+    return { scale: 0.84 - t * 0.34, alpha: 1 - t * 0.18 };
+  }
+  if (scaleMeters <= 400 * KM) {
+    const t = (scaleMeters - 200 * KM) / (200 * KM);
     return { scale: 0.5 - t * 0.5, alpha: 0.82 - t * 0.82 };
   }
   return { scale: 0, alpha: 0 };
+}
+
+function unitZoomProgress() {
+  const cameraLog = Math.log(Math.max(camera.scale, UNIT_ICON_MIN_CAMERA_SCALE));
+  const minLog = Math.log(UNIT_ICON_MIN_CAMERA_SCALE);
+  const maxLog = Math.log(UNIT_ICON_MAX_CAMERA_SCALE);
+  return Math.max(0, Math.min(1, (cameraLog - minLog) / (maxLog - minLog)));
+}
+
+function unitIconScale(selected = false) {
+  const progress = unitZoomProgress();
+  const scale = UNIT_ICON_MIN_SCALE + (UNIT_ICON_MAX_SCALE - UNIT_ICON_MIN_SCALE) * progress;
+  return Math.min(UNIT_ICON_MAX_SCALE, scale * (selected ? 1.1 : 1));
+}
+
+function unitLabelPx() {
+  return UNIT_LABEL_MIN_PX + (UNIT_LABEL_MAX_PX - UNIT_LABEL_MIN_PX) * unitZoomProgress();
 }
 
 function clusterSameTypeMissileLabels(items, thresholdPx) {
@@ -322,46 +459,72 @@ function labelAlpha(force = false) {
   return Math.max(0, Math.min(1, (camera.scale - 0.0007) / 0.0016));
 }
 
+function gridStepForScale() {
+  // Keep ~30–70 lines per axis at any zoom so full-earth zoom-out stays cheap.
+  const targetPx = 48;
+  const metersPerLine = targetPx / Math.max(1e-9, camera.scale);
+  const candidates = [
+    GRID_MINOR_M,
+    GRID_MAJOR_M,
+    5 * GRID_MAJOR_M,
+    20 * GRID_MAJOR_M,
+    50 * GRID_MAJOR_M,
+    100 * GRID_MAJOR_M,
+    250 * GRID_MAJOR_M,
+    500 * GRID_MAJOR_M
+  ];
+  for (const step of candidates) {
+    if (step >= metersPerLine * 0.55) return step;
+  }
+  return candidates[candidates.length - 1];
+}
+
 function drawGrid() {
   if (!filterEnabled(filters.grid)) return;
-  const leftTop = screenToWorld(0, 0);
-  const rightBottom = screenToWorld(innerWidth, innerHeight);
-  // Strategic zoom: only major lines (minor spacing becomes sub-pixel clutter
-  // and wastes stroke calls across a huge map viewport).
-  const minorStep = camera.scale < 0.0009 ? GRID_MAJOR_M : GRID_MINOR_M;
-
-  for (let x = Math.floor(leftTop.x / minorStep) * minorStep; x < rightBottom.x; x += minorStep) {
-    const sx = worldToScreen({ x, y: 0 }).x;
-    const isMajor = Math.abs(x % GRID_MAJOR_M) < 1;
-    if (minorStep === GRID_MAJOR_M && !isMajor) continue;
-    ctx.strokeStyle = isMajor ? "rgba(95,139,154,.36)" : "rgba(95,139,154,.14)";
-    ctx.lineWidth = isMajor ? 1.2 : 1;
-    ctx.beginPath();
-    ctx.moveTo(sx, 0);
-    ctx.lineTo(sx, innerHeight);
-    ctx.stroke();
+  const step = gridStepForScale();
+  const key = `${innerWidth}|${innerHeight}|${camera.x}|${camera.y}|${camera.scale}|${step}`;
+  if (gridPathCache.key !== key) {
+    const leftTop = screenToWorld(0, 0);
+    const rightBottom = screenToWorld(innerWidth, innerHeight);
+    const majorEvery = step >= GRID_MAJOR_M
+      ? Math.max(1, Math.round(step / GRID_MAJOR_M))
+      : 5;
+    const major = new Path2D();
+    const minor = new Path2D();
+    for (let x = Math.floor(leftTop.x / step) * step; x < rightBottom.x; x += step) {
+      const sx = worldToScreen({ x, y: 0 }).x;
+      const isMajor = Math.abs(Math.round(x / step) % majorEvery) < 1e-9;
+      const path = isMajor ? major : minor;
+      path.moveTo(sx, 0);
+      path.lineTo(sx, innerHeight);
+    }
+    for (let y = Math.floor(leftTop.y / step) * step; y < rightBottom.y; y += step) {
+      const sy = worldToScreen({ x: 0, y }).y;
+      const isMajor = Math.abs(Math.round(y / step) % majorEvery) < 1e-9;
+      const path = isMajor ? major : minor;
+      path.moveTo(0, sy);
+      path.lineTo(innerWidth, sy);
+    }
+    gridPathCache = { key, major, minor };
   }
-  for (let y = Math.floor(leftTop.y / minorStep) * minorStep; y < rightBottom.y; y += minorStep) {
-    const sy = worldToScreen({ x: 0, y }).y;
-    const isMajor = Math.abs(y % GRID_MAJOR_M) < 1;
-    if (minorStep === GRID_MAJOR_M && !isMajor) continue;
-    ctx.strokeStyle = isMajor ? "rgba(95,139,154,.36)" : "rgba(95,139,154,.14)";
-    ctx.lineWidth = isMajor ? 1.2 : 1;
-    ctx.beginPath();
-    ctx.moveTo(0, sy);
-    ctx.lineTo(innerWidth, sy);
-    ctx.stroke();
-  }
+  ctx.strokeStyle = "rgba(20,24,28,.07)";
+  ctx.lineWidth = 1;
+  ctx.stroke(gridPathCache.minor);
+  ctx.strokeStyle = "rgba(20,24,28,.16)";
+  ctx.lineWidth = 1.15;
+  ctx.stroke(gridPathCache.major);
 }
 
 function drawRadarRings() {
   if (!filterEnabled(filters.radar)) return;
+  // Strategic zoom: radar arcs become noise and cost full circles for every pick.
+  if (camera.scale < 0.00035) return;
   for (const ship of sim.ships) {
     if (!ship.alive || !ship.radarActive) continue;
     if (!selectedIds.has(ship.id)) continue;
     const p = worldToScreen(ship);
-    ctx.strokeStyle = `${sideColor(ship.side)}26`;
-    ctx.lineWidth = 0.7;
+    ctx.strokeStyle = `${sideColor(ship.side)}40`;
+    ctx.lineWidth = 0.9;
     ctx.beginPath();
     ctx.arc(p.x, p.y, ship.radarRangeM * camera.scale, 0, Math.PI * 2);
     ctx.stroke();
@@ -390,8 +553,13 @@ function cachedWeaponRangeEntries(ship) {
 function collectWeaponRangeRings() {
   const rings = [];
   if (!filterEnabled(filters.ranges)) return rings;
+  // Full-earth zoom-out: rings fill the screen and dominate frame cost.
+  if (camera.scale < 0.00028 && selectedIds.size === 0) return rings;
   const aliveCount = sim._aliveShips?.length ?? sim.ships.length;
-  const selectOnly = aliveCount > WEAPON_RING_SELECT_SHIP_CAP && selectedIds.size > 0;
+  // Dense zoom-in also thrashes on ring clip/union — only selected when busy.
+  const selectOnly = aliveCount > WEAPON_RING_SELECT_SHIP_CAP
+    || camera.scale < 0.00045
+    || (camera.scale > 0.002 && aliveCount > 10);
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
     const selected = selectedIds.has(ship.id) || ship.id === sim.selectedId;
@@ -458,9 +626,11 @@ function drawWeaponRangeRings() {
   }
   // A merged cluster of overlapping same-type/same-faction rings should show
   // exactly one label, not one per ring. Union-find the group by the same
-  // overlap test used for clipping, then keep a single label owner per
-  // connected cluster (preferring a selected ring so its label still wins).
+  // overlap test used for clipping. Cache each ring's neighbours during that
+  // single pairwise pass so drawing does not repeat the O(n²) geometry work.
+  // Keep one label owner per connected cluster (preferring a selected ring).
   const labelOwners = new Set();
+  const overlapMap = new Map(rings.map((ring) => [ring, []]));
   for (const group of groups.values()) {
     if (group.length === 1) {
       labelOwners.add(group[0]);
@@ -482,6 +652,8 @@ function drawWeaponRangeRings() {
         const dy = a.y - b.y;
         const reach = a.radius + b.radius;
         if (dx * dx + dy * dy < reach * reach) {
+          overlapMap.get(a).push(b);
+          overlapMap.get(b).push(a);
           const rootA = find(i);
           const rootB = find(j);
           if (rootA !== rootB) parent[Math.max(rootA, rootB)] = Math.min(rootA, rootB);
@@ -498,23 +670,15 @@ function drawWeaponRangeRings() {
   }
   ctx.save();
   for (const ring of rings) {
-    const group = groups.get(`${ring.side}|${ring.id}`);
-    const overlappers = group.length > 1
-      ? group.filter((other) => {
-        if (other === ring) return false;
-        const dx = ring.x - other.x;
-        const dy = ring.y - other.y;
-        const reach = ring.radius + other.radius;
-        return dx * dx + dy * dy < reach * reach;
-      })
-      : [];
+    const overlappers = overlapMap.get(ring);
     ctx.setLineDash(ringDash(ring.ringStyle));
     const isAirDefense = ring.category !== "anti_ship";
-    const alpha = ring.selected ? 0.82 : 0.58;
+    const alpha = ring.selected ? 0.92 : 0.72;
+    // Light-sea theater: ink-dark anti-ship rings, deeper force color for AAW.
     ctx.strokeStyle = ring.category === "anti_ship"
-      ? `rgba(247, 231, 161, ${ring.selected ? 0.34 : 0.24})`
-      : `${sideColor(ring.side)}${Math.round((isAirDefense ? alpha * 1.12 : alpha) * 255).toString(16).padStart(2, "0")}`;
-    ctx.lineWidth = ring.selected ? 0.72 : 0.56;
+      ? `rgba(26, 30, 35, ${ring.selected ? 0.42 : 0.28})`
+      : `${sideColor(ring.side)}${Math.round((isAirDefense ? alpha * 1.05 : alpha) * 255).toString(16).padStart(2, "0")}`;
+    ctx.lineWidth = ring.selected ? 1.05 : 0.82;
     if (overlappers.length) {
       ctx.save();
       for (const other of overlappers) clipOutsideCircle(other);
@@ -537,7 +701,7 @@ function drawWeaponRangeRings() {
       // used to be, so a merged cluster's single label reads as a light,
       // secondary annotation rather than competing with the ring itself.
       ctx.globalAlpha = (ring.selected ? labelAlpha(true) * 0.86 : 0.74) * 0.7;
-      ctx.fillStyle = ring.category === "anti_ship" ? "#f7e7a1" : sideColor(ring.side);
+      ctx.fillStyle = ring.category === "anti_ship" ? "#1a1e23" : sideColor(ring.side);
       ctx.font = canvasFont(VISUAL_CONFIG.rangeLabelPx * 0.7);
       const labelX = Math.max(54, Math.min(innerWidth - 48, ring.x + ring.radius + 3));
       const antiAirOffset = ring.id === "ESSM" ? 8 : ring.id === "SM-2MR" ? -2 : 0;
@@ -563,8 +727,8 @@ function drawGroundUnit(ship, label) {
   ctx.translate(p.x, p.y);
   ctx.globalAlpha = ship.alive ? 1 : 0.35;
   ctx.strokeStyle = color;
-  ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(5, 12, 16, .78)";
-  ctx.lineWidth = selected ? 1.2 : 0.8;
+  ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(248, 250, 251, .94)";
+  ctx.lineWidth = selected ? 1.35 : 1;
   // Glyph drives the ground symbol so custom (modded) ground units can pick a
   // shape independent of their hull id: sam=triangle, radar=diamond, bunker=square.
   const glyph = ship.glyph || (ship.hull === "SAM" ? "sam" : ship.hull === "EWR" ? "radar" : "bunker");
@@ -581,9 +745,9 @@ function drawGroundUnit(ship, label) {
   }
   ctx.fill();
   ctx.stroke();
-  ctx.globalAlpha = ship.alive ? 0.8 : 0.4;
-  ctx.strokeStyle = "rgba(255,255,255,.7)";
-  ctx.lineWidth = 0.5;
+  ctx.globalAlpha = ship.alive ? 0.85 : 0.4;
+  ctx.strokeStyle = "rgba(14,16,18,.45)";
+  ctx.lineWidth = 0.55;
   ctx.beginPath();
   if (glyph === "radar") {
     ctx.arc(0, 0, s * 0.55, -Math.PI * 0.78, -Math.PI * 0.08);
@@ -602,7 +766,7 @@ function drawGroundUnit(ship, label) {
     ctx.save();
     ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
     ctx.fillStyle = color;
-    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
+    ctx.font = canvasFont(Math.max(8, VISUAL_CONFIG.shipLabelPx * label.scale));
     ctx.fillText(shipDisplayName(ship, "-"), p.x + s + 4, p.y - 4);
     ctx.restore();
   }
@@ -632,8 +796,8 @@ function drawAircraft(ship, label) {
     ctx.translate(p.x + ax, p.y + ay);
     ctx.rotate(heading);
     ctx.strokeStyle = color;
-    ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(5, 12, 16, .82)";
-    ctx.lineWidth = selected ? 1.1 : 0.7;
+    ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(248, 250, 251, .94)";
+    ctx.lineWidth = selected ? 1.25 : 0.9;
     ctx.beginPath();
     // Forward-pointing dart (arrowhead) — reads as a fast jet.
     ctx.moveTo(dart, 0);
@@ -672,8 +836,8 @@ function drawSubmarine(ship, label) {
   ctx.rotate(ship.heading);
   ctx.globalAlpha = ship.alive ? 0.9 : 0.3;
   ctx.strokeStyle = color;
-  ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(4, 10, 15, .88)";
-  ctx.lineWidth = selected ? 1.2 : 0.8;
+  ctx.fillStyle = selected ? sideSoftColor(ship.side) : "rgba(248, 250, 251, .94)";
+  ctx.lineWidth = selected ? 1.3 : 0.95;
   ctx.setLineDash([3, 2]);
   ctx.beginPath();
   ctx.ellipse(0, 0, len * 0.5, beam, 0, 0, Math.PI * 2);
@@ -697,36 +861,105 @@ function drawSubmarine(ship, label) {
   }
 }
 
-function drawScaledShip(ship, label) {
-  const p = worldToScreen(ship);
-  if (!screenPointVisible(p, 48)) return;
-  const color = sideColor(ship.side);
-  const selected = selectedIds.has(ship.id);
-  const presentation = unitPresentation(ship.hull, SHIP_CLASSES[ship.hull] || ship);
-  drawTacticalSymbol(ctx, {
-    x: p.x,
-    y: p.y,
-    side: ship.side,
-    domain: ship.domain === "surface" ? "sea" : (ship.domain || "sea"),
-    symbolId: presentation.symbolId,
-    selected,
-    alive: ship.alive,
-    heading: ship.heading,
-    color,
-    scale: selected ? 1.08 : 1
-  });
+// Frame-local density snapshot for ship/missile draw LOD (reset each render).
+let _frameAliveShipCount = 0;
+let _frameDenseDraw = false;
 
-  if (label.alpha > 0.04) {
-    ctx.save();
-    ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * label.alpha;
-    ctx.fillStyle = color;
-    ctx.font = canvasFont(Math.max(7, VISUAL_CONFIG.shipLabelPx * label.scale));
-    const modifier = [ship.isOTC && "OTC", ship.isAAWC && "AAWC"].filter(Boolean).join(" · ");
-    ctx.fillText(`${shipDisplayName(ship, "-")}${modifier ? `  ${modifier}` : ""}`, p.x + 18, p.y - 7);
-    ctx.restore();
+function drawShipLabel(ship, label) {
+  const p = worldToScreen(ship);
+  if (!screenPointVisible(p, 72)) return;
+  const color = sideColor(ship.side);
+  const selected = selectedIds.has(ship.id) || ship.id === sim.selectedId;
+  const domain = ship.domain === "surface" ? "sea" : (ship.domain || "sea");
+  const farOut = label.scale < 0.45 || label.alpha < 0.35;
+  const dense = _frameDenseDraw && !selected;
+  const showLabel = selected
+    || (!farOut && !dense && label.alpha > 0.12 && _frameAliveShipCount <= 28)
+    || (!farOut && label.alpha > 0.2 && _frameAliveShipCount <= 14);
+  if (!showLabel) return;
+
+  ctx.save();
+  ctx.globalAlpha = (ship.alive ? 0.96 : 0.34) * Math.max(label.alpha, selected ? 1 : 0.5);
+  ctx.fillStyle = color;
+  const iconScale = unitIconScale(selected);
+  ctx.font = canvasFont(unitLabelPx());
+  const modifier = [ship.isOTC && "OTC", ship.isAAWC && "AAWC"].filter(Boolean).join(" · ");
+  const airCount = domain === "air" ? ` ×${aliveAircraftCount(ship)}/${squadronSize(ship)}` : "";
+  const depth = domain === "subsurface" ? ` ${Math.round(ship.depthM ?? 0)}m` : "";
+  ctx.fillText(
+    `${shipDisplayName(ship, "-")}${airCount}${depth}${modifier ? `  ${modifier}` : ""}`,
+    p.x + 14 * iconScale,
+    p.y - 7 * iconScale
+  );
+  ctx.restore();
+}
+
+function drawScaledShip(ship, label, drawLabel = true) {
+  const p = worldToScreen(ship);
+  if (!screenPointVisible(p, 36)) return;
+  const color = sideColor(ship.side);
+  const selected = selectedIds.has(ship.id) || ship.id === sim.selectedId;
+  const presentation = unitPresentation(ship.hull, SHIP_CLASSES[ship.hull] || ship);
+  // Follow every zoom-wheel movement continuously, then clamp to explicit
+  // readable bounds at strategic and close tactical zoom.
+  const farOut = label.scale < 0.45 || label.alpha < 0.35;
+  // Dense zoom-in: many hulls on screen — labels/arrows still use LOD, while
+  // every unit keeps its identifying internal texture.
+  const dense = _frameDenseDraw && !selected;
+  const iconScale = unitIconScale(selected);
+  const domain = ship.domain === "surface" ? "sea" : (ship.domain || "sea");
+  if (domain === "air") {
+    // A squadron is a four-aircraft element. Keep the silhouettes small and
+    // spread them into a compact echelon so the formation reads as a flight,
+    // while the label remains the source of truth for attrition/custom sizes.
+    const aircraftCount = Math.max(1, aliveAircraftCount(ship));
+    const heading = Number.isFinite(ship.heading) ? ship.heading : 0;
+    const aircraftScale = iconScale * 0.52;
+    const formation = [
+      [5, 0],
+      [-3, -5],
+      [-3, 5],
+      [-10, 0]
+    ];
+    for (let i = 0; i < aircraftCount; i++) {
+      const [along, across] = formation[i] || [-(i + 1) * 6, (i % 2 ? -1 : 1) * 5];
+      const x = p.x + Math.cos(heading) * along - Math.sin(heading) * across;
+      const y = p.y + Math.sin(heading) * along + Math.cos(heading) * across;
+      drawTacticalSymbol(ctx, {
+        x,
+        y,
+        side: ship.side,
+        domain,
+        symbolId: presentation.symbolId,
+        selected,
+        alive: ship.alive,
+        heading,
+        color,
+        scale: aircraftScale,
+        simple: false
+      });
+    }
+  } else {
+    drawTacticalSymbol(ctx, {
+      x: p.x,
+      y: p.y,
+      side: ship.side,
+      domain,
+      symbolId: presentation.symbolId,
+      selected,
+      alive: ship.alive,
+      heading: ship.heading,
+      color,
+      scale: iconScale,
+      simple: false
+    });
   }
 
-  if (sim.mode !== SCENARIO_MODE.SETUP && ship.alive && (ship.speed > 0.1 || ship.desiredSpeed > 0.1)) {
+  if (drawLabel) drawShipLabel(ship, label);
+
+  // Velocity arrows only for selected (or sparse force) — big cost when many move.
+  if (!farOut && (selected || !_frameDenseDraw) && sim.mode !== SCENARIO_MODE.SETUP
+    && ship.alive && (ship.speed > 0.1 || ship.desiredSpeed > 0.1)) {
     const hasVelocity = Math.hypot(ship.vx ?? 0, ship.vy ?? 0) > 0.1;
     const direction = hasVelocity ? Math.atan2(ship.vy, ship.vx) : (Number.isFinite(ship.heading) ? ship.heading : 0);
     const arrowLength = 28;
@@ -751,6 +984,7 @@ function drawScaledShip(ship, label) {
 function drawSectorResponsibility(ship) {
   // Only meaningful once a fleet exists and a sub-sector has been carved out.
   if (!ship.alive || sim.mode !== SCENARIO_MODE.RUNNING) return;
+  if (camera.scale < 0.0004) return;
   // Aircraft are strikers, not sectorised air-defence pickets — no AAW sector.
   if (ship.domain === "air") return;
   if (!Number.isFinite(ship.sectorCenter) || !(ship.sectorHalfWidth < Math.PI - 0.05)) return;
@@ -807,6 +1041,37 @@ function drawTracks() {
   }
 }
 
+function appendMissileSymbol(path, x, y, cos, sin, size, isAntiAir) {
+  if (isAntiAir) {
+    path.moveTo(x + size * cos, y + size * sin);
+    let localX = -size * 0.65;
+    let localY = -size * 0.72;
+    path.lineTo(x + localX * cos - localY * sin, y + localX * sin + localY * cos);
+    localY = size * 0.72;
+    path.lineTo(x + localX * cos - localY * sin, y + localX * sin + localY * cos);
+    path.closePath();
+    return;
+  }
+  const half = size * 0.58;
+  path.moveTo(
+    x + (-half) * cos - (-half) * sin,
+    y + (-half) * sin + (-half) * cos
+  );
+  path.lineTo(
+    x + half * cos - (-half) * sin,
+    y + half * sin + (-half) * cos
+  );
+  path.lineTo(
+    x + half * cos - half * sin,
+    y + half * sin + half * cos
+  );
+  path.lineTo(
+    x + (-half) * cos - half * sin,
+    y + (-half) * sin + half * cos
+  );
+  path.closePath();
+}
+
 function drawMissiles(label) {
   if (!filterEnabled(filters.missiles)) return;
   const labelFontPx = Math.max(7, VISUAL_CONFIG.shipLabelPx * 0.4 * label.scale);
@@ -814,63 +1079,69 @@ function drawMissiles(label) {
   for (const bucket of _missileLabelBuckets.values()) bucket.length = 0;
   const missileLabelsByType = _missileLabelBuckets;
   const labelWidths = _missileLabelWidths;
-  const liveCount = sim._aliveMissiles?.length ?? sim.missiles.length;
-  // Drop the per-missile glow in a crowded raid (shadowBlur is the most expensive
-  // per-draw op and invisible at that density).
-  const useGlow = liveCount <= MISSILE_GLOW_CAP;
-  const zoomedIn = camera.scale >= 0.0012;
-  const drawAllGuides = liveCount <= MISSILE_GUIDE_LINE_CAP || zoomedIn;
-  const thinIcons = liveCount > MISSILE_ICON_THIN_CAP;
-  // Strategic zoom: tiny points instead of rotated polygons (still read side/color).
-  const lodDots = label.scale <= 0 || label.alpha < 0.15;
-  const wantLabels = !lodDots && label.scale > 0 && label.alpha > 0;
-  ctx.save();
+  const wantLabels = label.scale > 0 && label.alpha > 0;
+  // Geometry is accumulated into a handful of paths and painted once per
+  // visual style. Every weapon keeps its full triangle/square symbol and every
+  // target guide remains present, but hundreds of save/rotate/fill/stroke calls
+  // collapse into a small, stable number of canvas operations.
+  const guideBatches = _missileGuideBatches;
+  const symbolBatches = _missileSymbolBatches;
+  for (const item of guideBatches.values()) {
+    item.path = new Path2D();
+    item.used = false;
+  }
+  for (const item of symbolBatches.values()) {
+    item.path = new Path2D();
+    item.used = false;
+  }
+  const batch = (map, key, style) => {
+    let item = map.get(key);
+    if (!item) {
+      item = { path: new Path2D(), used: false, ...style };
+      map.set(key, item);
+    } else {
+      item.stroke = style.stroke;
+      item.fill = style.fill;
+      item.width = style.width;
+      item.dash = style.dash;
+      item.glow = style.glow;
+    }
+    item.used = true;
+    return item;
+  };
+  let labelPoolIndex = 0;
+  const viewCenterX = innerWidth / 2;
+  const viewCenterY = innerHeight / 2;
+  const cameraScale = camera.scale;
   ctx.font = canvasFont(labelFontPx);
   const missiles = sim._aliveMissiles ?? sim.missiles;
   for (const missile of missiles) {
     if (!missile.alive) continue;
-    const p = worldToScreen(missile);
-    const iconVisible = screenPointVisible(p, 24);
-    const relatedSelected = selectedIds.has(missile.launcherId) || selectedIds.has(missile.targetId);
-    // Density sampling: always show terminal + selection-related; thin the rest.
-    if (thinIcons && !missile.terminal && !relatedSelected && (stableMissileHash(missile.id) % 3) !== 0) {
-      continue;
-    }
-    const drawGuide = drawAllGuides || relatedSelected || missile.terminal;
-    if (!iconVisible && !drawGuide) continue;
-
+    const px = viewCenterX + (missile.x - camera.x) * cameraScale;
+    const py = viewCenterY + (missile.y - camera.y) * cameraScale;
     const isAntiAir = missileDisplayRole(missile) === "anti_air";
-    const iconColor = missile.terminal ? "#f7b955" : sideColor(missile.side);
+    const targetCandidate = isAntiAir
+      ? (sim._missileById?.get(missile.targetId) ?? null)
+      : (sim._shipById?.get(missile.targetId) ?? null);
+    const target = targetCandidate?.alive ? targetCandidate : null;
+    const tx = target ? viewCenterX + (target.x - camera.x) * cameraScale : 0;
+    const ty = target ? viewCenterY + (target.y - camera.y) * cameraScale : 0;
+    const iconVisible = screenCoordinatesVisible(px, py, 24);
+    if (!iconVisible) {
+      if (!target || !segmentCoordinatesIntersectViewport(px, py, tx, ty, 4)) continue;
+    }
 
-    if (drawGuide) {
-      const targetCandidate = isAntiAir
-        ? (sim._missileById?.get(missile.targetId) ?? null)
-        : (sim._shipById?.get(missile.targetId) ?? null);
-      const target = targetCandidate?.alive ? targetCandidate : null;
-      if (target) {
-        const t = worldToScreen(target);
-        if (segmentIntersectsViewport(p, t, 4)) {
-          ctx.save();
-          ctx.strokeStyle = `${sideColor(missile.side)}24`;
-          ctx.lineWidth = missile.terminal ? 0.62 : 0.42;
-          ctx.setLineDash(missile.terminal ? [2, 3] : [7, 6]);
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(t.x, t.y);
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
+    const iconColor = missile.terminal ? "#1a1e23" : sideColor(missile.side);
+    if (target && segmentCoordinatesIntersectViewport(px, py, tx, ty, 4)) {
+      const guide = batch(guideBatches, `${missile.side}|${missile.terminal ? "terminal" : "flight"}`, {
+        stroke: `${sideColor(missile.side)}24`,
+        width: missile.terminal ? 0.62 : 0.42,
+        dash: missile.terminal ? [2, 3] : [7, 6]
+      });
+      guide.path.moveTo(px, py);
+      guide.path.lineTo(tx, ty);
     }
     if (!iconVisible) continue;
-
-    if (lodDots) {
-      ctx.fillStyle = iconColor;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, missile.terminal ? 2.4 : 1.6, 0, Math.PI * 2);
-      ctx.fill();
-      continue;
-    }
 
     const size = worldSize(
       isAntiAir ? 34 : 52,
@@ -878,38 +1149,27 @@ function drawMissiles(label) {
       VISUAL_CONFIG.missileMaxPx * (isAntiAir ? 0.7 : 0.9),
       19
     );
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(missile.heading);
-    ctx.strokeStyle = iconColor;
-    ctx.fillStyle = missile.terminal ? "rgba(247,185,85,.22)" : "rgba(5, 12, 16, .82)";
-    ctx.lineWidth = isAntiAir ? 1.05 : 0.65;
-    if (isAntiAir && useGlow) {
-      ctx.shadowColor = iconColor;
-      ctx.shadowBlur = 3;
-    }
-    ctx.beginPath();
-    if (isAntiAir) {
-      ctx.moveTo(size, 0);
-      ctx.lineTo(-size * 0.65, -size * 0.72);
-      ctx.lineTo(-size * 0.65, size * 0.72);
-      ctx.closePath();
-    } else {
-      ctx.rect(-size * 0.58, -size * 0.58, size * 1.16, size * 1.16);
-    }
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+    const symbols = batch(symbolBatches, `${isAntiAir ? "aaw" : "strike"}|${missile.terminal ? "terminal" : missile.side}`, {
+      stroke: iconColor,
+      fill: missile.terminal ? "rgba(26,30,35,.18)" : "rgba(248, 250, 251, .92)",
+      width: isAntiAir ? 1.05 : 0.65,
+      glow: isAntiAir
+    });
+    const heading = Number.isFinite(missile.heading) ? missile.heading : 0;
+    const cos = Math.cos(heading);
+    const sin = Math.sin(heading);
+    appendMissileSymbol(symbols.path, px, py, cos, sin, size, isAntiAir);
 
     if (wantLabels) {
       const spec = MISSILES[missile.missileId];
       const text = spec?.shortLabel ?? spec?.name ?? "";
-      const anchorX = p.x + size * 0.5 + 2;
-      const anchorY = p.y - 4;
-      let width = labelWidths.get(text);
+      const anchorX = px + size * 0.5 + 2;
+      const anchorY = py - 4;
+      const widthKey = `${labelFontPx}|${text}`;
+      let width = labelWidths.get(widthKey);
       if (width === undefined) {
         width = ctx.measureText(text).width;
-        labelWidths.set(text, width);
+        labelWidths.set(widthKey, width);
       }
       const height = Math.max(7, labelFontPx + 2);
       const groupKey = `${missile.side}:${missile.missileId}`;
@@ -918,20 +1178,46 @@ function drawMissiles(label) {
         bucket = [];
         missileLabelsByType.set(groupKey, bucket);
       }
-      bucket.push({
-        x: anchorX,
-        y: anchorY,
-        cx: anchorX + width / 2,
-        cy: anchorY - height / 2,
-        width,
-        height,
-        text,
-        color: iconColor,
-        alpha: 0.96
-      });
+      const item = _missileLabelPool[labelPoolIndex++] ?? {};
+      if (labelPoolIndex > _missileLabelPool.length) _missileLabelPool.push(item);
+      item.x = anchorX;
+      item.y = anchorY;
+      item.cx = anchorX + width / 2;
+      item.cy = anchorY - height / 2;
+      item.width = width;
+      item.height = height;
+      item.text = text;
+      item.color = iconColor;
+      item.alpha = 0.96;
+      bucket.push(item);
     }
   }
+
+  ctx.save();
+  for (const guide of guideBatches.values()) {
+    if (!guide.used) continue;
+    ctx.strokeStyle = guide.stroke;
+    ctx.lineWidth = guide.width;
+    ctx.setLineDash(guide.dash);
+    ctx.stroke(guide.path);
+  }
   ctx.restore();
+
+  for (const symbols of symbolBatches.values()) {
+    if (!symbols.used) continue;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = symbols.stroke;
+    ctx.fillStyle = symbols.fill;
+    ctx.lineWidth = symbols.width;
+    if (symbols.glow) {
+      ctx.shadowColor = symbols.stroke;
+      ctx.shadowBlur = 3;
+    }
+    ctx.fill(symbols.path);
+    ctx.stroke(symbols.path);
+    ctx.restore();
+  }
 
   if (wantLabels) {
     for (const items of missileLabelsByType.values()) {
@@ -958,8 +1244,8 @@ function drawRuler() {
     const b = worldToScreen(ruler.b);
     const dKm = distance(ruler.a, ruler.b) / KM;
     const bearing = (Math.atan2(ruler.b.x - ruler.a.x, ruler.a.y - ruler.b.y) * 180 / Math.PI + 360) % 360;
-    ctx.strokeStyle = "#f7e7a1";
-    ctx.fillStyle = "#f7e7a1";
+    ctx.strokeStyle = "#1a1e23";
+    ctx.fillStyle = "#1a1e23";
     ctx.lineWidth = 1.5;
     ctx.setLineDash([8, 4]);
     ctx.beginPath();
@@ -979,8 +1265,8 @@ function drawSelectionBox() {
   const w = Math.abs(selectionBox.x1 - selectionBox.x0);
   const h = Math.abs(selectionBox.y1 - selectionBox.y0);
   ctx.save();
-  ctx.strokeStyle = "rgba(216,237,242,.55)";
-  ctx.fillStyle = "rgba(216,237,242,.05)";
+  ctx.strokeStyle = "rgba(14,16,18,.55)";
+  ctx.fillStyle = "rgba(14,16,18,.06)";
   ctx.setLineDash([3, 3]);
   ctx.strokeRect(x, y, w, h);
   ctx.fillRect(x, y, w, h);
@@ -990,14 +1276,14 @@ function drawSelectionBox() {
 function placementValidity(world, hull = deployHull) {
   const cls = SHIP_CLASSES[hull];
   if (!cls) return { valid: false, reason: "装备数据不可用" };
-  if (!canAddAssets(sim)) return { valid: false, reason: "推演开始后不能继续部署" };
+  if (!canAddAssets(sim)) return { valid: false, reason: "当前推演状态不能部署" };
   const candidate = { ...cls, x: world.x, y: world.y, hull };
   const anywhere = cls.domain === "air" || (cls.isAirfield && (cls.domain === "ground" || cls.isFixed));
   if (anywhere) return { valid: true, reason: "可部署" };
   if (cls.isFixed || cls.domain === "ground") {
     return isShipPositionOnLand(sim, candidate)
       ? { valid: true, reason: "可部署" }
-      : { valid: false, reason: "该陆基装备必须部署在陆地上" };
+      : { valid: false, reason: "该地面装备必须部署在陆地上" };
   }
   return isShipPositionOnWater(sim, candidate)
     ? { valid: true, reason: "可部署" }
@@ -1015,40 +1301,12 @@ function drawPlacementPreview() {
     domain: item.category === "sea" ? "sea" : item.category,
     symbolId: item.symbolId,
     selected: true,
-    heading: deploySide === SIDE.BLUE ? 0 : Math.PI,
+    heading: deploySide === SIDE.BLUE ? Math.PI : 0,
     color: sideColor(deploySide),
     scale: 1.18,
     preview: true,
     valid: placementPreview.valid
   });
-}
-
-function renderShipDetails() {
-  // Build compact detail cards for selected ships (right-click+drag selected)
-  const detailShips = sim.ships.filter(s => s.alive && selectedIds.has(s.id));
-  const detailKey = `${innerHeight}|${detailShips.map((ship) => [
-    ship.id,
-    ship.damage,
-    ship.alive,
-    ship.subsystems?.radar,
-    ship.subsystems?.propulsion,
-    ship.subsystems?.fireControl,
-    ship.subsystems?.ciws,
-    ship.subsystems?.cic,
-    // Air units show volatile flight readouts; key on coarse fuel + flares +
-    // state so the card refreshes as they change (a few selected cards, cheap).
-    ship.domain === "air"
-      ? `${Math.round((ship.fuelS / (ship.enduranceS || 1)) * 20)}:${ship.flares}:${ship.airState}:${ship.evading ? 1 : 0}`
-      : 0,
-    ...Object.values(ship.loadout)
-  ].join(":")).join("|")}`;
-  if (panelRenderCache.details === detailKey) return;
-  panelRenderCache.details = detailKey;
-  if (!detailShips.length) {
-    replaceHtmlIfChanged(shipDetailOverlay, '<div class="context-empty">在地图或兵力列表中选择单位，以查看状态、任务与弹药。</div>');
-    return;
-  }
-  replaceHtmlIfChanged(shipDetailOverlay, detailShips.map((s) => shipDetailCardHtml(s, 276)).join(''));
 }
 
 
@@ -1173,9 +1431,17 @@ function drawTerrain() {
   let paths = terrainPathCache.get(map);
   if (!paths) {
     const landBuckets = new Map();
+    const waterBuckets = new Map();
     const coastBuckets = new Map();
+    const borderBuckets = new Map();
     paths = {
       land: map.landRings.map((ring) => {
+        const path = new Path2D();
+        ring.forEach(([x, y], index) => index === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
+        path.closePath();
+        return { path, bbox: pointsBounds(ring) };
+      }),
+      water: (map.waterRings ?? []).map((ring) => {
         const path = new Path2D();
         ring.forEach(([x, y], index) => index === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
         path.closePath();
@@ -1186,11 +1452,23 @@ function drawTerrain() {
         coastline.forEach(([x, y], index) => index === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
         return { path, bbox: pointsBounds(coastline) };
       }),
+      // Retain the generated field for backwards-compatible map data loads,
+      // but do not draw the fragmented political overlay. The prior clean
+      // coastline layer is the visible map reference again.
+      borders: (map.nationalBorders ?? []).map((border) => {
+        const path = new Path2D();
+        border.forEach(([x, y], index) => index === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
+        return { path, bbox: pointsBounds(border) };
+      }),
       landBuckets,
-      coastBuckets
+      waterBuckets,
+      coastBuckets,
+      borderBuckets
     };
     for (const item of paths.land) addTerrainBucket(landBuckets, item);
+    for (const item of paths.water) addTerrainBucket(waterBuckets, item);
     for (const item of paths.coast) addTerrainBucket(coastBuckets, item);
+    for (const item of paths.borders) addTerrainBucket(borderBuckets, item);
     terrainPathCache.set(map, paths);
   }
   if (terrainLayerKey !== key) {
@@ -1206,14 +1484,24 @@ function drawTerrain() {
       minY: camera.y - innerHeight / (2 * camera.scale),
       maxY: camera.y + innerHeight / (2 * camera.scale)
     };
-    terrainLayerCtx.fillStyle = "#111b1f";
+    terrainLayerCtx.fillStyle = "#626a73";
     terrainLayerCtx.setLineDash([]);
     for (const landPath of terrainItemsInView(paths.landBuckets, viewBounds)) terrainLayerCtx.fill(landPath.path);
-    terrainLayerCtx.strokeStyle = "#ffffff";
-    terrainLayerCtx.lineWidth = 1.8 / camera.scale;
+    terrainLayerCtx.fillStyle = "#cfd6db";
+    for (const waterPath of terrainItemsInView(paths.waterBuckets, viewBounds)) terrainLayerCtx.fill(waterPath.path);
+    terrainLayerCtx.strokeStyle = "#000000";
+    // Keep the coastline at a readable absolute screen width while drawing
+    // inside the world-space camera transform.
+    terrainLayerCtx.lineCap = "round";
+    terrainLayerCtx.lineJoin = "round";
+    terrainLayerCtx.lineWidth = 2.4 / Math.max(camera.scale, 0.0001);
     for (const coastPath of terrainItemsInView(paths.coastBuckets, viewBounds)) terrainLayerCtx.stroke(coastPath.path);
-    terrainLayerCtx.strokeStyle = "rgba(255,255,255,.88)";
-    terrainLayerCtx.lineWidth = 1.4 / camera.scale;
+    const legacyBorderLayerEnabled = false;
+    if (legacyBorderLayerEnabled) {
+      for (const borderPath of terrainItemsInView(paths.borderBuckets, viewBounds)) terrainLayerCtx.stroke(borderPath.path);
+    }
+    terrainLayerCtx.strokeStyle = "rgba(14,16,18,.55)";
+    terrainLayerCtx.lineWidth = 1.4;
     terrainLayerCtx.strokeRect(-MAP_HALF_WIDTH_M, -MAP_HALF_HEIGHT_M, MAP_WIDTH_M, MAP_HEIGHT_M);
     terrainLayerCtx.restore();
   }
@@ -1249,36 +1537,57 @@ function renderPanels() {
   const modeLabel = sim.mode === SCENARIO_MODE.ENDED ? RUN_STATUS.ended
     : sim.mode === SCENARIO_MODE.RUNNING ? (sim.paused ? RUN_STATUS.paused : RUN_STATUS.running)
     : RUN_STATUS.ready;
-  const statusKey = `${modeLabel}|${Object.values(counts).join(":")}|${postureKey}`;
+  const statusKey = `${modeLabel}|${Object.values(counts).join(":")}|${postureKey}|${sim.events?.[0]?.t ?? 0}|${sim.events?.[0]?.text ?? ""}`;
   if (panelRenderCache.status !== statusKey) {
     panelRenderCache.status = statusKey;
     status.dataset.mode = modeLabel;
     status.setAttribute("aria-label", `${modeLabel}，双方战况`);
-    replaceHtmlIfChanged(status, renderBattleStatus(sim, counts));
+    if (!statusDomCache) {
+      replaceHtmlIfChanged(status, renderBattleStatus(sim, counts));
+      statusDomCache = cacheStatusDom();
+    }
+    patchBattleStatus(battleStatusState(sim, counts));
   }
-  const inventoryKey = `${sim.ships.map((ship) => [
+  const inventoryStructureKey = `${sim.ships.map((ship) => [
     ship.id,
     ship.side,
-    ship.alive,
-    ship.damage,
-    selectedIds.has(ship.id),
-    ...Object.values(ship.loadout)
+    ship.hull,
+    ship.domain,
+    ship.isFixed
   ].join(":")).join("|")}`;
-  let inventoryChanged = false;
-  if (panelRenderCache.inventory !== inventoryKey) {
-    panelRenderCache.inventory = inventoryKey;
+  if (panelRenderCache.inventory !== inventoryStructureKey) {
+    panelRenderCache.inventory = inventoryStructureKey;
     const orderedShips = [...sim.ships].sort((a, b) => a.side.localeCompare(b.side) || a.id.localeCompare(b.id));
     replaceHtmlIfChanged(unitTab, inventoryHtml(orderedShips, (id) => selectedIds.has(id)));
-    inventoryChanged = true;
+    applyI18n();
+    cacheInventoryDomRows();
+    inventoryValueKeys.clear();
   }
-  if (inventoryChanged) applyI18n();
+  for (const ship of sim.ships) {
+    const valueKey = [
+      ship.alive,
+      ship.damage,
+      ship.airState,
+      Math.round(ship.speed ?? 0),
+      Math.round(ship.altitudeM ?? 0),
+      Math.round(ship.fuelS ?? 0),
+      Math.round(ship.rearmUntil ?? 0),
+      ship.homeBaseId,
+      selectedIds.has(ship.id),
+      ...Object.entries(ship.loadout || {}).flat()
+    ].join(":");
+    if (inventoryValueKeys.get(ship.id) === valueKey) continue;
+    inventoryValueKeys.set(ship.id, valueKey);
+    const refs = inventoryDomRows.get(ship.id);
+    if (refs) patchInventoryRow(ship, refs);
+  }
   const scaleKey = camera.scale.toFixed(8);
   if (panelRenderCache.scale !== scaleKey) {
     panelRenderCache.scale = scaleKey;
     renderScaleBar();
   }
   const placementEnabled = canAddAssets(sim);
-  const placementKey = `${placementEnabled}|${sim.mapId}`;
+  const placementKey = `${placementEnabled}`;
   if (panelRenderCache.placement !== placementKey) {
     panelRenderCache.placement = placementKey;
     document.querySelectorAll('[data-tool="blue"], [data-tool="red"], #ship-class').forEach((el) => {
@@ -1286,32 +1595,49 @@ function renderPanels() {
     });
     const deployButton = document.querySelector("#deploy-open");
     deployButton.disabled = !placementEnabled;
-    deployButton.title = placementEnabled ? "打开装备库" : "推演开始后不能部署装备";
-    document.querySelector("#empty-state").hidden = sim.ships.length > 0 || !placementEnabled;
+    deployButton.title = placementEnabled ? "打开装备库" : "当前推演状态不能部署兵力";
     if (!placementEnabled && deployHull) endPlacement();
-    if (mapSelect) {
-      mapSelect.disabled = !placementEnabled;
-      if (mapSelect.value !== sim.mapId) mapSelect.value = sim.mapId;
-    }
   }
 }
 
 function render() {
+  // When paused and nothing changed, skip the expensive canvas redraw to keep
+  // CPU/RAM idle. The dirty flag is set by any state change (sim step, camera,
+  // selection, placement, filter toggle, resize, pointer move during placement).
+  if (!canvasDirty && sim.paused) {
+    // Still refresh DOM panels occasionally (cheap text diff), but skip canvas.
+    const nowMs = performance.now();
+    if (nowMs - lastPanelRenderAt >= PANEL_RENDER_INTERVAL_MS) {
+      lastPanelRenderAt = nowMs;
+      renderPanels();
+    }
+    return;
+  }
+  canvasDirty = false;
   clampCamera();
+  _frameAliveShipCount = sim._aliveShips?.length ?? sim.ships.filter((s) => s.alive).length;
+  // Dense when many hulls, especially zoomed in (detail + labels + arrows thrash).
+  _frameDenseDraw = _frameAliveShipCount >= 16
+    || (_frameAliveShipCount >= 10 && camera.scale > 0.0015);
   drawSceneBase();
   drawGrid();
   drawTerrain();
   drawWeaponRangeRings();
   drawRadarRings();
-  for (const ship of sim.ships) {
-    if (selectedIds.has(ship.id)) drawSectorResponsibility(ship);
+  if (!_frameDenseDraw || selectedIds.size > 0) {
+    for (const ship of sim.ships) {
+      if (selectedIds.has(ship.id)) drawSectorResponsibility(ship);
+    }
   }
   if (filterEnabled(filters.tracks)) drawTracks();
   const label = shipLabelScale();
-  for (const ship of sim.ships) drawScaledShip(ship, label);
+  // Paint unit geometry first, then labels in a dedicated pass so later units
+  // or missile graphics cannot overpaint text belonging to an earlier unit.
+  for (const ship of sim.ships) drawScaledShip(ship, label, false);
   drawMissiles(label);
+  for (const ship of sim.ships) drawShipLabel(ship, label);
   drawPlacementPreview();
-  drawRuler();
+  if (tool === "ruler") drawRuler();
   drawSelectionBox();
   // Throttle the DOM side-panels to ~20 Hz (the canvas above still draws every
   // frame). Numbers/events updating 50 ms later is imperceptible, but it avoids
@@ -1320,7 +1646,6 @@ function render() {
   if (nowMs - lastPanelRenderAt >= PANEL_RENDER_INTERVAL_MS) {
     lastPanelRenderAt = nowMs;
     renderPanels();
-    renderShipDetails();
   }
 }
 
@@ -1368,6 +1693,7 @@ function tick(now) {
       const t0 = performance.now();
       stepSim(sim, Math.min(0.25, remaining));
       steppedThisFrame = true;
+      canvasDirty = true;
       if (debugRunActive) {
         perfRec.record(sim, performance.now() - t0);
         battleLog.sample(sim);
@@ -1387,7 +1713,7 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
-window.addEventListener("resize", resize);
+window.addEventListener("resize", () => { resize(); positionPlacementHud(); canvasDirty = true; });
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 canvas.addEventListener("wheel", (event) => {
   event.preventDefault();
@@ -1398,12 +1724,14 @@ canvas.addEventListener("wheel", (event) => {
   camera.x += before.x - after.x;
   camera.y += before.y - after.y;
   clampCamera();
+  canvasDirty = true;
 });
 canvas.addEventListener("pointerdown", (event) => {
   const world = screenToWorld(event.clientX, event.clientY);
   if (event.button === 2) {
     if (tool === "blue" || tool === "red") {
       endPlacement();
+      canvasDirty = true;
       return;
     }
     const ship = pickShip(world);
@@ -1417,6 +1745,7 @@ canvas.addEventListener("pointerdown", (event) => {
       selectionBox = { x0: event.clientX, y0: event.clientY, x1: event.clientX, y1: event.clientY };
       drag = { type: "box-select" };
     }
+    canvasDirty = true;
     return;
   }
   if (event.button === 1 || event.altKey) {
@@ -1433,11 +1762,13 @@ canvas.addEventListener("pointerdown", (event) => {
     if (!placed) return;
     setPrimarySelection(placed);
     document.querySelector("#empty-state")?.setAttribute("hidden", "");
+    canvasDirty = true;
     return;
   }
   if (tool === "ruler") {
     activeRuler = { a: world, b: world };
     drag = { type: "ruler" };
+    canvasDirty = true;
     return;
   }
   const ship = pickShip(world);
@@ -1453,19 +1784,24 @@ canvas.addEventListener("pointerdown", (event) => {
         lastValidY: ship.y
       };
     }
+    canvasDirty = true;
   }
 });
 canvas.addEventListener("pointermove", (event) => {
+  lastPointer = { x: event.clientX, y: event.clientY };
   const world = screenToWorld(event.clientX, event.clientY);
   cursor.textContent = `${(world.x / KM).toFixed(1)}, ${(world.y / KM).toFixed(1)} km`;
   if ((tool === "blue" || tool === "red") && deployHull) {
+    positionPlacementHud(event.clientX, event.clientY);
     const validity = placementValidity(world);
     placementPreview = { ...world, ...validity };
     setPlacementMessage(validity.reason, validity.valid);
+    canvasDirty = true;
   }
   if (drag) {
     if (drag.type === "ruler" && activeRuler) {
       activeRuler.b = world;
+      canvasDirty = true;
     } else if (drag.type === "ship") {
       const ship = sim.ships.find((candidate) => candidate.id === drag.shipId);
       if (ship) {
@@ -1484,14 +1820,17 @@ canvas.addEventListener("pointermove", (event) => {
           ship.x = drag.lastValidX;
           ship.y = drag.lastValidY;
         }
+        canvasDirty = true;
       }
     } else if (drag.type === "pan") {
       camera.x = drag.cx - (event.clientX - drag.x) / camera.scale;
       camera.y = drag.cy - (event.clientY - drag.y) / camera.scale;
       clampCamera();
+      canvasDirty = true;
     } else if (drag.type === "box-select" && selectionBox) {
       selectionBox.x1 = event.clientX;
       selectionBox.y1 = event.clientY;
+      canvasDirty = true;
     }
   }
 });
@@ -1516,20 +1855,40 @@ canvas.addEventListener("pointerup", (event) => {
   }
   selectionBox = null;
   drag = null;
+  canvasDirty = true;
 });
 
-document.querySelectorAll("[data-tool]").forEach((button) => {
+function setMapTool(nextTool) {
+  tool = nextTool === "ruler" ? "ruler" : "select";
+  if (tool !== "ruler") {
+    // Leaving 测距 clears all ruler graphics — nothing should linger in 选择.
+    activeRuler = null;
+    rulers = [];
+    drag = drag?.type === "ruler" ? null : drag;
+  }
+  document.querySelectorAll('[data-tool="select"], [data-tool="ruler"]').forEach((button) => {
+    const on = button.dataset.tool === tool;
+    button.classList.toggle("active", on);
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  const mapToolToggle = document.querySelector("#map-tool-toggle");
+  if (mapToolToggle) {
+    mapToolToggle.dataset.toolToggle = tool;
+    mapToolToggle.setAttribute("aria-pressed", tool === "ruler" ? "true" : "false");
+    mapToolToggle.querySelectorAll(".map-tool-option").forEach((option, index) => {
+      option.classList.toggle("active", index === (tool === "ruler" ? 1 : 0));
+    });
+  }
+  canvas.style.cursor = tool === "ruler" ? "crosshair" : "";
+  canvasDirty = true;
+}
+
+document.querySelectorAll('[data-tool="select"], [data-tool="ruler"]').forEach((button) => {
   button.addEventListener("click", () => {
-    if (button.dataset.tool === "ruler" && tool === "ruler") {
-      tool = "select";
-      activeRuler = null;
-      rulers = [];
-      document.querySelectorAll(".tool").forEach((b) => b.classList.remove("active"));
-      button.blur();
-      return;
-    }
-    tool = button.dataset.tool;
-    document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b === button));
+    // Exclusive toggle: 选择 ↔ 测距. Clicking the active tool does nothing.
+    const next = button.dataset.tool;
+    if (next === tool) return;
+    setMapTool(next);
   });
 });
 
@@ -1543,6 +1902,25 @@ const placementChip = document.querySelector("#placement-chip");
 const placementName = document.querySelector("#placement-name");
 const placementMessage = document.querySelector("#placement-message");
 let equipmentCategory = "all";
+let lastPointer = { x: innerWidth / 2, y: innerHeight / 2 };
+
+function positionPlacementHud(clientX = lastPointer.x, clientY = lastPointer.y) {
+  if (!placementChip || placementChip.hidden) return;
+  const chipWidth = placementChip.offsetWidth || 190;
+  const chipHeight = placementChip.offsetHeight || 40;
+  const messageHeight = placementMessage?.offsetHeight || 22;
+  const left = Math.max(8, Math.min(clientX + 16, innerWidth - chipWidth - 8));
+  const top = Math.max(8, Math.min(clientY + 16, innerHeight - chipHeight - messageHeight - 16));
+  placementChip.style.left = `${left}px`;
+  placementChip.style.top = `${top}px`;
+  if (placementMessage) {
+    placementMessage.style.left = `${left}px`;
+    placementMessage.style.top = `${top + chipHeight + 6}px`;
+    placementMessage.style.width = `${chipWidth}px`;
+  }
+}
+
+function markEmptyStateSeen() {}
 
 function setPlacementMessage(message = "", valid = false) {
   placementMessage.textContent = message;
@@ -1550,15 +1928,11 @@ function setPlacementMessage(message = "", valid = false) {
 }
 
 function endPlacement() {
-  tool = "select";
   deployHull = null;
   placementPreview = null;
   placementChip.hidden = true;
   setPlacementMessage();
-  document.querySelectorAll("[data-tool]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.tool === "select");
-  });
-  canvas.style.cursor = "";
+  setMapTool("select");
 }
 
 function renderEquipmentLibrary() {
@@ -1573,11 +1947,31 @@ function renderEquipmentLibrary() {
   ).join("");
   equipmentGrid.innerHTML = items.map((item) => `
     <button class="equipment-card" type="button" data-equipment="${escapeHtml(item.id)}">
-      <span class="equipment-art" aria-hidden="true"><i class="art-fallback ${escapeHtml(item.category)}"></i></span>
+      <span class="equipment-stats">${item.statSummary.map((stat) => `<i>${escapeHtml(stat)}</i>`).join("")}</span>
       <span class="equipment-name"><strong>${escapeHtml(item.zhName)}</strong><b>${escapeHtml(item.designation)}</b></span>
       <span class="equipment-role">${escapeHtml(item.role)}${item.custom ? " · 自定义" : ""}</span>
-      <span class="equipment-stats">${item.statSummary.map((stat) => `<i>${escapeHtml(stat)}</i>`).join("")}</span>
+      <span class="equipment-art" aria-hidden="true">
+        ${item.artwork
+          ? `<img src="${escapeHtml(item.artwork)}" alt="" loading="lazy" decoding="async" />`
+          : `<i class="art-fallback ${escapeHtml(item.category)}"></i>`}
+      </span>
+      <span class="equipment-hover-name" aria-hidden="true"><strong>${escapeHtml(item.zhName)}</strong><small>${escapeHtml(item.designation)}</small></span>
+      <span class="equipment-side-hit equipment-side-blue" data-deploy-side="blue" role="button" tabindex="0" aria-label="蓝方部署"></span>
+      <span class="equipment-side-hit equipment-side-red" data-deploy-side="red" role="button" tabindex="0" aria-label="红方部署"></span>
     </button>`).join("");
+  equipmentGrid.querySelectorAll(".equipment-art img").forEach((image) => {
+    image.addEventListener("error", () => {
+      const art = image.closest(".equipment-art");
+      const card = image.closest("[data-equipment]");
+      const category = unitPresentation(card?.dataset.equipment || "")?.category || "sea";
+      image.remove();
+      if (art && !art.querySelector(".art-fallback")) {
+        const fallback = document.createElement("i");
+        fallback.className = `art-fallback ${category}`;
+        art.appendChild(fallback);
+      }
+    }, { once: true });
+  });
   equipmentCount.textContent = query || equipmentCategory !== "all"
     ? `显示 ${items.length} 种装备`
     : `共 ${items.length} 种装备`;
@@ -1585,9 +1979,10 @@ function renderEquipmentLibrary() {
 
 function openEquipmentLibrary() {
   if (!canAddAssets(sim)) {
-    setPlacementMessage("推演已经开始；请重置想定后再部署装备。");
+    setPlacementMessage("当前推演状态不能部署兵力。");
     return;
   }
+  markEmptyStateSeen();
   sim.paused = true;
   equipmentOverlay.hidden = false;
   renderEquipmentLibrary();
@@ -1607,6 +2002,7 @@ function beginPlacement(hull) {
   placementName.textContent = `${deploySide === SIDE.BLUE ? "蓝方" : "红方"} · ${item.zhName} ${item.designation}`;
   placementChip.hidden = false;
   placementChip.classList.toggle("red", deploySide === SIDE.RED);
+  positionPlacementHud();
   canvas.style.cursor = "crosshair";
   closeEquipmentLibrary();
   setPlacementMessage("移动光标选择部署位置");
@@ -1618,15 +2014,15 @@ document.querySelector("#empty-deploy")?.addEventListener("click", openEquipment
 document.querySelector("#equipment-close")?.addEventListener("click", closeEquipmentLibrary);
 equipmentOverlay?.addEventListener("click", (event) => {
   if (event.target === equipmentOverlay) closeEquipmentLibrary();
-  const hull = event.target.closest("[data-equipment]")?.dataset.equipment;
-  if (hull) beginPlacement(hull);
   const side = event.target.closest("[data-deploy-side]")?.dataset.deploySide;
   if (side) {
     deploySide = side === "red" ? SIDE.RED : SIDE.BLUE;
-    equipmentOverlay.querySelectorAll("[data-deploy-side]").forEach((button) => {
-      button.classList.toggle("active", button.dataset.deploySide === side);
-    });
+    const hull = event.target.closest("[data-equipment]")?.dataset.equipment;
+    if (hull) beginPlacement(hull);
+    return;
   }
+  const hull = event.target.closest("[data-equipment]")?.dataset.equipment;
+  if (hull) beginPlacement(hull);
   const category = event.target.closest("[data-category]")?.dataset.category;
   if (category) {
     equipmentCategory = category;
@@ -1638,7 +2034,7 @@ placementChip?.addEventListener("click", openEquipmentLibrary);
 
 function startScenario() {
   if (!canRunScenario(sim)) {
-    status.textContent = RUN_STATUS.invalid;
+    showNoticeDialog(RUN_STATUS.invalid);
     return false;
   }
   if (sim.mode === SCENARIO_MODE.SETUP) sim.mode = SCENARIO_MODE.RUNNING;
@@ -1652,24 +2048,20 @@ play.addEventListener("click", () => {
   } else if (sim.mode !== SCENARIO_MODE.ENDED) {
     sim.paused = !sim.paused;
   }
-});
-document.querySelector("#step")?.addEventListener("click", () => {
-  if (sim.mode === SCENARIO_MODE.SETUP && !startScenario()) return;
-  if (sim.mode === SCENARIO_MODE.ENDED) return;
-  sim.paused = true;
-  stepSim(sim, 0.25);
+  canvasDirty = true;
 });
 speed.addEventListener("input", () => {
   document.querySelector("#speed-value").textContent = `${Number(speed.value)}×`;
 });
-document.querySelector("#reset").addEventListener("click", async () => {
-  if (!(await confirmDialog("重置会清除当前想定和未保存的推演进度。确定继续吗？"))) return;
+async function resetSandbox() {
+  if (!(await confirmDialog("重置会清除当前推演和未保存的进度。确定继续吗？"))) return;
   sim = createDefaultScenario(undefined, sim.mapId);
   selectedIds = new Set([sim.selectedId].filter(Boolean));
   activeRuler = null;
   rulers = [];
   endPlacement();
-});
+}
+document.querySelectorAll("[data-reset]").forEach((button) => button.addEventListener("click", resetSandbox));
 
 function downloadJson(name, data) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
@@ -1712,7 +2104,7 @@ document.querySelector("#aar").addEventListener("click", () => {
     ...event,
     displayTextZh: translateEventText(event.text)
   }));
-  downloadJson(`dawnfall-aar-${Math.floor(sim.time)}.json`, aar);
+  downloadJson(`tomahawk-aar-${Math.floor(sim.time)}.json`, aar);
 });
 
 // Lightweight non-blocking replacement for window.confirm(): a real confirm()
@@ -1756,6 +2148,29 @@ function confirmDialog(message) {
     yes.addEventListener("click", () => finish(true));
     overlay.addEventListener("click", (e) => { if (e.target === overlay) finish(false); });
     no.focus();
+  });
+}
+
+function showNoticeDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "about-overlay notice-overlay";
+    const card = document.createElement("div");
+    card.className = "about-card notice-card";
+    const p = document.createElement("p");
+    p.textContent = message;
+    const hint = document.createElement("small");
+    hint.textContent = "点击任意位置关闭";
+    const ok = document.createElement("button");
+    ok.className = "about-close primary";
+    ok.textContent = "确定";
+    card.append(p, hint, ok);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    const finish = () => { overlay.remove(); resolve(); };
+    ok.addEventListener("click", finish);
+    overlay.addEventListener("click", finish);
+    ok.focus();
   });
 }
 
@@ -1914,13 +2329,6 @@ document.querySelector("#load-cancel").addEventListener("click", closeLoadPopup)
 document.querySelector("#load-import").addEventListener("click", () => document.querySelector("#load-file").click());
 loadOverlay.addEventListener("click", (e) => { if (e.target === loadOverlay) closeLoadPopup(); });
 
-if (mapSelect) {
-  mapSelect.addEventListener("change", () => {
-    const result = setScenarioMap(sim, mapSelect.value);
-    if (!result.ok) mapSelect.value = sim.mapId;
-    selectedIds = new Set([sim.selectedId].filter(Boolean));
-  });
-}
 
 window.addEventListener("keydown", (event) => {
   const target = event.target;
@@ -1943,27 +2351,27 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     if (sim.mode === SCENARIO_MODE.SETUP) startScenario();
     else if (sim.mode !== SCENARIO_MODE.ENDED) sim.paused = !sim.paused;
+    canvasDirty = true;
   }
   if (event.key === ".") {
     if (sim.mode === SCENARIO_MODE.SETUP && !startScenario()) return;
     sim.paused = true;
-    stepSim(sim, 0.25);
+    stepSim(sim, 0.25, { allowPaused: true });
+    canvasDirty = true;
   }
   if (event.key === "Escape") {
     endPlacement();
     activeRuler = null;
     rulers = [];
-    document.querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
+    setMapTool("select");
   }
   if (event.key === "r" || event.key === "R") {
     if (tool === "ruler") {
-      tool = "select";
-      activeRuler = null;
       rulers = [];
+      setMapTool("select");
     } else {
-      tool = "ruler";
+      setMapTool("ruler");
     }
-    document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
   }
   if (event.key === "Tab") {
     // Tab cycles units only when no control is focused (focus rests on the
@@ -1986,6 +2394,61 @@ document.body.addEventListener("click", (event) => {
   const ship = id ? sim.ships.find((candidate) => candidate.id === id) : null;
   if (ship) setPrimarySelection(ship);
 });
+
+function positionUnitInfo(event, anchor = event?.target) {
+  if (unitInfoPopover.hidden) return;
+  const rect = unitInfoPopover.getBoundingClientRect();
+  const anchorRect = anchor?.getBoundingClientRect?.();
+  const x = Number.isFinite(event?.clientX) ? event.clientX + 14 : (anchorRect?.right ?? 0) + 10;
+  const y = Number.isFinite(event?.clientY) ? event.clientY + 14 : (anchorRect?.bottom ?? 0) + 8;
+  const left = Math.max(8, Math.min(x, innerWidth - rect.width - 8));
+  const top = Math.max(8, Math.min(y, innerHeight - rect.height - 8));
+  unitInfoPopover.style.left = `${left}px`;
+  unitInfoPopover.style.top = `${top}px`;
+}
+
+Object.values(filters).forEach((filter) => filter?.addEventListener("change", () => { canvasDirty = true; }));
+
+function showUnitInfo(icon, event) {
+  const ship = sim.ships.find((candidate) => candidate.id === icon?.dataset.infoShip);
+  if (!ship) return;
+  unitInfoPopover.innerHTML = unitInfoPopoverHtml(ship, sim);
+  unitInfoPopover.hidden = false;
+  positionUnitInfo(event, icon);
+}
+
+function hideUnitInfo() {
+  unitInfoPopover.hidden = true;
+}
+
+unitTab?.addEventListener("pointerover", (event) => {
+  const icon = event.target.closest?.("[data-info-ship]");
+  if (!icon || (event.relatedTarget && icon.contains(event.relatedTarget))) return;
+  showUnitInfo(icon, event);
+});
+unitTab?.addEventListener("pointermove", (event) => {
+  const icon = event.target.closest?.("[data-info-ship]");
+  if (icon) positionUnitInfo(event, icon);
+});
+unitTab?.addEventListener("pointerout", (event) => {
+  const icon = event.target.closest?.("[data-info-ship]");
+  if (icon && (!event.relatedTarget || !icon.contains(event.relatedTarget))) hideUnitInfo();
+});
+unitTab?.addEventListener("focusin", (event) => {
+  const icon = event.target.closest?.("[data-info-ship]");
+  if (icon) showUnitInfo(icon, null);
+});
+unitTab?.addEventListener("focusout", (event) => {
+  const icon = event.target.closest?.("[data-info-ship]");
+  if (icon && (!event.relatedTarget || !icon.contains(event.relatedTarget))) hideUnitInfo();
+});
+unitTab?.addEventListener("click", (event) => {
+  if (event.target.closest?.("[data-info-ship]")) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+});
+window.addEventListener("resize", hideUnitInfo);
 
 resize();
 
@@ -2022,9 +2485,9 @@ populateSpawnDropdown();
 // context) must not crash the app or leave an unhandled rejection — the
 // Workshop simply opens empty and vanilla play is unaffected.
 modEditor.preload().catch((err) => console.warn("Unit Workshop preload failed:", err));
-// Console diagnostics: window.dawnfallMods.dump("SM-7X") returns the stored
+  // Console diagnostics: window.tomahawkMods.dump("SM-7X") returns the stored
 // record plus whether it is registered as a usable missile.
-window.dawnfallMods = modEditor;
+window.tomahawkMods = modEditor;
 if (modsToggle) modsToggle.addEventListener("click", (e) => { e.stopPropagation(); modEditor.open(); });
 if (modsCloseBtn) modsCloseBtn.addEventListener("click", () => modEditor.close());
 modsOverlay.addEventListener("click", (e) => { if (e.target === modsOverlay) modEditor.close(); });
@@ -2036,7 +2499,7 @@ function wirePopover(toggleId, panelId) {
   toggle?.addEventListener("click", (event) => {
     event.stopPropagation();
     const opening = panel.hidden;
-    document.querySelectorAll(".hud-popover").forEach((item) => { item.hidden = true; });
+    document.querySelectorAll(".hud-popover:not(#tools-menu)").forEach((item) => { item.hidden = true; });
     document.querySelectorAll("[aria-controls]").forEach((item) => {
       if (item !== toggle) item.setAttribute("aria-expanded", "false");
     });
@@ -2050,31 +2513,27 @@ function wirePopover(toggleId, panelId) {
     }
   });
 }
-wirePopover("#tools-toggle", "#tools-menu");
 wirePopover("#layers-toggle", "#map-options");
 
 document.querySelector("#summary-collapse")?.addEventListener("click", (event) => {
   const overview = document.querySelector("#battle-overview");
   const collapsed = overview.classList.toggle("collapsed");
-  event.currentTarget.textContent = collapsed ? "⌄" : "⌃";
   event.currentTarget.setAttribute("aria-expanded", String(!collapsed));
+  event.currentTarget.setAttribute("aria-label", collapsed ? "展开战况总览" : "收起战况总览");
+});
+document.querySelector("#empty-close")?.addEventListener("click", () => {
+  markEmptyStateSeen();
+  canvas.focus();
+});
+
+document.querySelector("#map-tool-toggle")?.addEventListener("click", () => {
+  setMapTool(tool === "select" ? "ruler" : "select");
 });
 document.querySelector("#context-close")?.addEventListener("click", () => {
   document.querySelector("#right-panel").classList.add("retracted");
   rpCollapseBtn?.setAttribute("aria-expanded", "false");
 });
-function selectContextTab(details) {
-  document.querySelector("#ship-detail-overlay").hidden = !details;
-  document.querySelector("#unit-tab").hidden = details;
-  document.querySelector("#context-details-tab").classList.toggle("active", details);
-  document.querySelector("#context-force-tab").classList.toggle("active", !details);
-  document.querySelector("#context-details-tab").setAttribute("aria-selected", String(details));
-  document.querySelector("#context-force-tab").setAttribute("aria-selected", String(!details));
-}
-document.querySelector("#context-details-tab")?.addEventListener("click", () => selectContextTab(true));
-document.querySelector("#context-force-tab")?.addEventListener("click", () => selectContextTab(false));
 
-const tutorialPrompt = document.querySelector("#tutorial-prompt");
 const tourOverlay = document.querySelector("#tour-overlay");
 let tourIndex = 0;
 function closeTour() {
@@ -2099,27 +2558,15 @@ function showTourStep(index) {
   document.querySelector("#tour-next").textContent = tourIndex === TUTORIAL_STEPS.length - 1 ? "完成" : "下一步";
 }
 function startTour() {
-  tutorialPrompt.hidden = true;
   tourOverlay.hidden = false;
   showTourStep(0);
 }
 document.querySelector("#tutorial-start")?.addEventListener("click", startTour);
-document.querySelector("#tutorial-later")?.addEventListener("click", () => { tutorialPrompt.hidden = true; });
-document.querySelector("#tutorial-dismiss")?.addEventListener("click", () => {
-  tutorialPrompt.hidden = true;
-  try { localStorage.setItem("dawnfall.tutorialDismissed", "1"); } catch { /* storage may be unavailable */ }
-});
 document.querySelector("#tour-exit")?.addEventListener("click", closeTour);
 document.querySelector("#tour-next")?.addEventListener("click", () => {
   if (tourIndex >= TUTORIAL_STEPS.length - 1) closeTour();
   else showTourStep(tourIndex + 1);
 });
-try {
-  tutorialPrompt.hidden = localStorage.getItem("dawnfall.tutorialDismissed") === "1";
-} catch {
-  tutorialPrompt.hidden = false;
-}
-
 // --- ship cycling via Tab --------------------------------------------------
 function cycleShip() {
   const alive = sim.ships.filter((s) => s.alive);

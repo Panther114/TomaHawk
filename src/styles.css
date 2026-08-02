@@ -6,21 +6,21 @@
 }
 
 :root {
-  --font-display: "Rationale", "Segoe UI", Arial, sans-serif;
-  --font-ui: "Segoe UI", Arial, sans-serif;
-  --font-mono: "Segoe UI", Arial, sans-serif;
-  --bg: #07131a;
-  --panel: rgba(4, 13, 18, 0.9);
-  --panel-raised: rgba(9, 25, 32, 0.94);
-  --panel-border: rgba(142, 193, 205, 0.25);
-  --panel-strong: rgba(142, 193, 205, 0.42);
-  --text: #d8edf2;
-  --muted: #78959e;
-  --dim: #4e6972;
-  --blue: #65a7ff;
-  --red: #ff6b63;
-  --amber: #f7b955;
-  --line: rgba(142, 193, 205, 0.11);
+  --font-display: "Tomahawk Han", "Tomahawk Sans", "Source Han Sans SC", "Segoe UI", Arial, sans-serif;
+  --font-ui: "Tomahawk Han", "Tomahawk Sans", "Source Han Sans SC", "Microsoft YaHei UI", "Segoe UI", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  --bg: #0a0c0e;
+  --panel: rgba(16, 18, 20, 0.96);
+  --panel-raised: #181b1f;
+  --panel-border: rgba(255, 255, 255, 0.10);
+  --panel-strong: rgba(255, 255, 255, 0.22);
+  --text: #f2f4f5;
+  --muted: #8b9298;
+  --dim: #5c6369;
+  --blue: #3568c4;
+  --red: #b84343;
+  --amber: #c4c8cc;
+  --line: rgba(255, 255, 255, 0.10);
   --ease-ui: 140ms ease-out;
 }
 
@@ -1238,16 +1238,15 @@ small,
 .mods-overlay.drop .mods-card { outline: 1px dashed var(--amber); outline-offset: -3px; }
 
 .mods-card {
-  /* Edge clamps font-size to a 14px minimum, so the whole card declares >=14px
-     fonts and is scaled down via zoom for the dense look (house convention).
-     Hierarchy comes from weight/color/spacing, not size. */
-  zoom: 0.8571428571;
-  width: min(1090px, 96vw);
-  height: min(760px, 92vh);
+  /* Layout/skin owned by tomahawk.css (monochrome CIC workshop). Keep only a
+     structural shell here so legacy rules do not fight the sandbox polish. */
+  zoom: 1;
+  width: min(1120px, 96vw);
+  height: min(780px, 92vh);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--panel-strong);
-  background: rgba(9, 25, 32, 0.97);
+  background: var(--panel-raised, rgba(9, 25, 32, 0.97));
   color: var(--text);
   font: 400 14px/1.35 var(--font-ui);
 }

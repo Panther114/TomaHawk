@@ -6,7 +6,12 @@ export function clamp(value, min, max) {
 }
 
 export function distance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  // Simulation coordinates are bounded to theatre-scale values, so the direct
+  // Euclidean form cannot overflow/underflow and avoids Math.hypot's scaling
+  // overhead on every geometry query.
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 export function angleTo(a, b) {
@@ -24,7 +29,7 @@ export function wrapAngle(rad) {
 // time-to-go, then returns the predicted intercept coordinate. Falls back to
 // the target's current position when no real positive solution exists (e.g.
 // the target outruns the weapon), so guidance always has a valid aimpoint.
-export function interceptPoint(px, py, speed, tx, ty, tvx, tvy) {
+export function interceptTime(px, py, speed, tx, ty, tvx, tvy) {
   const rx = tx - px;
   const ry = ty - py;
   const a = tvx * tvx + tvy * tvy - speed * speed;
@@ -44,7 +49,12 @@ export function interceptPoint(px, py, speed, tx, ty, tvx, tvy) {
       else if (t2 > 1e-6) t = t2;
     }
   }
-  if (!(t > 0) || !Number.isFinite(t)) return { x: tx, y: ty, t: 0 };
+  return t > 0 && Number.isFinite(t) ? t : 0;
+}
+
+export function interceptPoint(px, py, speed, tx, ty, tvx, tvy) {
+  const t = interceptTime(px, py, speed, tx, ty, tvx, tvy);
+  if (t === 0) return { x: tx, y: ty, t: 0 };
   return { x: tx + tvx * t, y: ty + tvy * t, t };
 }
 
