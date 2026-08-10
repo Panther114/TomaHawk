@@ -11,7 +11,9 @@ export function eventSeverity(text) {
 }
 
 export function addEvent(sim, text, side = "SYS") {
-  sim.events.unshift({ t: sim.time, side, text, severity: eventSeverity(text) });
+  const id = sim._nextEventId ?? 1;
+  sim._nextEventId = id + 1;
+  sim.events.unshift({ id, t: sim.time, side, text, severity: eventSeverity(text) });
   if (sim.events.length > 500) sim.events.pop();
 }
 

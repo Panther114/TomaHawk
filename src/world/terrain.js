@@ -106,14 +106,23 @@ export function terrainCollision(start, end, mapOrId = TACTICAL_MAPS.openSea, cl
   const pointClear = (p, clr) => pointInWaterRing(p, index.waterRingEntries) || waterMaskCellIsClear(index, p, clr);
   const segmentLength = Math.hypot(end.x - start.x, end.y - start.y);
   if (segmentLength <= WATER_MASK_CELL_M) {
-    const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-    if (
-      pointClear(start, clearanceM)
-      && pointClear(mid, clearanceM)
-      && pointClear(end, clearanceM)
-    ) {
-      return null;
+    // Movement steps are short, but a three-point test can jump over a narrow
+    // coastal edge. Sample the whole segment and confirm the exact clearance
+    // predicate at each point; the water mask still makes ordinary open-water
+    // samples cheap, while the exact fallback catches cell-boundary cases.
+    const sampleCount = 8;
+    let shortSegmentBlocked = false;
+    for (let sample = 0; sample <= sampleCount; sample++) {
+      const fraction = sample / sampleCount;
+      const point = {
+        x: start.x + (end.x - start.x) * fraction,
+        y: start.y + (end.y - start.y) * fraction
+      };
+      if (pointClear(point, clearanceM) && isWaterPoint(point, map, clearanceM)) continue;
+      shortSegmentBlocked = true;
+      break;
     }
+    if (!shortSegmentBlocked) return null;
   }
   const bounds = {
     minX: Math.min(start.x, end.x) - clearanceM,

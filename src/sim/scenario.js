@@ -9,6 +9,7 @@ import {
   makeShip,
   makeBurke,
   normalizeLoadout,
+  restoreLoadout,
   defaultLoadout,
   defaultRoe,
   resetShipIds,
@@ -29,7 +30,7 @@ const MAP_RESEAT_STEP_M = 2.5 * NM;
 const MAP_RESEAT_MAX_RADIUS_M = 36 * NM;
 const SIM_WIDTH_M = MAP_WIDTH_M;
 const SIM_HEIGHT_M = MAP_HEIGHT_M;
-const MAX_SCENARIO_SHIPS = 200;
+export const MAX_SCENARIO_SHIPS = 200;
 const MAX_SCENARIO_MISSILES = 5_000;
 const MAX_SCENARIO_EVENTS = 500;
 
@@ -196,6 +197,7 @@ export function createScenario(seed = 7, mapId = DEFAULT_MAP_ID) {
     ships: [],
     missiles: [],
     events: [],
+    _nextEventId: 1,
     selectedId: null,
     mode: SCENARIO_MODE.SETUP,
     paused: true,
@@ -221,9 +223,10 @@ export function createDefaultScenario(seed = 7, mapId = DEFAULT_SCENARIO_TEMPLAT
 }
 
 export function serializeScenario(sim) {
-  return {
+  return structuredClone({
     version: 2,
     seed: sim.seed,
+    rngState: sim.rng?.seed ?? sim.seed,
     time: sim.time,
     widthM: sim.widthM,
     heightM: sim.heightM,
@@ -234,6 +237,7 @@ export function serializeScenario(sim) {
     ended: sim.ended || null,
     nextFirePlanAt: sim.nextFirePlanAt ?? 0,
     nextForcePictureAt: sim.nextForcePictureAt ?? 0,
+    nextEventId: sim._nextEventId ?? 1,
     ships: sim.ships.map((ship) => ({
       ...ship,
       tracks: [...ship.tracks.values()].map((track) => ({ ...currentTrack(track, sim.time) }))
@@ -244,17 +248,28 @@ export function serializeScenario(sim) {
     ]),
     missiles: sim.missiles,
     events: sim.events
-  };
+  });
 }
 
 export function restoreScenario(data) {
   if (!data || ![1, 2].includes(data.version) || !Array.isArray(data.ships)) {
     throw new Error("Unsupported scenario file");
   }
-  const ships = boundedScenarioArray(data.ships, "ships", MAX_SCENARIO_SHIPS, { required: true });
-  const missiles = boundedScenarioArray(data.missiles, "missiles", MAX_SCENARIO_MISSILES);
-  const events = boundedScenarioArray(data.events, "events", MAX_SCENARIO_EVENTS);
+  const ships = boundedScenarioArray(data.ships, "ships", MAX_SCENARIO_SHIPS, { required: true })
+    .map((ship) => structuredClone(ship));
+  const missiles = boundedScenarioArray(data.missiles, "missiles", MAX_SCENARIO_MISSILES)
+    .map((missile) => structuredClone(missile));
+  const restoredEventIds = new Set();
+  const events = boundedScenarioArray(data.events, "events", MAX_SCENARIO_EVENTS)
+    .map((event, index) => {
+      if (!event || typeof event !== "object") throw new Error("Invalid scenario event.");
+      let id = Number.isInteger(Number(event.id)) && Number(event.id) > 0 ? Number(event.id) : index + 1;
+      while (restoredEventIds.has(id)) id++;
+      restoredEventIds.add(id);
+      return { ...event, id };
+    });
   const seed = Number.isFinite(Number(data.seed)) ? Number(data.seed) : 7;
+  const rngState = Number.isFinite(Number(data.rngState)) ? Number(data.rngState) : seed;
   const widthM = scenarioDimension(data.widthM, SIM_WIDTH_M);
   const heightM = scenarioDimension(data.heightM, SIM_HEIGHT_M);
   const mapId = normalizeMapId(data.mapId ?? DEFAULT_MAP_ID);
@@ -265,7 +280,7 @@ export function restoreScenario(data) {
   const restored = {
     time: Number(data.time) || 0,
     seed,
-    rng: new Rng(seed),
+    rng: new Rng(rngState),
     widthM,
     heightM,
     mapId,
@@ -274,7 +289,10 @@ export function restoreScenario(data) {
       const cls = SHIP_CLASSES[hull] || SHIP_CLASSES.DDG;
       const domain = ship.domain ?? cls.domain ?? "sea";
       const legacyAim120Id = legacyAim120IdForHull(hull);
-      const loadout = normalizeLoadout({ ...defaultLoadout(hull), ...(ship.loadout || {}) }, legacyAim120Id);
+      const capacityShape = { vlsCells: ship.vlsCells ?? cls.vlsCells };
+      const loadout = Object.prototype.hasOwnProperty.call(ship, "loadout")
+        ? restoreLoadout(ship.loadout, capacityShape, legacyAim120Id)
+        : defaultLoadout(hull);
       // Air units carry lifecycle/fuel state; seed class defaults then keep any
       // serialized values so a saved mid-flight squadron restores faithfully.
       const airState = domain === "air"
@@ -317,7 +335,9 @@ export function restoreScenario(data) {
         className: ship.className || cls.className,
         tracks: new Map((ship.tracks || []).map((track) => [track.id, track])),
         loadout,
-        baseLoadoutSnapshot: ship.baseLoadoutSnapshot ? normalizeLoadout(ship.baseLoadoutSnapshot, legacyAim120Id) : { ...loadout },
+        baseLoadoutSnapshot: Object.prototype.hasOwnProperty.call(ship, "baseLoadoutSnapshot")
+          ? restoreLoadout(ship.baseLoadoutSnapshot, capacityShape, legacyAim120Id)
+          : { ...loadout },
         ...airState,
         editable: ship.editable ?? true,
         vlsCells: ship.vlsCells ?? cls.vlsCells,
@@ -402,9 +422,13 @@ export function restoreScenario(data) {
     ended: data.ended || null,
     nextFirePlanAt: Number(data.nextFirePlanAt) || 0,
     nextForcePictureAt: Number(data.nextForcePictureAt) || 0,
+    _nextEventId: Math.max(
+      Number.isInteger(Number(data.nextEventId)) ? Number(data.nextEventId) : 1,
+      events.reduce((next, event) => Math.max(next, (Number(event.id) || 0) + 1), 1)
+    ),
     sharedTracksBySide: new Map((data.sharedTracksBySide || []).map(([side, tracks]) => [
       side,
-      new Map((tracks || []).map((track) => [track.id, track]))
+      new Map(structuredClone(tracks || []).map((track) => [track.id, track]))
     ])),
     _entityIndexesDirty: true,
     _trackIndexReady: false
@@ -433,7 +457,7 @@ export function restoreScenario(data) {
 }
 
 export function exportAfterAction(sim) {
-  return {
+  return structuredClone({
     version: 1,
     seed: sim.seed,
     durationS: sim.time,
@@ -445,13 +469,14 @@ export function exportAfterAction(sim) {
       side: s.side,
       alive: s.alive,
       damage: s.damage,
-      remainingLoadout: s.loadout
+      remainingLoadout: { ...s.loadout }
     })),
-    events: [...sim.events].reverse()
-  };
+    events: [...sim.events].reverse().map((event) => ({ ...event }))
+  });
 }
 
 export function placeShip(sim, side, x, y, hull = "DDG") {
+  if (!sim || sim.ships.length >= MAX_SCENARIO_SHIPS) return null;
   const ship = clampShipToBounds(sim, makeShip(side, x, y, hull));
   // Placement rules by unit kind:
   //   air units may be placed anywhere (land or water);
@@ -476,13 +501,16 @@ export function placeShip(sim, side, x, y, hull = "DDG") {
 
 export function duplicateShip(sim, shipId) {
   const original = sim.ships.find((ship) => ship.id === shipId);
-  if (!original) return null;
+  if (!original || sim.ships.length >= MAX_SCENARIO_SHIPS) return null;
   const hull = original.hull || "DDG";
   const copy = makeShip(original.side, original.x + 2 * NM, original.y + 2 * NM, hull);
   copy.heading = original.heading;
   copy.desiredSpeed = original.desiredSpeed;
   copy.radarActive = original.radarActive;
   copy.loadout = normalizeLoadout({ ...original.loadout });
+  copy.baseLoadoutSnapshot = normalizeLoadout({
+    ...(original.baseLoadoutSnapshot ?? original.loadout)
+  });
   copy.doctrine = { ...original.doctrine };
   copy.defenseDoctrine = { ...original.defenseDoctrine };
   copy.offenseDoctrine = { ...original.offenseDoctrine };
@@ -509,6 +537,10 @@ export function deleteShip(sim, shipId) {
   if (!ship) return false;
   sim.ships = sim.ships.filter((candidate) => candidate.id !== shipId);
   sim.missiles = sim.missiles.filter((missile) => missile.launcherId !== shipId && missile.targetId !== shipId);
+  for (const candidate of sim.ships) {
+    for (const id of [shipId]) candidate.tracks?.delete(id);
+  }
+  for (const tracks of sim.sharedTracksBySide?.values?.() ?? []) tracks.delete(shipId);
   sim.selectedId = sim.ships[0]?.id ?? null;
   sim._entityIndexesDirty = true;
   sim._trackIndexReady = false;
@@ -521,6 +553,12 @@ export function clearSide(sim, side) {
   if (!removedIds.size) return 0;
   sim.ships = sim.ships.filter((ship) => ship.side !== side);
   sim.missiles = sim.missiles.filter((missile) => !removedIds.has(missile.launcherId) && !removedIds.has(missile.targetId));
+  for (const ship of sim.ships) {
+    for (const id of removedIds) ship.tracks?.delete(id);
+  }
+  for (const tracks of sim.sharedTracksBySide?.values?.() ?? []) {
+    for (const id of removedIds) tracks.delete(id);
+  }
   sim.selectedId = sim.ships[0]?.id ?? null;
   sim._entityIndexesDirty = true;
   sim._trackIndexReady = false;
@@ -544,7 +582,8 @@ export function canAddAssets(sim) {
   // Deployment remains available while a battle is paused or running. The UI
   // pauses the sim while the armory/placement flow is open, so insertion is
   // deterministic and cannot occur halfway through a simulation tick.
-  return sim?.mode === SCENARIO_MODE.SETUP || sim?.mode === SCENARIO_MODE.RUNNING;
+  return (sim?.mode === SCENARIO_MODE.SETUP || sim?.mode === SCENARIO_MODE.RUNNING)
+    && (sim.ships?.length ?? 0) < MAX_SCENARIO_SHIPS;
 }
 
 export function setScenarioMap(sim, mapId) {

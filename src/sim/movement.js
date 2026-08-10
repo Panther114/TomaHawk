@@ -62,10 +62,6 @@ function aircraftTurnRateRadPerS(ship, aggressive) {
   return clamp(omega, AIR_MIN_TURN_RATE, AIR_MAX_TURN_RATE);
 }
 
-function strategicTarget(ship) {
-  return ship.navigationWaypoint ?? ship.waypoint ?? null;
-}
-
 function waypointReached(ship, waypoint, thresholdM) {
   return waypoint && distance(ship, waypoint) < thresholdM;
 }
@@ -91,18 +87,35 @@ function chooseWaterDetour(sim, ship, target) {
     y: ship.y + (target.y - ship.y) * blockedT
   };
   const bearing = angleTo(ship, target);
-  const forwardFactors = [2, 4, 7, 10];
-  const lateralFactors = [2, 4, 7];
+  const routeDistance = distance(ship, target);
+  // Scale the search to the actual obstacle/route geometry. Fixed multiples of
+  // hull clearance only explored a few hundred metres, so a peninsula or
+  // broad island could leave every candidate on the same blocked side.
+  const forwardDistances = [
+    2 * clearanceM,
+    Math.max(4 * clearanceM, routeDistance * 0.04),
+    Math.max(8 * clearanceM, routeDistance * 0.10),
+    Math.max(16 * clearanceM, routeDistance * 0.22),
+    Math.max(24 * clearanceM, routeDistance * 0.45),
+    Math.max(32 * clearanceM, routeDistance * 0.80)
+  ];
+  const lateralDistances = [
+    2 * clearanceM,
+    Math.max(4 * clearanceM, routeDistance * 0.04),
+    Math.max(8 * clearanceM, routeDistance * 0.10),
+    Math.max(16 * clearanceM, routeDistance * 0.22),
+    Math.max(28 * clearanceM, routeDistance * 0.42)
+  ];
   let best = null;
   for (const side of [-1, 1]) {
-    for (const forwardFactor of forwardFactors) {
-      for (const lateralFactor of lateralFactors) {
+    for (const forwardM of forwardDistances) {
+      for (const lateralM of lateralDistances) {
         const candidate = detourCandidate(
           collisionPoint,
           bearing,
           side,
-          forwardFactor * clearanceM,
-          lateralFactor * clearanceM
+          forwardM,
+          lateralM
         );
         const withinBounds = {
           x: clamp(candidate.x, -sim.widthM / 2, sim.widthM / 2),
@@ -110,7 +123,10 @@ function chooseWaterDetour(sim, ship, target) {
         };
         if (!isWaterPoint(withinBounds, sim.mapId, clearanceM)) continue;
         if (segmentCrossesLand(ship, withinBounds, sim.mapId, clearanceM)) continue;
-        const score = distance(withinBounds, target) + lateralFactor * 40 + forwardFactor * 15;
+        const targetLegClear = !segmentCrossesLand(withinBounds, target, sim.mapId, clearanceM);
+        const score = distance(ship, withinBounds) + distance(withinBounds, target)
+          + (targetLegClear ? 0 : routeDistance * 0.35)
+          + forwardM * 0.02 + lateralM * 0.03;
         if (!best || score < best.score) {
           best = { point: withinBounds, score };
         }
@@ -166,13 +182,18 @@ function resolveNavigationTarget(sim, ship) {
   }
   ship.navigationWaypoint = chooseWaterDetour(sim, ship, target);
   ship.navPlan = { goalX: target.x, goalY: target.y, plannedAt: sim.time, blocked: true };
-  return strategicTarget(ship);
+  if (!ship.navigationWaypoint) {
+    // No safe waypoint was found within the bounded map-relative search. Hold
+    // position until the next plan refresh rather than steering through land.
+    ship.desiredSpeed = 0;
+    return ship;
+  }
+  return ship.navigationWaypoint;
 }
 
 function applyWaterCollisionGuard(sim, ship, nextPosition) {
   if (nextPosition.x === ship.x && nextPosition.y === ship.y) return nextPosition;
   const clearanceM = shipWaterClearanceM(ship);
-  if (distance(ship, nextPosition) <= 0.02 * NM) return nextPosition;
   const collision = terrainCollision(ship, nextPosition, sim.mapId, clearanceM);
   if (!collision) return nextPosition;
   const blockedT = collision.fraction;

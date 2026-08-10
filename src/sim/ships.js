@@ -53,6 +53,28 @@ export function normalizeLoadout(loadout, legacyAim120Id = "AIM-120C") {
   return normalized;
 }
 
+// Parse a persisted magazine without silently repairing it. Runtime editors
+// intentionally remain permissive through normalizeLoadout(), but a save file
+// is a state boundary: an explicitly empty or partially spent magazine must
+// remain empty/partially spent, and malformed capacity data must be rejected.
+export function restoreLoadout(loadout, ship, legacyAim120Id = "AIM-120C") {
+  if (loadout == null || typeof loadout !== "object" || Array.isArray(loadout)) {
+    throw new Error("Invalid scenario loadout.");
+  }
+  const restored = {};
+  for (const [rawId, count] of Object.entries(loadout)) {
+    const missileId = rawId === "AIM-120" ? legacyAim120Id : rawId;
+    if (!MISSILES[missileId]) throw new Error(`Invalid scenario: unknown missile ${rawId}.`);
+    if (!Number.isInteger(count) || count < 0) {
+      throw new Error(`Invalid scenario: ${rawId} count must be a non-negative integer.`);
+    }
+    restored[missileId] = count;
+  }
+  const result = validateLoadout(restored, ship);
+  if (!result.ok) throw new Error(`Invalid scenario loadout: ${result.errors.join("; ")}.`);
+  return restored;
+}
+
 export function availableCount(ship, missileId) {
   const count = ship?.loadout?.[missileId];
   if (!Number.isFinite(count)) return 0;

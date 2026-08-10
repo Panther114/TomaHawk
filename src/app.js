@@ -134,6 +134,36 @@ let debugRunActive = false;
 let lastDebugSaveAt = 0;
 // Wall-clock sim work left over when a frame hits its budget (seconds of sim).
 let simTimeDebt = 0;
+let frameRequest = null;
+let idleFrameTimer = null;
+
+// Keep the active simulation at display cadence, but let a paused, unchanged
+// sandbox sleep between the existing 20 Hz panel refresh opportunities. Any
+// state-changing input marks the canvas dirty and wakes the loop immediately.
+function wakeRenderLoop() {
+  if (idleFrameTimer !== null) {
+    clearTimeout(idleFrameTimer);
+    idleFrameTimer = null;
+  }
+  if (frameRequest === null) frameRequest = requestAnimationFrame(tick);
+}
+
+function scheduleRenderLoop() {
+  if (frameRequest !== null || idleFrameTimer !== null) return;
+  if (sim.paused && !canvasDirty) {
+    idleFrameTimer = setTimeout(() => {
+      idleFrameTimer = null;
+      scheduleRenderLoop();
+    }, PANEL_RENDER_INTERVAL_MS);
+    return;
+  }
+  frameRequest = requestAnimationFrame(tick);
+}
+
+function markCanvasDirty() {
+  canvasDirty = true;
+  wakeRenderLoop();
+}
 
 function debugCaptureEnabled() {
   try {
@@ -190,6 +220,9 @@ const weaponRangeCache = new WeakMap();
 const terrainLayer = document.createElement("canvas");
 const terrainLayerCtx = terrainLayer.getContext("2d");
 let terrainLayerKey = "";
+// Ship coordinates are reused by the range, sector, icon, and label passes.
+// Keep the cache frame-local so movement never makes a stale point visible.
+const frameShipScreenPoints = new Map();
 const panelRenderCache = {
   status: "",
   inventory: "",
@@ -295,6 +328,15 @@ function filterEnabled(filter) {
   return filter?.type === "checkbox" ? filter.checked : filter?.classList.contains("active");
 }
 
+function shipScreenPoint(ship) {
+  let point = frameShipScreenPoints.get(ship);
+  if (!point) {
+    point = worldToScreen(ship);
+    frameShipScreenPoints.set(ship, point);
+  }
+  return point;
+}
+
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   const w = Math.floor(innerWidth * dpr);
@@ -319,6 +361,19 @@ function setPrimarySelection(ship) {
   const panel = document.querySelector("#right-panel");
   panel?.classList.remove("retracted");
   panel?.querySelector(".rp-collapse")?.setAttribute("aria-expanded", "true");
+  markCanvasDirty();
+}
+
+function installScenario(nextSim) {
+  sim = nextSim;
+  selectedIds = new Set([sim.selectedId].filter(Boolean));
+  activeRuler = null;
+  rulers = [];
+  selectionBox = null;
+  drag = null;
+  frameShipScreenPoints.clear();
+  endPlacement();
+  markCanvasDirty();
 }
 
 // Thin wrappers binding the pure transforms in ui/view.js to this module's
@@ -479,7 +534,7 @@ function gridStepForScale() {
   return candidates[candidates.length - 1];
 }
 
-function drawGrid() {
+function drawGrid(targetCtx = ctx) {
   if (!filterEnabled(filters.grid)) return;
   const step = gridStepForScale();
   const key = `${innerWidth}|${innerHeight}|${camera.x}|${camera.y}|${camera.scale}|${step}`;
@@ -507,12 +562,12 @@ function drawGrid() {
     }
     gridPathCache = { key, major, minor };
   }
-  ctx.strokeStyle = "rgba(20,24,28,.07)";
-  ctx.lineWidth = 1;
-  ctx.stroke(gridPathCache.minor);
-  ctx.strokeStyle = "rgba(20,24,28,.16)";
-  ctx.lineWidth = 1.15;
-  ctx.stroke(gridPathCache.major);
+  targetCtx.strokeStyle = "rgba(20,24,28,.07)";
+  targetCtx.lineWidth = 1;
+  targetCtx.stroke(gridPathCache.minor);
+  targetCtx.strokeStyle = "rgba(20,24,28,.16)";
+  targetCtx.lineWidth = 1.15;
+  targetCtx.stroke(gridPathCache.major);
 }
 
 function drawRadarRings() {
@@ -522,7 +577,7 @@ function drawRadarRings() {
   for (const ship of sim.ships) {
     if (!ship.alive || !ship.radarActive) continue;
     if (!selectedIds.has(ship.id)) continue;
-    const p = worldToScreen(ship);
+    const p = shipScreenPoint(ship);
     ctx.strokeStyle = `${sideColor(ship.side)}40`;
     ctx.lineWidth = 0.9;
     ctx.beginPath();
@@ -564,7 +619,7 @@ function collectWeaponRangeRings() {
     if (!ship.alive) continue;
     const selected = selectedIds.has(ship.id) || ship.id === sim.selectedId;
     if (selectOnly && !selected) continue;
-    const p = worldToScreen(ship);
+    const p = shipScreenPoint(ship);
     // Nearest distance from the viewport rectangle to this ship (ring centre).
     const nx = Math.max(0, Math.min(p.x, innerWidth));
     const ny = Math.max(0, Math.min(p.y, innerHeight));
@@ -718,7 +773,7 @@ function drawWeaponRangeRings() {
 // wake, or velocity arrow): SAM = up-triangle, EWR = diamond with a radar
 // sweep, battery/other = square bunker.
 function drawGroundUnit(ship, label) {
-  const p = worldToScreen(ship);
+  const p = shipScreenPoint(ship);
   if (!screenPointVisible(p, 48)) return;
   const color = sideColor(ship.side);
   const selected = ship.id === sim.selectedId;
@@ -776,7 +831,7 @@ function drawGroundUnit(ship, label) {
 // aircraft — so attrition is visible (a 4-ship that has lost a plane shows 3).
 // It is one entity; the darts are pure presentation offsets around its centre.
 function drawAircraft(ship, label) {
-  const p = worldToScreen(ship);
+  const p = shipScreenPoint(ship);
   if (!screenPointVisible(p, 60)) return;
   const color = sideColor(ship.side);
   const selected = ship.id === sim.selectedId;
@@ -825,7 +880,7 @@ function drawAircraft(ship, label) {
 }
 
 function drawSubmarine(ship, label) {
-  const p = worldToScreen(ship);
+  const p = shipScreenPoint(ship);
   if (!screenPointVisible(p, 48)) return;
   const color = sideColor(ship.side);
   const selected = ship.id === sim.selectedId;
@@ -864,9 +919,10 @@ function drawSubmarine(ship, label) {
 // Frame-local density snapshot for ship/missile draw LOD (reset each render).
 let _frameAliveShipCount = 0;
 let _frameDenseDraw = false;
+const AIRCRAFT_FORMATION = [[5, 0], [-3, -5], [-3, 5], [-10, 0]];
 
 function drawShipLabel(ship, label) {
-  const p = worldToScreen(ship);
+  const p = shipScreenPoint(ship);
   if (!screenPointVisible(p, 72)) return;
   const color = sideColor(ship.side);
   const selected = selectedIds.has(ship.id) || ship.id === sim.selectedId;
@@ -895,7 +951,7 @@ function drawShipLabel(ship, label) {
 }
 
 function drawScaledShip(ship, label, drawLabel = true) {
-  const p = worldToScreen(ship);
+  const p = shipScreenPoint(ship);
   if (!screenPointVisible(p, 36)) return;
   const color = sideColor(ship.side);
   const selected = selectedIds.has(ship.id) || ship.id === sim.selectedId;
@@ -915,14 +971,8 @@ function drawScaledShip(ship, label, drawLabel = true) {
     const aircraftCount = Math.max(1, aliveAircraftCount(ship));
     const heading = Number.isFinite(ship.heading) ? ship.heading : 0;
     const aircraftScale = iconScale * 0.52;
-    const formation = [
-      [5, 0],
-      [-3, -5],
-      [-3, 5],
-      [-10, 0]
-    ];
     for (let i = 0; i < aircraftCount; i++) {
-      const [along, across] = formation[i] || [-(i + 1) * 6, (i % 2 ? -1 : 1) * 5];
+      const [along, across] = AIRCRAFT_FORMATION[i] || [-(i + 1) * 6, (i % 2 ? -1 : 1) * 5];
       const x = p.x + Math.cos(heading) * along - Math.sin(heading) * across;
       const y = p.y + Math.sin(heading) * along + Math.cos(heading) * across;
       drawTacticalSymbol(ctx, {
@@ -988,7 +1038,7 @@ function drawSectorResponsibility(ship) {
   // Aircraft are strikers, not sectorised air-defence pickets — no AAW sector.
   if (ship.domain === "air") return;
   if (!Number.isFinite(ship.sectorCenter) || !(ship.sectorHalfWidth < Math.PI - 0.05)) return;
-  const p = worldToScreen(ship);
+  const p = shipScreenPoint(ship);
   const radius = Math.min(ship.radarRangeM * camera.scale * 0.5, Math.max(innerWidth, innerHeight));
   ctx.save();
   ctx.fillStyle = `${sideColor(ship.side)}10`;
@@ -1003,7 +1053,7 @@ function drawSectorResponsibility(ship) {
   ctx.restore();
   // Formation station marker for non-guide units.
   if (ship.station && !ship.isOTC) {
-    const s = worldToScreen(ship.station);
+    const s = shipScreenPoint(ship.station);
     ctx.save();
     ctx.strokeStyle = `${sideColor(ship.side)}77`;
     ctx.lineWidth = 0.6;
@@ -1074,6 +1124,11 @@ function appendMissileSymbol(path, x, y, cos, sin, size, isAntiAir) {
 
 function drawMissiles(label) {
   if (!filterEnabled(filters.missiles)) return;
+  const missiles = sim._aliveMissiles ?? sim.missiles;
+  // Avoid rebuilding empty Path2D batches on every frame of setup, pause, or
+  // a quiet battle. The fallback scan handles direct/restored callers whose
+  // alive index has not been built yet.
+  if (!missiles.length || (missiles === sim.missiles && !missiles.some((missile) => missile.alive))) return;
   const labelFontPx = Math.max(7, VISUAL_CONFIG.shipLabelPx * 0.4 * label.scale);
   // Reuse label buckets (clear in place) to cut per-frame Map churn.
   for (const bucket of _missileLabelBuckets.values()) bucket.length = 0;
@@ -1114,7 +1169,6 @@ function drawMissiles(label) {
   const viewCenterY = innerHeight / 2;
   const cameraScale = camera.scale;
   ctx.font = canvasFont(labelFontPx);
-  const missiles = sim._aliveMissiles ?? sim.missiles;
   for (const missile of missiles) {
     if (!missile.alive) continue;
     const px = viewCenterX + (missile.x - camera.x) * cameraScale;
@@ -1422,7 +1476,7 @@ function terrainItemsInView(buckets, viewBounds) {
 function drawTerrain() {
   const map = tacticalMap(sim.mapId);
   const dpr = window.devicePixelRatio || 1;
-  const key = `${map.id}|${innerWidth}|${innerHeight}|${camera.x.toFixed(2)}|${camera.y.toFixed(2)}|${camera.scale.toFixed(6)}|${dpr.toFixed(2)}`;
+  const key = `${map.id}|${innerWidth}|${innerHeight}|${camera.x.toFixed(2)}|${camera.y.toFixed(2)}|${camera.scale.toFixed(6)}|${dpr.toFixed(2)}|${filterEnabled(filters.grid) ? 1 : 0}`;
   if (terrainLayer.width !== Math.floor(innerWidth * dpr)) {
     terrainLayer.width = Math.floor(innerWidth * dpr);
     terrainLayer.height = Math.floor(innerHeight * dpr);
@@ -1475,6 +1529,10 @@ function drawTerrain() {
     terrainLayerKey = key;
     terrainLayerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     terrainLayerCtx.clearRect(0, 0, innerWidth, innerHeight);
+    // Grid geometry is static for the current camera. Paint it into the same
+    // cached layer before land/water fills so the visible stacking order stays
+    // identical while the main canvas avoids a per-frame Path2D stroke.
+    drawGrid(terrainLayerCtx);
     terrainLayerCtx.save();
     terrainLayerCtx.translate(innerWidth / 2 - camera.x * camera.scale, innerHeight / 2 - camera.y * camera.scale);
     terrainLayerCtx.scale(camera.scale, camera.scale);
@@ -1614,13 +1672,13 @@ function render() {
     return;
   }
   canvasDirty = false;
+  frameShipScreenPoints.clear();
   clampCamera();
   _frameAliveShipCount = sim._aliveShips?.length ?? sim.ships.filter((s) => s.alive).length;
   // Dense when many hulls, especially zoomed in (detail + labels + arrows thrash).
   _frameDenseDraw = _frameAliveShipCount >= 16
     || (_frameAliveShipCount >= 10 && camera.scale > 0.0015);
   drawSceneBase();
-  drawGrid();
   drawTerrain();
   drawWeaponRangeRings();
   drawRadarRings();
@@ -1693,7 +1751,7 @@ function tick(now) {
       const t0 = performance.now();
       stepSim(sim, Math.min(0.25, remaining));
       steppedThisFrame = true;
-      canvasDirty = true;
+      markCanvasDirty();
       if (debugRunActive) {
         perfRec.record(sim, performance.now() - t0);
         battleLog.sample(sim);
@@ -1710,10 +1768,11 @@ function tick(now) {
   const renderStart = performance.now();
   render();
   if (debugRunActive) perfRec.recordRender(performance.now() - renderStart);
-  requestAnimationFrame(tick);
+  frameRequest = null;
+  scheduleRenderLoop();
 }
 
-window.addEventListener("resize", () => { resize(); positionPlacementHud(); canvasDirty = true; });
+window.addEventListener("resize", () => { resize(); positionPlacementHud(); markCanvasDirty(); });
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 canvas.addEventListener("wheel", (event) => {
   event.preventDefault();
@@ -1724,14 +1783,14 @@ canvas.addEventListener("wheel", (event) => {
   camera.x += before.x - after.x;
   camera.y += before.y - after.y;
   clampCamera();
-  canvasDirty = true;
+  markCanvasDirty();
 });
 canvas.addEventListener("pointerdown", (event) => {
   const world = screenToWorld(event.clientX, event.clientY);
   if (event.button === 2) {
     if (tool === "blue" || tool === "red") {
       endPlacement();
-      canvasDirty = true;
+      markCanvasDirty();
       return;
     }
     const ship = pickShip(world);
@@ -1745,7 +1804,7 @@ canvas.addEventListener("pointerdown", (event) => {
       selectionBox = { x0: event.clientX, y0: event.clientY, x1: event.clientX, y1: event.clientY };
       drag = { type: "box-select" };
     }
-    canvasDirty = true;
+    markCanvasDirty();
     return;
   }
   if (event.button === 1 || event.altKey) {
@@ -1762,13 +1821,13 @@ canvas.addEventListener("pointerdown", (event) => {
     if (!placed) return;
     setPrimarySelection(placed);
     document.querySelector("#empty-state")?.setAttribute("hidden", "");
-    canvasDirty = true;
+    markCanvasDirty();
     return;
   }
   if (tool === "ruler") {
     activeRuler = { a: world, b: world };
     drag = { type: "ruler" };
-    canvasDirty = true;
+    markCanvasDirty();
     return;
   }
   const ship = pickShip(world);
@@ -1784,7 +1843,7 @@ canvas.addEventListener("pointerdown", (event) => {
         lastValidY: ship.y
       };
     }
-    canvasDirty = true;
+    markCanvasDirty();
   }
 });
 canvas.addEventListener("pointermove", (event) => {
@@ -1796,12 +1855,12 @@ canvas.addEventListener("pointermove", (event) => {
     const validity = placementValidity(world);
     placementPreview = { ...world, ...validity };
     setPlacementMessage(validity.reason, validity.valid);
-    canvasDirty = true;
+    markCanvasDirty();
   }
   if (drag) {
     if (drag.type === "ruler" && activeRuler) {
       activeRuler.b = world;
-      canvasDirty = true;
+      markCanvasDirty();
     } else if (drag.type === "ship") {
       const ship = sim.ships.find((candidate) => candidate.id === drag.shipId);
       if (ship) {
@@ -1820,17 +1879,17 @@ canvas.addEventListener("pointermove", (event) => {
           ship.x = drag.lastValidX;
           ship.y = drag.lastValidY;
         }
-        canvasDirty = true;
+        markCanvasDirty();
       }
     } else if (drag.type === "pan") {
       camera.x = drag.cx - (event.clientX - drag.x) / camera.scale;
       camera.y = drag.cy - (event.clientY - drag.y) / camera.scale;
       clampCamera();
-      canvasDirty = true;
+      markCanvasDirty();
     } else if (drag.type === "box-select" && selectionBox) {
       selectionBox.x1 = event.clientX;
       selectionBox.y1 = event.clientY;
-      canvasDirty = true;
+      markCanvasDirty();
     }
   }
 });
@@ -1855,7 +1914,7 @@ canvas.addEventListener("pointerup", (event) => {
   }
   selectionBox = null;
   drag = null;
-  canvasDirty = true;
+  markCanvasDirty();
 });
 
 function setMapTool(nextTool) {
@@ -1880,7 +1939,7 @@ function setMapTool(nextTool) {
     });
   }
   canvas.style.cursor = tool === "ruler" ? "crosshair" : "";
-  canvasDirty = true;
+  markCanvasDirty();
 }
 
 document.querySelectorAll('[data-tool="select"], [data-tool="ruler"]').forEach((button) => {
@@ -2048,18 +2107,14 @@ play.addEventListener("click", () => {
   } else if (sim.mode !== SCENARIO_MODE.ENDED) {
     sim.paused = !sim.paused;
   }
-  canvasDirty = true;
+  markCanvasDirty();
 });
 speed.addEventListener("input", () => {
   document.querySelector("#speed-value").textContent = `${Number(speed.value)}×`;
 });
 async function resetSandbox() {
   if (!(await confirmDialog("重置会清除当前推演和未保存的进度。确定继续吗？"))) return;
-  sim = createDefaultScenario(undefined, sim.mapId);
-  selectedIds = new Set([sim.selectedId].filter(Boolean));
-  activeRuler = null;
-  rulers = [];
-  endPlacement();
+  installScenario(createDefaultScenario(undefined, sim.mapId));
 }
 document.querySelectorAll("[data-reset]").forEach((button) => button.addEventListener("click", resetSandbox));
 
@@ -2244,9 +2299,8 @@ document.querySelector("#load-file").addEventListener("change", async (event) =>
   if (!file) return;
   try {
     if (file.size > 5 * 1024 * 1024) throw new Error("Scenario file exceeds the 5 MB import limit.");
-    sim = restoreScenario(JSON.parse(await file.text()));
-    selectedIds = new Set([sim.selectedId].filter(Boolean));
-    closeLoadPopup();
+    installScenario(restoreScenario(JSON.parse(await file.text())));
+    closeLoadPopup({ restorePreviousPause: false });
   } catch (error) {
     alert(error.message);
   } finally {
@@ -2301,9 +2355,8 @@ async function refreshLoadList() {
     row.addEventListener("click", async () => {
       try {
         const data = await (await fetch(`/scenario/load?name=${encodeURIComponent(entry.name)}`)).json();
-        sim = restoreScenario(data);
-        selectedIds = new Set([sim.selectedId].filter(Boolean));
-        closeLoadPopup();
+        installScenario(restoreScenario(data));
+        closeLoadPopup({ restorePreviousPause: false });
       } catch (error) {
         status.textContent = error.message;
       }
@@ -2316,12 +2369,14 @@ function openLoadPopup() {
   loadPrevPaused = sim.paused;
   sim.paused = true;
   loadOverlay.hidden = false;
+  markCanvasDirty();
   refreshLoadList();
 }
 
-function closeLoadPopup() {
+function closeLoadPopup({ restorePreviousPause = true } = {}) {
   loadOverlay.hidden = true;
-  sim.paused = loadPrevPaused;
+  if (restorePreviousPause) sim.paused = loadPrevPaused;
+  markCanvasDirty();
 }
 
 document.querySelector("#load").addEventListener("click", openLoadPopup);
@@ -2351,13 +2406,13 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     if (sim.mode === SCENARIO_MODE.SETUP) startScenario();
     else if (sim.mode !== SCENARIO_MODE.ENDED) sim.paused = !sim.paused;
-    canvasDirty = true;
+    markCanvasDirty();
   }
   if (event.key === ".") {
     if (sim.mode === SCENARIO_MODE.SETUP && !startScenario()) return;
     sim.paused = true;
     stepSim(sim, 0.25, { allowPaused: true });
-    canvasDirty = true;
+    markCanvasDirty();
   }
   if (event.key === "Escape") {
     endPlacement();
@@ -2407,7 +2462,7 @@ function positionUnitInfo(event, anchor = event?.target) {
   unitInfoPopover.style.top = `${top}px`;
 }
 
-Object.values(filters).forEach((filter) => filter?.addEventListener("change", () => { canvasDirty = true; }));
+Object.values(filters).forEach((filter) => filter?.addEventListener("change", markCanvasDirty));
 
 function showUnitInfo(icon, event) {
   const ship = sim.ships.find((candidate) => candidate.id === icon?.dataset.infoShip);
@@ -2576,4 +2631,4 @@ function cycleShip() {
   setPrimarySelection(next);
 }
 
-requestAnimationFrame(tick);
+wakeRenderLoop();

@@ -161,6 +161,25 @@ test("battleStatusState exposes stable value and meter fields for DOM patching",
   assert.equal(typeof state.red.offense.pct, "number");
 });
 
+test("interception ledger counts same-tick events and stays bounded after compaction", () => {
+  const sim = createScenario(2);
+  sim.events = [
+    { id: 1, t: 0, side: SIDE.RED, text: "Red DDG launched MSTK at target" },
+    { id: 2, t: 0, side: SIDE.RED, text: "Red DDG launched MSTK at target" }
+  ];
+  battleStatusState(sim);
+  assert.equal(sim._uiInterceptionStats.sides[SIDE.RED].launched, 2);
+
+  sim.events = Array.from({ length: 500 }, (_, index) => ({
+    id: index + 100,
+    t: index,
+    side: SIDE.RED,
+    text: "Red DDG launched MSTK at target"
+  }));
+  battleStatusState(sim);
+  assert.equal(sim._uiInterceptionStats.seen.size, 500);
+});
+
 test("unit icons and IDs use continuous zoom scaling with explicit larger bounds", async () => {
   const source = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(source, /const UNIT_ICON_MIN_SCALE = 0\.56/);

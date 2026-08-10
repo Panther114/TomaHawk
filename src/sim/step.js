@@ -142,6 +142,13 @@ export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
     aliveSideCount = seen.size;
     if (aliveSideCount === 1) soleSide = [...seen][0];
   }
+  if (aliveSideCount === 0 && !sim.ended) {
+    sim.ended = "draw";
+    sim.paused = true;
+    sim.mode = SCENARIO_MODE.ENDED;
+    addEvent(sim, "Mutual annihilation — neither side retains living ships. Draw.");
+    return sim;
+  }
   if (aliveSideCount === 1 && !sim.ended) {
     sim.ended = soleSide;
     sim.paused = true;

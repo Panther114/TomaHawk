@@ -28,7 +28,11 @@ export function updateElectronicWarfareState(sim, unit) {
 
 export function reactToAntiRadiationThreat(sim, missile, spec, target) {
   if (!spec?.requiresEmitter || missile.emconReactionResolved || !isElectromagneticEmitter(target)) return false;
-  if (!(target.esmRangeM > 0) || distance(missile, target) > 18 * NM) return false;
+  // Passive warning gives the emitter a short reaction margin before the HARM
+  // reaches its nominal seeker envelope; waiting until the final 18 NM made a
+  // capable escort's first interceptor routinely destroy the weapon before
+  // EMCON could take effect.
+  if (!(target.esmRangeM > 0) || distance(missile, target) > 24 * NM) return false;
   missile.emconReactionResolved = true;
   target.radarActive = false;
   target.jammerActive = false;

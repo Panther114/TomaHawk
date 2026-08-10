@@ -7,6 +7,7 @@ import {
   MISSILES,
   NM,
   KNOT,
+  MAX_SCENARIO_SHIPS,
   SCENARIO_MODE,
   SIDE,
   SHIP_CLASSES,
@@ -22,6 +23,7 @@ import {
   defaultRoe,
   defaultLoadout,
   deleteShip,
+  duplicateShip,
   formatLogLines,
   exportAfterAction,
   interceptPoint,
@@ -36,6 +38,8 @@ import {
   stepSim,
   planEngagements,
   moveShips,
+  pointDefense,
+  processLaunchQueues,
   usedCells,
   validateLoadout,
   weaponRangeEntries,
@@ -186,6 +190,98 @@ test("simulation is deterministic for the same seed", () => {
     a.events.map((e) => [Math.round(e.t * 100), e.side, e.text]),
     b.events.map((e) => [Math.round(e.t * 100), e.side, e.text])
   );
+});
+
+test("mutual annihilation is a terminal draw, not a reset to setup", () => {
+  const sim = runningScenario(10);
+  const blue = sim.ships.find((ship) => ship.side === SIDE.BLUE);
+  const red = sim.ships.find((ship) => ship.side === SIDE.RED);
+  blue.radarActive = false;
+  blue.jammerActive = false;
+  blue.radarDecoys = 0;
+  blue.damageResist = 1;
+  red.radarActive = false;
+  red.jammerActive = false;
+  red.radarDecoys = 0;
+  red.damageResist = 1;
+  const terminalShot = (launcher, target, id) => strikeAt(sim, launcher, target, {
+    id,
+    x: target.x - 100,
+    y: target.y,
+    speed: 1000,
+    terminal: true
+  });
+  terminalShot(blue, red, "M-mutual-blue");
+  terminalShot(red, blue, "M-mutual-red");
+  sim.rng.next = () => 0;
+
+  stepSim(sim, 0.25);
+
+  assert.equal(sim.ended, "draw");
+  assert.equal(sim.mode, SCENARIO_MODE.ENDED);
+  assert.equal(sim.paused, true);
+  assert.match(sim.events[0].text, /Mutual annihilation/);
+});
+
+test("scenario save preserves RNG position and explicit empty magazines", () => {
+  const sim = runningScenario(11);
+  for (let i = 0; i < 20; i++) stepSim(sim, 0.25);
+  const data = serializeScenario(sim);
+  data.ships[0].loadout = {};
+  data.ships[0].baseLoadoutSnapshot = {};
+  const restored = restoreScenario(data);
+
+  assert.equal(restored.rng.seed, sim.rng.seed);
+  assert.deepEqual(restored.ships[0].loadout, {});
+  assert.deepEqual(restored.ships[0].baseLoadoutSnapshot, {});
+  assert.deepEqual([sim.rng.next(), sim.rng.next()], [restored.rng.next(), restored.rng.next()]);
+  assert.throws(() => restoreScenario({
+    ...data,
+    ships: data.ships.map((ship, index) => index === 0
+      ? { ...ship, loadout: { TomahawkBlockV: 97 } }
+      : ship)
+  }), /capacity/);
+});
+
+test("queued launch is canceled when the target leaves the release envelope", () => {
+  const sim = runningScenario(14);
+  const blue = sim.ships.find((ship) => ship.side === SIDE.BLUE);
+  const red = sim.ships.find((ship) => ship.side === SIDE.RED);
+  blue.launchQueue = [{
+    missileId: "MaritimeStrike",
+    targetId: red.id,
+    targetSide: red.side,
+    targetDomain: red.domain,
+    targetClassification: red.className,
+    targetX: red.x,
+    targetY: red.y,
+    targetVx: 0,
+    targetVy: 0,
+    readyAt: sim.time,
+    launchSequence: 0,
+    defensive: false,
+    priority: 50
+  }];
+  red.x = blue.x + 200 * NM;
+  const before = blue.loadout.MaritimeStrike;
+
+  processLaunchQueues(sim);
+
+  assert.equal(blue.launchQueue.length, 0);
+  assert.equal(blue.loadout.MaritimeStrike, before);
+  assert.equal(sim.missiles.length, 0);
+});
+
+test("placement and duplication enforce the supported 200-unit scenario cap", () => {
+  const sim = createScenario(16);
+  while (sim.ships.length < MAX_SCENARIO_SHIPS) {
+    const side = sim.ships.length % 2 ? SIDE.RED : SIDE.BLUE;
+    assert.ok(placeShip(sim, side, 0, 0, "F22"));
+  }
+  assert.equal(canAddAssets(sim), false);
+  assert.equal(placeShip(sim, SIDE.BLUE, 0, 0, "F22"), null);
+  assert.equal(duplicateShip(sim, sim.ships[0].id), null);
+  assert.equal(sim.ships.length, MAX_SCENARIO_SHIPS);
 });
 
 test("ships launch anti-surface missiles when track quality permits", () => {
@@ -834,6 +930,38 @@ test("CIWS is a terminal last-ditch layer and can leak saturated attacks", () =>
   }
   for (let i = 0; i < 80; i++) stepSim(sim, 0.25);
   assert.ok(red.damage > 0 || sim.events.some((event) => /CIWS failed|hit by/.test(event.text)));
+});
+
+test("multiple CIWS mounts service multiple simultaneous terminal threats", () => {
+  const sim = runningScenario(471);
+  const blue = sim.ships.find((ship) => ship.side === SIDE.BLUE);
+  const red = sim.ships.find((ship) => ship.side === SIDE.RED);
+  red.ciwsCount = 3;
+  red.defenseChannels.ciws = 3;
+  red.ciwsAmmo = 600;
+  red.ciwsCooldown = 0;
+  red.nextCiwsAt = 0;
+  sim.rng.next = () => 0;
+  for (let i = 0; i < 3; i++) {
+    sim.missiles.push({
+      id: `M-ciws-mount-${i}`,
+      side: blue.side,
+      launcherId: blue.id,
+      targetId: red.id,
+      missileId: "MaritimeStrike",
+      x: red.x - 1.1 * NM,
+      y: red.y + i * 100,
+      heading: 0,
+      speed: 270,
+      terminal: true,
+      alive: true
+    });
+  }
+
+  pointDefense(sim);
+
+  assert.equal(sim.missiles.every((missile) => !missile.alive), true);
+  assert.equal(red.ciwsAmmo, 600 - 3 * red.ciwsBurstRounds);
 });
 
 test("defensive weapon choice uses SM-2 for early area defense and ESSM for close point defense", () => {

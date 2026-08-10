@@ -3,7 +3,7 @@
 // resolution, subsystem damage, and the terminal CIWS layer.
 
 import { NM, SIDE, FLEET_ROLE, WEAPON_STATE } from "./constants.js";
-import { clamp, distance, angleTo, wrapAngle, interceptPoint, interceptTime, entityVelocity } from "./math.js";
+import { clamp, distance, distance3d, angleTo, wrapAngle, interceptPoint, interceptTime, entityVelocity } from "./math.js";
 import { MISSILES, missileDisplayRole, missileCanTarget, missileHasSurfaceTarget, missileHasAirDefenseTarget } from "./missiles.js";
 import { availableCount, setAvailableCount, defaultLoadout, defaultRoe } from "./ships.js";
 import { addEvent } from "./events.js";
@@ -55,9 +55,24 @@ function incomingMissilesFor(sim, shipId) {
 const SAT_CELL_M = 8 * NM;
 function buildMissileGrid(sim, missiles) {
   let grid = sim._missileGrid;
-  if (!grid) grid = sim._missileGrid = { rows: new Map(), used: [] };
+  if (!grid) grid = sim._missileGrid = { rows: new Map(), used: [], cellCount: 0 };
+  const previousActiveCells = grid.used.length;
   for (const bucket of grid.used) bucket.length = 0;
   grid.used.length = 0;
+  // Missiles can cross many grid cells during a long run. Reuse the hot buckets
+  // but release empty historical cells at a high watermark so the index cannot
+  // retain the whole travelled theater. This does not affect density results.
+  if (!missiles.length || grid.cellCount > previousActiveCells * 4 + 256) {
+    let cellCount = 0;
+    for (const [x, row] of grid.rows) {
+      for (const [y, bucket] of row) {
+        if (!bucket.length) row.delete(y);
+        else cellCount++;
+      }
+      if (!row.size) grid.rows.delete(x);
+    }
+    grid.cellCount = cellCount;
+  }
   for (const m of missiles) {
     if (!m.alive) continue;
     const cx = Math.floor(m.x / SAT_CELL_M);
@@ -71,6 +86,7 @@ function buildMissileGrid(sim, missiles) {
     if (!bucket) {
       bucket = [];
       row.set(cy, bucket);
+      grid.cellCount = (grid.cellCount ?? 0) + 1;
     }
     if (bucket.length === 0) grid.used.push(bucket);
     bucket.push(m);
@@ -250,6 +266,18 @@ function aliveMissileById(sim, id) {
   return m && m.alive ? m : undefined;
 }
 
+function isUnderwaterEntity(entity) {
+  return entity?.domain === "subsurface"
+    || entity?.medium?.startsWith("underwater")
+    || MISSILES[entity?.missileId]?.medium === "underwater";
+}
+
+function engagementDistance(a, b, spec = null) {
+  return spec?.medium === "underwater" || isUnderwaterEntity(a) || isUnderwaterEntity(b)
+    ? distance3d(a, b)
+    : distance(a, b);
+}
+
 // Alive missiles whose target is `targetId`. The bucket already holds only
 // alive missiles; valid during the fire-planning phase (no launches/kills occur
 // between index build and planning).
@@ -281,6 +309,7 @@ function removeFromArray(list, item) {
 function deactivateMissile(sim, missile) {
   if (!missile.alive) return;
   missile.alive = false;
+  sim._missilesNeedCompaction = true;
   markContactDead(sim, missile.id);
   if (sim._aliveMissiles && sim._missilesByTarget) {
     removeFromArray(sim._aliveMissiles, missile);
@@ -320,7 +349,7 @@ function deactivateShip(sim, ship) {
 function makeLaunchOrder(sim, launcher, track, missileId, sequence = 0) {
   const spec = MISSILES[missileId];
   if (!spec || availableCount(launcher, missileId) <= 0) return false;
-  const rangeM = distance(launcher, track);
+  const rangeM = engagementDistance(launcher, track, spec);
   if (rangeM > spec.rangeM) return false;
   const defensive = track.id?.startsWith?.("M-") && missileCanTarget(spec, "missile");
   const readyAt = track._readyAtOverride ?? (sim.time + sequence * spec.salvoSpacingS);
@@ -340,6 +369,7 @@ function makeLaunchOrder(sim, launcher, track, missileId, sequence = 0) {
       track.age ?? 0,
       Number.isFinite(track.lastSeen) ? Math.max(0, sim.time - track.lastSeen) : 0
     ),
+    targetDepthM: Number.isFinite(track.depthM) ? track.depthM : null,
     requestedAt: sim.time,
     readyAt,
     launchSequence: sequence,
@@ -347,6 +377,41 @@ function makeLaunchOrder(sim, launcher, track, missileId, sequence = 0) {
     priority
   });
   return true;
+}
+
+function targetForLaunchOrder(sim, order) {
+  return String(order.targetId).startsWith("M-")
+    ? aliveMissileById(sim, order.targetId)
+    : aliveShipById(sim, order.targetId);
+}
+
+function canEngageQueuedTarget(launcher, spec, targetDomain) {
+  if (missileCanTarget(spec, targetDomain)) return true;
+  // Air-to-air missiles can also be used by the outer-air-battle doctrine to
+  // prosecute an incoming cruise missile. The catalogue's normal target
+  // domain remains "air"; this is the existing, explicit intercept exception.
+  return targetDomain === "missile"
+    && launcher.domain === "air"
+    && missileHasAirDefenseTarget(spec);
+}
+
+function revalidateLaunchOrder(sim, launcher, order, spec) {
+  const target = targetForLaunchOrder(sim, order);
+  if (!target || target.side === launcher.side) return null;
+  const targetDomain = String(order.targetId).startsWith("M-")
+    ? "missile"
+    : target.domain ?? "sea";
+  if (!canEngageQueuedTarget(launcher, spec, targetDomain)) return null;
+  if (engagementDistance(launcher, target, spec) > spec.rangeM + 1e-6) return null;
+  order.targetSide = target.side;
+  order.targetDomain = targetDomain;
+  order.targetClassification = target.missileId ?? target.className ?? order.targetClassification;
+  order.targetX = target.x;
+  order.targetY = target.y;
+  order.targetVx = Math.cos(target.heading ?? 0) * (target.speed ?? 0);
+  order.targetVy = Math.sin(target.heading ?? 0) * (target.speed ?? 0);
+  order.targetDepthM = Number.isFinite(target.depthM) ? target.depthM : null;
+  return target;
 }
 
 function defensiveChannelForWeapon(missileId) {
@@ -429,6 +494,7 @@ function launchMissile(sim, launcher, order) {
   const spec = MISSILES[order.missileId];
   launcher.lastLaunchAtByMissile ||= {};
   if (!spec || availableCount(launcher, order.missileId) <= 0) return false;
+  if (!revalidateLaunchOrder(sim, launcher, order, spec)) return false;
   if (
     missileHasAirDefenseTarget(spec)
     && !withinAirLaunchCone(launcher, order.targetX, order.targetY)
@@ -506,7 +572,10 @@ function launchMissile(sim, launcher, order) {
     trackQualityAtLaunch: order.targetTrackQuality,
     trackAgeAtLaunchS: order.targetTrackAgeS,
     launchSequence: order.launchSequence ?? 0,
-    laneOffset
+    laneOffset,
+    depthM: launcher.domain === "subsurface" ? (launcher.depthM ?? 250) : 0,
+    targetDepthM: Number.isFinite(order.targetDepthM) ? order.targetDepthM : null,
+    depthRateMps: spec.depthRateMps ?? 18
   };
   const submergedAirLaunch = launcher.domain === "subsurface" && spec.medium !== "underwater";
   missile.medium = spec.medium === "underwater"
@@ -559,33 +628,54 @@ function launchMissile(sim, launcher, order) {
 export function processLaunchQueues(sim) {
   for (const ship of sim.ships) {
     if (!ship.alive || !ship.launchQueue?.length) continue;
+    let selectedOrder = null;
     let selectedIndex = -1;
+    const invalidIndexes = [];
     for (let index = 0; index < ship.launchQueue.length; index++) {
       const order = ship.launchQueue[index];
       const spec = MISSILES[order.missileId];
-      if (!spec || availableCount(ship, order.missileId) <= 0) continue;
+      if (!spec || availableCount(ship, order.missileId) <= 0) {
+        invalidIndexes.push(index);
+        continue;
+      }
       const queueReadyAt = order.defensive ? (ship.nextDefensiveLaunchAt || 0) : (ship.nextLaunchAt || 0);
       const lastTypeLaunch = ship.lastLaunchAtByMissile?.[order.missileId] ?? -Infinity;
       if (sim.time < Math.max(order.readyAt, queueReadyAt) || sim.time - lastTypeLaunch < effectiveLaunchIntervalS(ship, spec)) continue;
-      if (selectedIndex < 0) {
+      // Targets are intentionally revalidated only once the order is eligible
+      // for release. A moving contact may leave the envelope while queued; a
+      // shot must never be released against the stale snapshot in that order.
+      if (!revalidateLaunchOrder(sim, ship, order, spec)) {
+        invalidIndexes.push(index);
+        continue;
+      }
+      if (!selectedOrder) {
+        selectedOrder = order;
         selectedIndex = index;
         continue;
       }
-      const selected = ship.launchQueue[selectedIndex];
-      const earlier = (order.priority ?? 50) - (selected.priority ?? 50)
-        || order.readyAt - selected.readyAt
+      const earlier = (order.priority ?? 50) - (selectedOrder.priority ?? 50)
+        || order.readyAt - selectedOrder.readyAt
         || index - selectedIndex;
-      if (earlier < 0) selectedIndex = index;
+      if (earlier < 0) {
+        selectedOrder = order;
+        selectedIndex = index;
+      }
     }
-    if (selectedIndex >= 0 && launchMissile(sim, ship, ship.launchQueue[selectedIndex])) {
-      ship.launchQueue.splice(selectedIndex, 1);
+    for (let i = invalidIndexes.length - 1; i >= 0; i--) {
+      ship.launchQueue.splice(invalidIndexes[i], 1);
+    }
+    if (selectedOrder) {
+      const launchIndex = ship.launchQueue.indexOf(selectedOrder);
+      if (launchIndex >= 0 && launchMissile(sim, ship, selectedOrder)) {
+        ship.launchQueue.splice(launchIndex, 1);
+      }
     }
   }
 }
 
 function timeToImpact(missile, target, distanceM = null) {
   if (!target || missile.speed <= 0) return Infinity;
-  return (distanceM ?? distance(missile, target)) / missile.speed;
+  return (distanceM ?? engagementDistance(missile, target, MISSILES[missile.missileId])) / missile.speed;
 }
 
 function hasPendingOrActiveEngagement(sim, ship, targetId) {
@@ -792,7 +882,9 @@ function countSideWeaponsOnTarget(sim, side, targetId, missileId = null) {
 }
 
 function threatTimeToImpact(missile, target) {
-  return target ? distance(missile, target) / Math.max(1, missile.speed) : Infinity;
+  return target
+    ? engagementDistance(missile, target, MISSILES[missile.missileId]) / Math.max(1, missile.speed)
+    : Infinity;
 }
 
 function inboundRaidCount(sim, ship) {
@@ -835,7 +927,9 @@ function estimateInterceptTimeS(origin, threat, weaponId) {
     threatVelocity.vx,
     threatVelocity.vy
   );
-  const solveTime = Number.isFinite(lead.t) && lead.t > 0 ? lead.t : distance(origin, threat) / spec.speedMps;
+  const solveTime = Number.isFinite(lead.t) && lead.t > 0
+    ? lead.t
+    : engagementDistance(origin, threat, spec) / spec.speedMps;
   return Math.max(0, solveTime);
 }
 
@@ -920,7 +1014,7 @@ function defensiveNeedProfile(sim, side, missile, track, target) {
 }
 
 function chooseAntiShipWeapon(ship, track, allowReserve = false, aggression = 0.5) {
-  const rangeM = distance(ship, track);
+  const rangeM = engagementDistance(ship, track);
   const hull = ship.hull || "DDG";
   const baseLoad = ship.baseLoadoutSnapshot ?? defaultLoadout(hull);
   // Candidates are every anti-ship-capable weapon actually in the magazine
@@ -1012,7 +1106,7 @@ function chooseAirInterceptWeapon(ship, threat) {
   // SAMs (SM-6) own that problem. Verified in long battle logs: F-22s emptied
   // magazines at DarkEagle tracks with zero realistic PK.
   if (isHighEnergyThreat(threat)) return null;
-  const rangeM = distance(ship, threat);
+  const rangeM = engagementDistance(ship, threat);
   const baseLoad = ship.baseLoadoutSnapshot ?? defaultLoadout(ship.hull || "F15C");
   let best = null;
   for (const id in ship.loadout) {
@@ -1056,7 +1150,7 @@ function chooseHypersonicOnlyWeapon(ship, threat, rangeM, samOpen) {
 
 export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   const target = aliveShipById(sim, threat.targetId);
-  const rangeM = distance(ship, threat);
+  const rangeM = engagementDistance(ship, threat);
   const tti = threatTimeToImpact(threat, target);
   const raidCount = target ? inboundRaidCount(sim, target) : 1;
   const sm2 = MISSILES["SM-2MR"];
@@ -1795,7 +1889,38 @@ function missileManeuverDragFactor(headingDeltaRad, dt, baseTurnRadPerS) {
   return clamp(1 - MISSILE_TURN_DRAG_K * turnFrac * turnFrac, 0.55, 1);
 }
 
+function compactAliveMissiles(sim) {
+  const aliveMissiles = !sim._entityIndexesDirty ? sim._aliveMissiles : null;
+  if (aliveMissiles) aliveMissiles.length = 0;
+  let writeIndex = 0;
+  for (const missile of sim.missiles) {
+    if (!missile.alive) continue;
+    sim.missiles[writeIndex++] = missile;
+    aliveMissiles?.push(missile);
+  }
+  sim.missiles.length = writeIndex;
+  sim._missilesNeedCompaction = false;
+  // Keep alive/id indexes in lock-step with the compacted array without a full
+  // entity-index rebuild (target buckets were already updated on deactivate).
+  // Use a separate array so next tick's deactivate/launch never mutates the
+  // list mid-iteration of updateMissiles.
+  if (!sim._entityIndexesDirty) {
+    if (!sim._aliveMissiles) sim._aliveMissiles = sim.missiles.slice();
+    if (!sim._missileById) {
+      sim._missileById = new Map(sim.missiles.map((missile) => [missile.id, missile]));
+    }
+  }
+}
+
 export function updateMissiles(sim, dt) {
+  // Point defense runs after this phase and may mark a missile dead. Compact
+  // that deferred removal at the next entry, but avoid rewriting the complete
+  // missile array on ticks where every missile stayed alive.
+  if ((sim._aliveMissiles && sim.missiles.length !== sim._aliveMissiles.length)
+    || (!sim._aliveMissiles && sim.missiles.some((missile) => !missile.alive))) {
+    sim._missilesNeedCompaction = true;
+  }
+  if (sim._missilesNeedCompaction) compactAliveMissiles(sim);
   // Rebuild the missile saturation grid once per tick (reused by the interceptor
   // and CIWS saturation models below, and by point defense this same tick).
   const satGrid = buildMissileGrid(sim, sim._aliveMissiles ?? sim.missiles);
@@ -1821,7 +1946,16 @@ export function updateMissiles(sim, dt) {
       continue;
     }
 
-    const distToTarget = distance(missile, target);
+    if (missile.medium === "underwater") {
+      const targetDepthM = isUnderwaterEntity(target) ? (target.depthM ?? 250) : 0;
+      const currentDepthM = Number.isFinite(missile.depthM) ? missile.depthM : 0;
+      const depthRateMps = Math.max(0, missile.depthRateMps ?? 18);
+      missile.depthM = Math.max(
+        0,
+        currentDepthM + clamp(targetDepthM - currentDepthM, -depthRateMps * dt, depthRateMps * dt)
+      );
+    }
+    let distToTarget = engagementDistance(missile, target, spec);
     missile.timeToImpactEstimate = timeToImpact(missile, target, distToTarget);
     if (missile.medium === "underwater_to_air" && missile.flownM >= (missile.waterExitDistanceM ?? 300)) {
       missile.medium = "air";
@@ -1830,6 +1964,7 @@ export function updateMissiles(sim, dt) {
       missile.altitudeM = spec.cruiseAltitudeM ?? 30;
       missile.launchAltitudeM = missile.altitudeM;
       missile.phase = "boost / cruise";
+      distToTarget = engagementDistance(missile, target, spec);
     }
     if (!targetIsInFlightMissile) reactToAntiRadiationThreat(sim, missile, spec, target);
     // Anti-surface strike vs a platform; otherwise (intercepting a missile, or a
@@ -1845,6 +1980,11 @@ export function updateMissiles(sim, dt) {
       missile.speed = missile.launchSpeedMps;
       missile.phase = "underwater search";
       missile.seaSkimming = false;
+      missile.depthM = 0;
+      const targetDepthM = isUnderwaterEntity(target) ? (target.depthM ?? 250) : 0;
+      const depthRateMps = Math.max(0, missile.depthRateMps ?? 18);
+      missile.depthM = Math.max(0, clamp(targetDepthM, 0, depthRateMps * dt));
+      distToTarget = engagementDistance(missile, target, spec);
     }
     if (targetIsInFlightMissile && distToTarget < 4 * NM) {
       missile.terminal = true;
@@ -1949,10 +2089,8 @@ export function updateMissiles(sim, dt) {
     missile.x += Math.cos(missile.heading) * travel;
     missile.y += Math.sin(missile.heading) * travel;
     missile.flownM += travel;
-    const postMoveDx = missile.x - target.x;
-    const postMoveDy = missile.y - target.y;
-    const postMoveDistanceSq = postMoveDx * postMoveDx + postMoveDy * postMoveDy;
-    if (targetIsInFlightMissile && postMoveDistanceSq < 850 * 850) {
+    const postMoveDistance = engagementDistance(missile, target, spec);
+    if (targetIsInFlightMissile && postMoveDistance < 850) {
       // Interceptor PK: base PK minus O(1) kinematic / profile / layer difficulty
       // (hypersonic boost-glide is far harder than a subsonic ASCM), sea-skim,
       // local saturation, and track cue quality. See missileInterceptHitChance.
@@ -1978,7 +2116,7 @@ export function updateMissiles(sim, dt) {
       }
       deactivateMissile(sim, missile);
     } else if (!targetIsInFlightMissile
-      && postMoveDistanceSq < (missile.medium === "underwater" ? 260 * 260 : 420 * 420)) {
+      && postMoveDistance < (missile.medium === "underwater" ? 260 : 420)) {
       const isAir = target.domain === "air";
       let hitChance;
       let decoyed = missile.medium === "underwater"
@@ -2039,27 +2177,7 @@ export function updateMissiles(sim, dt) {
       addEvent(sim, `${missile.missileId} exhausted fuel and fell into the sea.`, missile.side);
     }
   }
-  const aliveMissiles = !sim._entityIndexesDirty ? sim._aliveMissiles : null;
-  if (aliveMissiles) aliveMissiles.length = 0;
-  let writeIndex = 0;
-  for (const missile of sim.missiles) {
-    if (!missile.alive) continue;
-    sim.missiles[writeIndex++] = missile;
-    aliveMissiles?.push(missile);
-  }
-  sim.missiles.length = writeIndex;
-  // Keep alive/id indexes in lock-step with the compacted array without a full
-  // entity-index rebuild (target buckets were already updated on deactivate).
-  // Use a separate array so next tick's deactivate/launch never mutates the
-  // list mid-iteration of updateMissiles.
-  if (!sim._entityIndexesDirty) {
-    if (!sim._aliveMissiles) {
-      sim._aliveMissiles = sim.missiles.slice();
-    }
-    if (!sim._missileById) {
-      sim._missileById = new Map(sim.missiles.map((missile) => [missile.id, missile]));
-    }
-  }
+  if (sim._missilesNeedCompaction) compactAliveMissiles(sim);
 }
 
 export function pointDefense(sim) {
@@ -2067,25 +2185,32 @@ export function pointDefense(sim) {
     if (!ship.alive || ship.ciwsCooldown > 0 || ship.ciwsAmmo <= 0 || sim.time < ship.nextCiwsAt) continue;
     if (!(ship.roe?.ciwsRelease ?? true)) continue;
     const ciwsRange = 1.6 * NM;
-    let inbound = null;
+    const inbound = [];
     for (const missile of incomingMissilesFor(sim, ship.id)) {
       if (!missile.alive || missile.side === ship.side || missile.targetId !== ship.id || !missile.terminal) continue;
       if (distance(ship, missile) >= ciwsRange) continue;
-      if (!inbound || (missile.timeToImpactEstimate ?? Infinity) < (inbound.timeToImpactEstimate ?? Infinity)) {
-        inbound = missile;
-      }
+      inbound.push(missile);
     }
-    if (!inbound) continue;
+    if (!inbound.length) continue;
+    inbound.sort((a, b) => (a.timeToImpactEstimate ?? Infinity) - (b.timeToImpactEstimate ?? Infinity)
+      || String(a.id).localeCompare(String(b.id)));
     // Per-class CIWS parameters
-    const burstRounds = ship.ciwsBurstRounds ?? 180;
+    const burstRounds = Math.max(1, ship.ciwsBurstRounds ?? 180);
     const burstS = ship.ciwsBurstS ?? 1.4;
     const cycleS = ship.ciwsCycleS ?? 5.5;
-    ship.ciwsAmmo = Math.max(0, ship.ciwsAmmo - burstRounds);
+    const configuredMounts = Math.max(0, Math.floor(ship.ciwsCount ?? 1));
+    const channelMounts = Number.isFinite(ship.defenseChannels?.ciws) && ship.defenseChannels.ciws > 0
+      ? Math.floor(ship.defenseChannels.ciws)
+      : configuredMounts;
+    const mountCount = Math.min(configuredMounts, channelMounts);
+    const maxBursts = Math.max(0, Math.ceil(ship.ciwsAmmo / burstRounds));
+    const engagements = inbound.slice(0, Math.min(mountCount, maxBursts));
+    if (!engagements.length) continue;
+    ship.ciwsAmmo = Math.max(0, ship.ciwsAmmo - burstRounds * engagements.length);
     ship.ciwsBurstUntil = sim.time + burstS;
     ship.nextCiwsAt = sim.time + cycleS;
     ship.ciwsCooldown = cycleS;
     // CIWS PK model: base PK per mount, each mount can engage one threat
-    const ciwsCount = ship.ciwsCount ?? 1;
     const basePk = 0.45;  // Phalanx 1B baseline single-shot Pk against subsonic ASCM
     // Saturation: the CIWS is overwhelmed by the local density of terminal
     // leakers in its point-defence bubble (any nearby terminal threat, not only
@@ -2098,21 +2223,23 @@ export function pointDefense(sim) {
       ship.side,
       true
     );
-    const saturationRatio = Math.min(1, ciwsCount / Math.max(1, terminalCount));
-    const seaSkimPenalty = inbound.seaSkimming ? 0.18 : 0;
+    const saturationRatio = Math.min(1, mountCount / Math.max(1, terminalCount));
     const damagePenalty = ship.damage * 0.06;
-    // CIWS against hypersonic / high-energy threats: almost no kinematic window.
-    const diff = interceptDifficultyVsThreat(inbound, null, { ciws: true });
-    const pKill = clamp(
-      basePk * ciwsEffectiveness(ship) * saturationRatio - seaSkimPenalty - damagePenalty - diff.total,
-      diff.pkFloor,
-      Math.min(0.72, diff.pkCeil)
-    );
-    if (sim.rng.next() < pKill) {
-      deactivateMissile(sim, inbound);
-      addEvent(sim, `${ship.name} CIWS destroyed incoming ${inbound.missileId}.`, ship.side);
-    } else {
-      addEvent(sim, `${ship.name} CIWS failed against ${inbound.missileId}.`, ship.side);
+    for (const threat of engagements) {
+      // CIWS against hypersonic / high-energy threats: almost no kinematic window.
+      const seaSkimPenalty = threat.seaSkimming ? 0.18 : 0;
+      const diff = interceptDifficultyVsThreat(threat, null, { ciws: true });
+      const pKill = clamp(
+        basePk * ciwsEffectiveness(ship) * saturationRatio - seaSkimPenalty - damagePenalty - diff.total,
+        diff.pkFloor,
+        Math.min(0.72, diff.pkCeil)
+      );
+      if (sim.rng.next() < pKill) {
+        deactivateMissile(sim, threat);
+        addEvent(sim, `${ship.name} CIWS destroyed incoming ${threat.missileId}.`, ship.side);
+      } else {
+        addEvent(sim, `${ship.name} CIWS failed against ${threat.missileId}.`, ship.side);
+      }
     }
   }
 }

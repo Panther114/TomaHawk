@@ -11,12 +11,15 @@ import {
   acousticSignature,
   clearSide,
   createScenario,
+  currentTrack,
+  distance3d,
   electronicAttackPressure,
   passiveSonarDetectionRange,
   placeShip,
   radarJammingPenalty,
   scanSensors,
   scanSonar,
+  setLocalTrack,
   stepSim,
   tryRadarSoftKill
 } from "../src/sim.js";
@@ -86,6 +89,20 @@ test("quiet-speed submarines are materially harder to hear than flank-speed subm
   ssn.speed = 8 * KNOT;
   ssn.sonarActive = true;
   assert.ok(passiveSonarDetectionRange(listener, ssn) > quietRange * 1.6, "active sonar reveals the transmitting submarine");
+});
+
+test("submarine depth changes slant range and acoustic detectability", () => {
+  const sim = emptyScenario(11025);
+  const listener = placeShip(sim, SIDE.BLUE, 0, 0, "FFG");
+  const ssn = placeShip(sim, SIDE.RED, 12 * NM, 0, "SSN");
+  ssn.depthM = 40;
+  const shallowRange = passiveSonarDetectionRange(listener, ssn);
+  const shallowSlant = distance3d(listener, ssn);
+  ssn.depthM = 400;
+  const deepRange = passiveSonarDetectionRange(listener, ssn);
+  const deepSlant = distance3d(listener, ssn);
+  assert.ok(deepRange < shallowRange * 0.8);
+  assert.ok(deepSlant > shallowSlant);
 });
 
 test("sonar and EW subsystem damage reduce their actual sensor and jammer output", () => {
@@ -171,6 +188,45 @@ test("passive ESM detects an emitter without turning on the observer radar", () 
     sim.time += 4;
   }
   assert.equal(observer.tracks.has(emitter.id), false);
+});
+
+test("lower-confidence ESM augments, but does not replace, a better radar track", () => {
+  const sim = emptyScenario(11045);
+  const observer = placeShip(sim, SIDE.BLUE, 0, 0, "DDG");
+  const emitter = placeShip(sim, SIDE.RED, 20 * NM, 0, "DDG");
+  const radar = {
+    id: emitter.id,
+    side: emitter.side,
+    domain: emitter.domain,
+    x: emitter.x,
+    y: emitter.y,
+    vx: 0,
+    vy: 0,
+    quality: 0.9,
+    uncertainty: 100,
+    source: observer.id,
+    sensorType: "radar",
+    emitterActive: false,
+    emitterLastSeenAt: sim.time,
+    age: 0,
+    lastSeen: sim.time
+  };
+  const esm = {
+    ...radar,
+    x: emitter.x + 5 * NM,
+    quality: 0.4,
+    uncertainty: 10 * NM,
+    source: `${observer.id} ESM`,
+    sensorType: "esm",
+    emitterActive: true
+  };
+  setLocalTrack(sim, observer, emitter.id, radar);
+  assert.equal(setLocalTrack(sim, observer, emitter.id, esm), true);
+  assert.equal(observer.tracks.get(emitter.id).source, observer.id);
+  assert.equal(observer.tracks.get(emitter.id).emitterActive, true);
+  sim.time = 8;
+  currentTrack(observer.tracks.get(emitter.id), sim.time);
+  assert.equal(observer.tracks.get(emitter.id).emitterActive, false);
 });
 
 test("RF decoys work against radar seekers and home-on-jam reduces their effectiveness", () => {

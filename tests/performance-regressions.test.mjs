@@ -12,7 +12,9 @@ import {
   SCENARIO_MODE,
   trackForShip,
   ageTracks,
-  currentTrack
+  currentTrack,
+  buildForcePicture,
+  forceTrack
 } from "../src/sim.js";
 import {
   firstLandCollisionFraction,
@@ -69,6 +71,9 @@ test("CEC sharing does not transitively relay a track during the same update", (
   assert.equal(trackForShip(sim, blueTwo, red.id)?.source, `${blueOne.id} datalink`);
   assert.equal(trackForShip(sim, blueThree, red.id)?.source, `${blueOne.id} datalink`);
   assert.equal(blueTwo.tracks.has(red.id), false, "shared reports are not copied into receiver-local maps");
+  blueOne.tracks.delete(red.id);
+  buildForcePicture(sim);
+  assert.equal(forceTrack(sim, SIDE.BLUE, red.id)?.source, `${blueOne.id} datalink`);
 });
 
 test("blocked navigation plans reuse their detour during the cache window", () => {

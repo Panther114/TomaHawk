@@ -260,8 +260,19 @@ function interceptionStats(sim) {
       [SIDE.RED]: { launched: 0, intercepted: 0 }
     }
   };
-  for (const event of sim.events || []) {
-    const key = `${event.t}|${event.side}|${event.text}`;
+  const events = Array.isArray(sim.events) ? sim.events : [];
+  // The simulation keeps only the newest event records. Drop ledger keys for
+  // compacted records as well, otherwise a long battle grows a second,
+  // unbounded history even though sim.events itself is capped.
+  const activeKeys = new Set(events.map((event) => (
+    event && typeof event === "object" && event.id != null ? event.id : event
+  )));
+  for (const key of ledger.seen) {
+    if (!activeKeys.has(key)) ledger.seen.delete(key);
+  }
+  for (const event of events) {
+    if (!event || typeof event !== "object") continue;
+    const key = event.id != null ? event.id : event;
     if (ledger.seen.has(key)) continue;
     ledger.seen.add(key);
     const text = String(event.text || "");

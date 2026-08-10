@@ -14,6 +14,23 @@ export function distance(a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+// 3D slant range for engagements that have a meaningful vertical medium.
+// Surface units are at 0 m, aircraft use altitudeM, and submarines/underwater
+// weapons use depthM below the surface. Keep the common 2D distance() hot path
+// unchanged for movement, radar, and map geometry.
+export function distance3d(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const verticalA = Number.isFinite(a?.depthM)
+    ? -a.depthM
+    : Number.isFinite(a?.altitudeM) ? a.altitudeM : 0;
+  const verticalB = Number.isFinite(b?.depthM)
+    ? -b.depthM
+    : Number.isFinite(b?.altitudeM) ? b.altitudeM : 0;
+  const dz = verticalA - verticalB;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 export function angleTo(a, b) {
   return Math.atan2(b.y - a.y, b.x - a.x);
 }

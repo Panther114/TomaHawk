@@ -605,7 +605,15 @@ export function missileDisplayRole(missile) {
 
 export function battleSummaryCounts(sim) {
   const ships = sim?.ships ?? [];
-  const missiles = sim?.missiles ?? [];
+  // stepSim maintains this alive-only index and compacts the backing array on
+  // removal. Restored/direct-call scenarios may not have it yet, so retain the
+  // full-array fallback for compatibility.
+  const indexedMissiles = sim?._aliveMissiles;
+  const missiles = indexedMissiles
+    && !sim._entityIndexesDirty
+    && sim.missiles.length === indexedMissiles.length
+    ? indexedMissiles
+    : sim?.missiles ?? [];
   const shipTotals = {
     Blue: { ships: 0, hp: 0, maxHp: 0 },
     Red: { ships: 0, hp: 0, maxHp: 0 }

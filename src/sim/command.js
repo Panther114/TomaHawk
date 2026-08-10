@@ -34,13 +34,16 @@ function mergeTrack(fused, track) {
       side: track.side,
       domain: track.domain ?? "sea",
       classification: track.classification,
+      source: track.source,
       x: track.x,
       y: track.y,
       vx: track.vx ?? 0,
       vy: track.vy ?? 0,
       quality: track.quality,
       uncertainty: track.uncertainty,
+      depthM: Number.isFinite(track.depthM) ? track.depthM : undefined,
       emitterActive: track.emitterActive === true,
+      emitterLastSeenAt: track.emitterLastSeenAt ?? track.lastSeen ?? -Infinity,
       weight: Math.max(0.05, track.quality),
       contributors: 1,
       bestQuality: track.quality
@@ -54,11 +57,17 @@ function mergeTrack(fused, track) {
   existing.weight = totalW;
   existing.contributors += 1;
   existing.uncertainty = Math.min(existing.uncertainty, track.uncertainty);
-  existing.emitterActive ||= track.emitterActive === true;
+  const emitterTime = track.emitterLastSeenAt ?? track.lastSeen ?? -Infinity;
+  if (emitterTime >= (existing.emitterLastSeenAt ?? -Infinity)) {
+    existing.emitterActive = track.emitterActive === true;
+    existing.emitterLastSeenAt = emitterTime;
+  }
   if (track.quality > existing.bestQuality) {
     existing.bestQuality = track.quality;
     existing.vx = track.vx ?? 0;
     existing.vy = track.vy ?? 0;
+    existing.depthM = Number.isFinite(track.depthM) ? track.depthM : existing.depthM;
+    existing.source = track.source;
     existing.classification = track.classification;
   }
 }
@@ -70,19 +79,20 @@ function finalizeFusedTrack(track) {
 
 export function buildForcePicture(sim, { dirtyOnly = false } = {}) {
   const dirtyIds = sim._dirtyTrackIds;
-  const picture = dirtyOnly && sim.forcePicture && dirtyIds?.size
+  const incremental = dirtyOnly && sim.forcePicture && dirtyIds?.size;
+  const picture = incremental
     ? sim.forcePicture
     : new Map([[SIDE.BLUE, new Map()], [SIDE.RED, new Map()]]);
   if (picture.size === 0) {
     picture.set(SIDE.BLUE, new Map());
     picture.set(SIDE.RED, new Map());
   }
-  if (dirtyOnly && dirtyIds?.size) {
+  if (incremental) {
     for (const fused of picture.values()) {
       for (const id of dirtyIds) fused.delete(id);
     }
   }
-  if (dirtyOnly && dirtyIds?.size && sim._trackHolders) {
+  if (incremental && sim._trackHolders) {
     for (const id of dirtyIds) {
       for (const ship of sim._trackHolders.get(id) ?? []) {
         if (!ship.alive) continue;
@@ -105,10 +115,24 @@ export function buildForcePicture(sim, { dirtyOnly = false } = {}) {
       }
     }
   }
+  // Shared CEC tracks are force-picture inputs too. A network copy is not
+  // counted twice when a local report for the same contact is present; it is
+  // only needed for receivers whose local sensor file has no such contact.
+  for (const [side, shared] of sim.sharedTracksBySide ?? []) {
+    const fused = picture.get(side);
+    if (!fused) continue;
+    for (const [id, rawTrack] of shared) {
+      if (incremental && !dirtyIds.has(id)) continue;
+      if (fused.has(id)) continue;
+      const track = currentTrack(rawTrack, sim.time);
+      if (track.side === side) continue;
+      mergeTrack(fused, track);
+    }
+  }
   // Composite quality: a contact held by multiple sensors yields a firmer,
   // fire-control-grade track than any single radar.
   for (const fused of picture.values()) {
-    if (dirtyOnly && dirtyIds?.size) {
+    if (incremental) {
       for (const id of dirtyIds) {
         const track = fused.get(id);
         if (track) finalizeFusedTrack(track);
@@ -189,11 +213,16 @@ const STRATEGIC_ESTIMATE_REFRESH_S = 90;
 const STRATEGIC_ESTIMATE_ERROR_RAD = (35 * Math.PI) / 180;
 export function strategicBearingEstimate(sim, side, from) {
   sim._strategicEstimate ||= new Map();
+  const cur = sim._strategicEstimate.get(side);
+  const enemySide = side === SIDE.BLUE ? SIDE.RED : SIDE.BLUE;
+  const indexedEnemy = !sim._entityIndexesDirty ? sim._shipsBySide?.get(enemySide) : null;
+  const enemyPresent = indexedEnemy
+    ? indexedEnemy.length > 0
+    : sim.ships.some((ship) => ship.alive && ship.side !== side);
+  if (cur && enemyPresent && sim.time < cur.refreshAt) return cur.bearing;
   const centroid = enemyFleetCentroid(sim, side);
   if (!centroid) return side === SIDE.BLUE ? 0 : Math.PI;
   const trueBearing = Math.atan2(centroid.y - from.y, centroid.x - from.x);
-  const cur = sim._strategicEstimate.get(side);
-  if (cur && sim.time < cur.refreshAt) return cur.bearing;
   const error = sim.rng.range(-STRATEGIC_ESTIMATE_ERROR_RAD, STRATEGIC_ESTIMATE_ERROR_RAD);
   const bearing = wrapAngle(trueBearing + error);
   sim._strategicEstimate.set(side, { bearing, refreshAt: sim.time + STRATEGIC_ESTIMATE_REFRESH_S });

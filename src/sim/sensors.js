@@ -14,7 +14,14 @@ const radarHeightCache = new WeakMap();
 const TRACK_MAX_AGE_S = 160;
 const TRACK_QUALITY_DECAY_PER_S = 0.006;
 const TRACK_UNCERTAINTY_GROWTH_MPS = 90;
+const EMITTER_ACTIVE_TTL_S = 7;
 const SENSOR_GRID_CELL_M = 50 * NM;
+const SENSOR_QUALITY_RANK = Object.freeze({
+  radar: 4,
+  "active-sonar": 3,
+  "passive-sonar": 2,
+  esm: 1
+});
 
 // Radar horizon: 4/3 Earth radius model. Returns max line-of-sight range in meters.
 function radarHorizonM(hRadarM, hTargetM) {
@@ -213,23 +220,50 @@ function missileRadarDetectionChance(rangeM, detectRangeM, missile, profile) {
 // math. The grid is pure broad-phase; detection outcomes are unchanged because
 // every candidate still passes the same RCS/horizon/chance tests. Candidate
 // order stays deterministic via a stable index sort.
+function pruneEmptyGridCells(grid) {
+  let cellCount = 0;
+  for (const [x, row] of grid.rows) {
+    for (const [y, bucket] of row) {
+      if (!bucket.length) row.delete(y);
+      else cellCount++;
+    }
+    if (!row.size) grid.rows.delete(x);
+  }
+  grid.cellCount = cellCount;
+}
+
 function sensorGrid(entities, _usefulRangeM, reuse = null) {
-  const grid = reuse ?? { entities, rows: new Map(), used: [], candidates: [], aliveCount: 0, active: false };
+  const grid = reuse ?? {
+    entities,
+    rows: new Map(),
+    used: [],
+    candidates: [],
+    aliveCount: 0,
+    active: false,
+    cellCount: 0
+  };
   grid.entities = entities;
   let aliveCount = 0;
   for (const entity of entities) if (entity.alive) aliveCount++;
   grid.aliveCount = aliveCount;
+  const previousActiveCells = grid.used.length;
+  for (const bucket of grid.used) bucket.length = 0;
+  grid.used.length = 0;
   if (aliveCount === 0) {
+    if (grid.cellCount) pruneEmptyGridCells(grid);
     grid.active = false;
     return grid;
   }
   // Tiny force: grid overhead exceeds the linear scan.
   if (aliveCount <= 8) {
+    if (grid.cellCount) pruneEmptyGridCells(grid);
     grid.active = false;
     return grid;
   }
-  for (const bucket of grid.used) bucket.length = 0;
-  grid.used.length = 0;
+  // Entity movement can visit many historical cells over a long run. Keep the
+  // reusable buckets, but discard empty cells once retained history is much
+  // larger than the current active footprint. Candidate ordering is unchanged.
+  if (grid.cellCount > previousActiveCells * 4 + 256) pruneEmptyGridCells(grid);
   grid.active = true;
   for (let index = 0; index < entities.length; index++) {
     const entity = entities[index];
@@ -245,6 +279,7 @@ function sensorGrid(entities, _usefulRangeM, reuse = null) {
     if (!bucket) {
       bucket = [];
       row.set(y, bucket);
+      grid.cellCount = (grid.cellCount ?? 0) + 1;
     }
     if (bucket.length === 0) grid.used.push(bucket);
     bucket.push(index);
@@ -306,6 +341,12 @@ export function currentTrack(track, time) {
   track.age = (track.age ?? 0) + elapsed;
   track.uncertainty = (track.uncertainty ?? 0) + elapsed * TRACK_UNCERTAINTY_GROWTH_MPS;
   track.quality = clamp((track.quality ?? 0) - elapsed * TRACK_QUALITY_DECAY_PER_S, 0, 1);
+  if (track.emitterActive) {
+    const lastEmitterSeen = Number.isFinite(track.emitterLastSeenAt)
+      ? track.emitterLastSeenAt
+      : (track.lastSeen ?? track._stateTime);
+    if (time - lastEmitterSeen > EMITTER_ACTIVE_TTL_S) track.emitterActive = false;
+  }
   track._stateTime = time;
   return track;
 }
@@ -361,12 +402,51 @@ function indexTrack(sim, map, id, track, ship = null) {
 }
 
 export function setLocalTrack(sim, ship, id, track) {
-  const isNew = !ship.tracks.has(id);
+  const previous = ship.tracks.get(id);
+  if (previous) {
+    const current = currentTrack(previous, sim.time);
+    const previousSensor = previous.sensorType
+      ?? (String(previous.source ?? "").includes("ESM") ? "esm" : "radar");
+    const nextSensor = track.sensorType ?? "radar";
+    const sameSensor = previousSensor === nextSensor;
+    const candidateQuality = Number(track.quality) || 0;
+    const currentQuality = Number(current.quality) || 0;
+    const stale = (current.age ?? 0) > 1.5;
+    const rankDelta = (SENSOR_QUALITY_RANK[nextSensor] ?? 0) - (SENSOR_QUALITY_RANK[previousSensor] ?? 0);
+    const qualityMargin = rankDelta < 0 ? 0.05 : 1e-9;
+    const canReplace = sameSensor || candidateQuality > currentQuality + qualityMargin || stale;
+    if (!canReplace) {
+      // ESM is deliberately lower-confidence than a radar track, but its
+      // emitter state is still valuable. Merge only the newest passive
+      // observation so a stale "active" flag cannot persist indefinitely.
+      if (track.emitterActive !== undefined) {
+        const candidateEmitterTime = Number.isFinite(track.emitterLastSeenAt)
+          ? track.emitterLastSeenAt
+          : sim.time;
+        const currentEmitterTime = Number.isFinite(current.emitterLastSeenAt)
+          ? current.emitterLastSeenAt
+          : (current.lastSeen ?? -Infinity);
+        if (candidateEmitterTime >= currentEmitterTime
+          && (current.emitterActive !== track.emitterActive
+            || current.emitterLastSeenAt !== candidateEmitterTime)) {
+          current.emitterActive = track.emitterActive;
+          current.emitterLastSeenAt = candidateEmitterTime;
+          current._stateTime = sim.time;
+          sim._dirtyTrackIds ||= new Set();
+          sim._dirtyTrackIds.add(id);
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+  const isNew = !previous;
   ship.tracks.set(id, track);
   indexTrack(sim, ship.tracks, id, track, ship);
   if (isNew) sim._indexedLocalTrackCount = (sim._indexedLocalTrackCount ?? 0) + 1;
   sim._dirtyTrackIds ||= new Set();
   sim._dirtyTrackIds.add(id);
+  return true;
 }
 
 export function ensureTrackIndexes(sim) {
@@ -389,7 +469,10 @@ export function trackForShip(sim, ship, id) {
   const shared = currentTrack(sim.sharedTracksBySide?.get(ship.side)?.get(id), sim.time);
   if (!local) return shared;
   if (!shared) return local;
-  return shared.quality > local.quality ? shared : local;
+  return shared.quality > local.quality
+    || (shared.quality === local.quality && (shared.lastSeen ?? -Infinity) > (local.lastSeen ?? -Infinity))
+    ? shared
+    : local;
 }
 
 export function* iterateTracksForShip(sim, ship) {
@@ -478,7 +561,7 @@ export function scanSensors(sim, dt) {
           0.98
         );
         const uncertainty = (1 - quality) * 5 * NM + jammingPenalty * 4 * NM + sim.rng.range(0, 0.5 * NM);
-        setLocalTrack(sim, observer, target.id, {
+        const accepted = setLocalTrack(sim, observer, target.id, {
           id: target.id,
           side: target.side,
           domain: targetDomain,
@@ -490,11 +573,13 @@ export function scanSensors(sim, dt) {
           quality,
           uncertainty,
           source: observer.id,
+          sensorType: "radar",
           emitterActive: target.radarActive || target.jammerActive,
+          emitterLastSeenAt: sim.time,
           age: 0,
           lastSeen: sim.time
         });
-        changed = true;
+        changed = accepted || changed;
       }
     }
     for (const missile of sensorCandidates(missiles, observer, observer.radarRangeM)) {
@@ -523,7 +608,7 @@ export function scanSensors(sim, dt) {
           0.92
         );
         const uncertainty = (1 - quality) * 4.5 * NM + (missile.terminal ? 0.35 * NM : 0.9 * NM);
-        setLocalTrack(sim, observer, missile.id, {
+        const accepted = setLocalTrack(sim, observer, missile.id, {
           id: missile.id,
           side: missile.side,
           classification: missile.missileId,
@@ -534,10 +619,11 @@ export function scanSensors(sim, dt) {
           quality,
           uncertainty,
           source: observer.id,
+          sensorType: "radar",
           age: 0,
           lastSeen: sim.time
         });
-        changed = true;
+        changed = accepted || changed;
       }
     }
   }
@@ -553,7 +639,7 @@ export function scanSensors(sim, dt) {
       const observation = electronicSupportObservation(observer, emitter, sim.rng);
       if (!observation) continue;
       const uncertainty = observation.uncertainty;
-      setLocalTrack(sim, observer, emitter.id, {
+      const accepted = setLocalTrack(sim, observer, emitter.id, {
         id: emitter.id,
         side: emitter.side,
         domain: emitter.domain ?? "sea",
@@ -565,11 +651,13 @@ export function scanSensors(sim, dt) {
         quality: observation.quality,
         uncertainty,
         source: `${observer.id} ESM`,
+        sensorType: "esm",
         emitterActive: true,
+        emitterLastSeenAt: sim.time,
         age: 0,
         lastSeen: sim.time
       });
-      changed = true;
+      changed = accepted || changed;
     }
   }
   return changed;
