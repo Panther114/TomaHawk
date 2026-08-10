@@ -187,8 +187,12 @@ createServer(async (req, res) => {
     }
     await pipeline(createReadStream(file), res);
   } catch {
-    res.writeHead(404);
-    res.end("Not found");
+    if (!res.headersSent) {
+      res.writeHead(404);
+      res.end("Not found");
+    } else {
+      res.destroy();
+    }
   }
 }).listen(port, host, () => {
   const localUrl = `http://127.0.0.1:${port}`;
