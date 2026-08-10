@@ -1,24 +1,38 @@
-# Tomahawk (战斧)
+# 战斧 Tomahawk
 
-A deterministic modern joint-warfare simulation that runs in the browser. It centers on sensor detection, track fusion, cooperative engagement, magazine management, and subsystem damage so you can quickly build blue/red scenarios and review the engagement chain. Two symmetric command AIs act only on tracks each side can detect and share; the same seed and inputs always produce the same result.
+> 在浏览器中运行的确定性现代联合作战仿真。部署蓝红双方兵力，让传感器、指挥与武器系统按真实逻辑自主交战。
 
-Current version: **v1.0.0**
+![操作手册欢迎页](docs/screenshots/guide-welcome.png)
 
-## Quick start
+## 这是什么
 
-Requires Node.js 20 or newer. No third-party dependencies to install.
+战斧是一个本地运行的推演沙盘：蓝红双方在真实海域地图上部署水面、水下、地面与空中单位，推演开始后，双方指挥 AI 只依据本方传感器探测到、并共享的航迹自主行动——探测、跟踪、发射、拦截、损伤与弹药消耗都在实时发生。
+
+- **确定性**：相同的地图、种子与操作，永远得到相同的结果。
+- **纯本地**：没有后端逻辑，推演、画布渲染与存档全部在浏览器里完成。
+- **中文界面**：面向中文玩家的完整操作体验。
+
+## 快速开始
+
+需要 Node.js 20 或更高版本，无需安装任何第三方依赖：
 
 ```bash
 npm start
 ```
 
-Open <http://127.0.0.1:4172>:
+然后打开 <http://127.0.0.1:4202>：
 
-- `/` — one-screen product landing page
-- `/sandbox` — tactical sandbox (desktop browser content area of at least 960×560 recommended)
-- `/guide` — in-app Chinese player manual
+| 页面 | 说明 |
+| --- | --- |
+| `/` | 产品首页 |
+| `/sandbox` | 推演沙盘（建议桌面浏览器，内容区至少 960×560） |
+| `/guide` | 交互式操作手册（内置真实沙盘的教学台） |
 
-Run checks:
+> **新玩家先打开 `/guide`。** 它是一个全屏沉浸式教学台：真实沙盘铺满整个屏幕，金色的光标提示会指向你下一步要点击的位置，完成操作后自动进入下一步——你会在正式界面上亲手完成部署、运行、判读与保存。
+
+![教程进行中](docs/screenshots/guide-tutorial.png)
+
+运行检查：
 
 ```bash
 npm test
@@ -27,59 +41,56 @@ npm run bench
 npm run bench:server
 ```
 
-## Railway deployment
+## 五步上手
 
-Root `railway.json` is set up for `npm start`, a `/health` check, and restart-on-failure. Connect the GitHub repo and deploy; no database, volume, build command, or extra environment variables are required. The process listens on Railway’s `0.0.0.0:$PORT`.
+![推演沙盘](docs/screenshots/sandbox-battle.png)
 
-Production only streams static files, caps the Node heap at 64 MiB, and does not cache maps or images. Simulation, Canvas drawing, scenario serialization, AAR, tutorial state, and the Unit Workshop all run in the browser. On Railway, local disk scenario endpoints and debug log endpoints are disabled. User saves use browser downloads, file pickers, and IndexedDB.
+1. 打开沙盘，点击左上角「部署兵力」，为蓝方选择一艘驱逐舰。
+2. 把光标移到海面上，轮廓变蓝后单击放置；再为红方部署一支兵力（悬停装备卡，点击右侧红色半区）。
+3. 点击底部 ▶ 开始推演，用速度滑杆调速，`Space` 随时暂停。
+4. 点击地图上的单位，在右侧查看生命、任务与剩余弹药。
+5. 需要长期保存时，打开右下角系统工具 →「保存推演」。
 
-## What it models
+![部署装备库](docs/screenshots/sandbox-deploy.png)
 
-- Coordinated naval, subsurface, ground, and air units
-- Radar, sonar, ESM, radar horizon, RCS, and track ageing
-- Fused force picture, track sharing, and engage-on-remote cooperative fire
-- Layered air defence, point defence, anti-ship, strike, ASW, and hypersonic offence/defence
-- Aircraft fuel, RTB, rearm, carrier deck, and airfield support
-- Electronic attack, burn-through, anti-radiation pressure, and limited soft-kill decoys
-- Subsystem damage, per-aircraft attrition, and magazine exhaustion
-- Local Unit Workshop, scenario saves, and AAR reports
+## 模型能力
 
-This project is not a validated mission-planning or operational-analysis tool. It does not model mines, logistics, weather/sea state, crew training, or political decisions. Public equipment parameters are engineering abstractions built from open sources.
+- 联合作战单位：水面舰艇、潜艇、地面阵地、机场与航空兵编队
+- 传感器与航迹：雷达、声呐、ESM、雷达地平线、RCS、航迹老化与跨单位共享
+- 协同交战（CEC）：共享目标火力，超视距拦截
+- 攻防体系：分层防空、近防、反舰、对陆打击、反潜、高超音速攻防
+- 航空后勤：燃油、返航、再装填、航母甲板与机场支援
+- 电子对抗：电子攻击、烧穿、反辐射压制与软杀伤
+- 损伤与消耗：子系统损伤、编组损耗、弹药耗尽
+- 本地工具：单位工坊（自定义单位）、推演存档、AAR 战报导出
 
-## Basic play
+战斧不是经过验证的任务规划或作战分析工具，也不建模雷场、后勤、天气海况、人员训练与政治决策。公开装备参数是基于公开资料的工程抽象。
 
-1. In the sandbox, open **部署装备** (Deploy equipment) at the top left and choose Blue or Red.
-2. Pick a unit from the library and click repeatedly on the map to place; a red preview means the position is invalid.
-3. Place at least one living unit on each side.
-4. Press `Space` or use the bottom play control to start.
-5. Watch the top battle strip, map tracks, and right-hand unit detail.
+## 项目结构
 
-Full repo notes are in the [Player guide](docs/PLAYER_GUIDE.md). The illustrated in-app manual is at `/guide` (Simplified Chinese).
+- `sandbox.html` + `src/app.js` — 推演沙盘界面（画布渲染与交互）
+- `guide.html` + `src/guide.js` — 交互式操作手册（内嵌真实沙盘的教程引擎）
+- `src/sim/` — 确定性仿真核心（DOM 无关，可直接在 Node 中测试）
+- `src/mods/` — 单位工坊与本地迁移
+- `server.mjs` — 轻量静态文件服务器
+- `tests/` — 规则、持久化、UI 与性能回归测试
 
-## Project structure
+架构边界见 [Architecture](docs/ARCHITECTURE.md)，仿真规则见 [Simulation](docs/SIMULATION.md)。
 
-- `index.html` — landing page
-- `sandbox.html` — tactical sandbox shell
-- `guide.html` — in-app Chinese player tutorial
-- `src/app.js` — Canvas drawing, UI state, and interaction
-- `src/ui/` — Simplified Chinese messages, equipment catalog, tactical symbols, tutorial steps
-- `src/sim/` — deterministic simulation core
-- `src/mods/` — Unit Workshop and local migration
-- `server.mjs` — low-memory static file server; disk saves and debug endpoints are local-dev only
-- `tests/` — rules, persistence, UI, and performance regression tests
+## Railway 部署
 
-Architecture boundaries: [Architecture](docs/ARCHITECTURE.md). Simulation rules: [Simulation](docs/SIMULATION.md).
+仓库根目录的 `railway.json` 已配置好 `npm start`、`/health` 健康检查与失败重启。连接 GitHub 仓库即可部署，无需数据库、持久卷、构建命令或额外环境变量。部署环境下场景文件与调试日志接口保持关闭，用户存档走浏览器本地（IndexedDB 与文件下载）。
 
-## Documentation
+## 文档
 
-- [Player guide](docs/PLAYER_GUIDE.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Simulation](docs/SIMULATION.md)
-- [Unit Workshop](docs/MODDING.md)
-- [Sources](docs/SOURCES.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Changelog](CHANGELOG.md)
+- [操作手册](https://github.com/Panther114/TomaHawk/blob/main/docs/PLAYER_GUIDE.md)
+- [架构](docs/ARCHITECTURE.md)
+- [仿真模型](docs/SIMULATION.md)
+- [单位工坊与 Mod](docs/MODDING.md)
+- [数据来源](docs/SOURCES.md)
+- [路线图](docs/ROADMAP.md)
+- [更新日志](CHANGELOG.md)
 
-## License
+## 许可
 
-Code is released under the [PolyForm Noncommercial 1.0.0](LICENSE) license. Real equipment names only identify simulated objects and do not imply endorsement by any manufacturer, service, or agency.
+代码以 [PolyForm Noncommercial 1.0.0](LICENSE) 许可发布。真实装备名称仅用于指代仿真对象，不代表任何厂商、机构或部门的背书。

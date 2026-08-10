@@ -71,54 +71,39 @@ test("interactive guide lessons project onto the stable sandbox spotlight data",
   }
 });
 
-test("guide is a semantic interactive manual with complete current-UI assets", () => {
+test("guide is a fullscreen immersive manual: live sandbox fills the screen", () => {
   const html = read("../guide.html");
   const script = read("../src/guide.js");
   const css = read("../src/guide.css");
-  const chapters = [
-    "quick-start",
-    "console",
-    "deployment",
-    "operations",
-    "system-tools",
-    "workshop",
-    "reference"
-  ];
-  for (const chapter of chapters) assert.match(html, new RegExp(`id="${chapter}"`));
-  assert.match(html, /src="src\/guide\.js"/);
-  assert.match(html, /data-demo-console/);
-  assert.match(html, /data-guide-lesson=/);
-  assert.match(html, /id="demo-hover-popover"/);
-  assert.match(html, /data-shot-set="deployment"/);
-  assert.match(html, /data-shot-set="workshop"/);
-  assert.match(script, /tomahawk\.guideProgress\.v1/);
-  assert.match(script, /localStorage/);
-  assert.match(script, /IntersectionObserver/);
-  for (const event of ["pointerenter", "pointerleave", "focusin", "focusout"]) {
-    assert.match(script, new RegExp(event));
+  for (const id of ["quick-start", "guide-ui", "sandbox-frame", "spotlight", "scrim", "cursor-hint", "coach", "completion", "reference"]) {
+    assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(css, /font-size:\s*18px/);
-  assert.match(css, /@media \(max-width:\s*820px\)[\s\S]*body\s*\{[\s\S]*font-size:\s*17px/);
+  assert.match(html, /src="src\/guide\.js"/);
+  assert.match(html, /src="\/sandbox"/);
+  assert.doesNotMatch(html, /assets\/guide\//);
+
+  const stepIds = ["deploy-open", "library-pick", "place-unit", "deploy-red", "layers", "playback", "speed", "overview", "select-unit", "save", "workshop"];
+  for (const id of stepIds) assert.match(script, new RegExp(`id: "${id}"`));
+  assert.match(script, /contentDocument/);
+  assert.match(script, /querySelector\("#app"\)/);
+  assert.match(script, /setInterval/);
+  assert.match(script, /AUTO_ADVANCE_MS/);
+  assert.match(script, /function lockSandbox/);
+  assert.match(script, /function prepareStage/);
+  assert.match(script, /allowed: \[/);
+  assert.match(script, /phases: \[/);
+  assert.match(script, /readOnly: true/);
+  assert.match(script, /blockUnlessAllowed/);
+  assert.doesNotMatch(script, /localStorage/);
+  assert.doesNotMatch(script, /guideProgress/);
+
+  assert.match(css, /font-size:\s*16px/);
+  assert.match(css, /@media \(max-width:\s*900px\)/);
   assert.doesNotMatch(css, /transition:\s*all\b/);
   assert.doesNotMatch(`${html}\n${script}`, /Dawnfall|dawnfall|onerror\s*=/i);
   assert.doesNotMatch(html, /<h[1-3][^>]*>[^<]*[:：]/);
   assert.doesNotMatch(html, /lesson-tabs|demo-coach|task-strip|operation-rules|workshop-flow/);
-
-  for (const asset of [
-    "deployment-library.png",
-    "placement-valid.png",
-    "placement-invalid.png",
-    "sandbox-overview.png",
-    "unit-details.png",
-    "system-tools.png",
-    "workshop-builtin.png",
-    "workshop-custom.png"
-  ]) {
-    const file = new URL(`../src/assets/guide/${asset}`, import.meta.url);
-    assert.equal(existsSync(file), true, asset);
-    assert.ok(statSync(file).size > 30_000, asset);
-    assert.match(`${html}\n${script}`, new RegExp(`src/assets/guide/${asset.replace(".", "\\.")}`));
-  }
+  assert.equal(existsSync(new URL("../src/assets/guide", import.meta.url)), false);
 });
 
 test("sandbox shell has continuous deployment, drawer, layers and tutorial controls", () => {

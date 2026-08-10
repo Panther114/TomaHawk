@@ -20,7 +20,7 @@
     "debug:sim": "node --expose-gc scripts/sim-debug.mjs",
     "map:data": "node scripts/build-east-china-sea-map.mjs",
     "screenshot:equipment": "node scripts/screenshot-equipment.mjs",
-    "screenshot:guide": "node scripts/screenshot-guide.mjs"
+    "screenshot:docs": "node scripts/screenshot-docs.mjs"
   },
   "devDependencies": {
     "playwright": "1.62.0"
