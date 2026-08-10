@@ -39,14 +39,20 @@ async function unitsOf(side) {
 }
 
 try {
-  // 1) 操作手册：欢迎页
+  // 1) 首页（landing page）
+  await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: `${OUT}/landing.png` });
+  console.log("landing.png");
+
+  // 2) 操作手册：欢迎页
   await page.goto(`${BASE}/guide`, { waitUntil: "networkidle" });
   await page.waitForFunction(() => document.querySelector("#stage-loading")?.hidden === true, null, { timeout: 20000 });
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${OUT}/guide-welcome.png` });
   console.log("guide-welcome.png");
 
-  // 2) 操作手册：教学进行中（聚光灯 + 光标提示 + 教学卡）
+  // 3) 操作手册：教学进行中（聚光灯 + 光标提示 + 教学卡）
   await page.locator("#start-tutorial").click();
   await page.waitForFunction(() => document.querySelector("#coach-title")?.textContent === "打开装备库", null, { timeout: 8000 });
   await page.waitForTimeout(1400);
