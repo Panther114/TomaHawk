@@ -157,9 +157,9 @@ test("landing shell is a centered game menu with three cinematic depth layers", 
   assert.match(html, /href="\/guide"/);
   assert.match(html, /github\.com\/Panther114\/TomaHawk/);
   for (const asset of [
-    "tomahawk-storm-sunset.webp",
-    "tomahawk-carrier-v2.webp",
-    "tomahawk-hornet-v2.webp",
+    "carrier-sunset-sky.png",
+    "carrier-sunset-island.png",
+    "carrier-sunset-hornet.png",
   ]) {
     assert.match(html, new RegExp(asset.replace(".", "\\.")));
     const file = new URL(`../src/assets/landing/${asset}`, import.meta.url);
@@ -168,9 +168,9 @@ test("landing shell is a centered game menu with three cinematic depth layers", 
   }
   assert.equal(existsSync(new URL("../src/assets/hero/carrier-group.webp", import.meta.url)), false);
   assert.match(html, /src="src\/landing\.js"/);
-  assert.match(html, /data-parallax-x="6"[\s\S]*data-parallax-y="4"/);
-  assert.match(html, /data-parallax-x="22"[\s\S]*data-parallax-y="14"/);
-  assert.match(html, /data-parallax-x="67"[\s\S]*data-parallax-y="43"/);
+  assert.match(html, /data-parallax-x="5"[\s\S]*data-parallax-y="3"/);
+  assert.match(html, /data-parallax-x="23"[\s\S]*data-parallax-y="15"/);
+  assert.match(html, /data-parallax-x="52"[\s\S]*data-parallax-y="34"/);
   assert.match(script, /querySelectorAll\("\[data-parallax-x\]\[data-parallax-y\]"\)/);
   assert.match(script, /x \* depthX/);
   assert.match(script, /y \* depthY/);

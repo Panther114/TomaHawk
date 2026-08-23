@@ -90,26 +90,24 @@ a {
 }
 
 .scene-background {
-  --layer-scale: 1.035;
-  inset: -2%;
-  width: 104%;
-  height: 104%;
+  --layer-scale: 1.045;
+  inset: -2.25%;
+  width: 104.5%;
+  height: 104.5%;
 }
 
 .scene-carrier {
-  --layer-scale: 1.055;
-  inset: -3%;
-  width: 106%;
-  height: 106%;
+  --layer-scale: 1.045;
+  inset: -2.25%;
+  width: 104.5%;
+  height: 104.5%;
 }
 
 .scene-aircraft {
-  --layer-origin-x: -10vw;
-  --layer-origin-y: 10vw;
-  --layer-scale: 1.075;
-  inset: -4%;
-  width: 108%;
-  height: 108%;
+  --layer-scale: 1.045;
+  inset: -2.25%;
+  width: 104.5%;
+  height: 104.5%;
 }
 
 .landing-atmosphere {
@@ -413,7 +411,7 @@ a {
   }
 
   .scene-layer {
-    object-position: 58% center;
+    object-position: center;
   }
 
   .game-menu {
