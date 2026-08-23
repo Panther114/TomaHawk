@@ -148,7 +148,7 @@ test("server exposes the three public pages with pretty routes", () => {
   assert.match(source, /"\/guide": "guide\.html"/);
 });
 
-test("landing shell is a centered game menu with three cinematic depth layers", () => {
+test("landing shell preserves the original carrier composition with cinematic depth effects", () => {
   const html = read("../index.html");
   const css = read("../src/landing.css");
   const script = read("../src/landing.js");
@@ -157,9 +157,10 @@ test("landing shell is a centered game menu with three cinematic depth layers", 
   assert.match(html, /href="\/guide"/);
   assert.match(html, /github\.com\/Panther114\/TomaHawk/);
   for (const asset of [
-    "carrier-sunset-sky.png",
-    "carrier-sunset-island.png",
-    "carrier-sunset-hornet.png",
+    "carrier-original-1280.webp",
+    "carrier-original-2560.webp",
+    "carrier-flight-1280.webp",
+    "carrier-flight-2560.webp",
   ]) {
     assert.match(html, new RegExp(asset.replace(".", "\\.")));
     const file = new URL(`../src/assets/landing/${asset}`, import.meta.url);
@@ -168,9 +169,12 @@ test("landing shell is a centered game menu with three cinematic depth layers", 
   }
   assert.equal(existsSync(new URL("../src/assets/hero/carrier-group.webp", import.meta.url)), false);
   assert.match(html, /src="src\/landing\.js"/);
-  assert.match(html, /data-parallax-x="5"[\s\S]*data-parallax-y="3"/);
-  assert.match(html, /data-parallax-x="23"[\s\S]*data-parallax-y="15"/);
-  assert.match(html, /data-parallax-x="52"[\s\S]*data-parallax-y="34"/);
+  assert.match(html, /data-parallax-x="0"[\s\S]*data-parallax-y="0"/);
+  assert.match(html, /data-parallax-x="4"[\s\S]*data-parallax-y="2"/);
+  assert.match(html, /imagesrcset="[^"]*carrier-original-1280\.webp 1280w,[^"]*carrier-original-2560\.webp 2560w"/);
+  assert.doesNotMatch(html, /scene-carrier/);
+  assert.match(css, /object-fit: contain/);
+  assert.match(css, /\.landing-heat[\s\S]*backdrop-filter: blur\(1\.25px\)/);
   assert.match(script, /querySelectorAll\("\[data-parallax-x\]\[data-parallax-y\]"\)/);
   assert.match(script, /x \* depthX/);
   assert.match(script, /y \* depthY/);

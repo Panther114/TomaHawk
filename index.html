@@ -9,6 +9,15 @@
     <title>战斧 · Tomahawk</title>
     <link rel="icon" href="src/assets/icon.png" />
     <link rel="preload" href="src/fonts/chi_font.ttf" as="font" type="font/ttf" crossorigin />
+    <link
+      rel="preload"
+      as="image"
+      href="src/assets/landing/carrier-original-1280.webp"
+      imagesrcset="src/assets/landing/carrier-original-1280.webp 1280w, src/assets/landing/carrier-original-2560.webp 2560w"
+      imagesizes="100vw"
+      type="image/webp"
+      fetchpriority="high"
+    />
     <link rel="stylesheet" href="src/fonts.css" />
     <link rel="stylesheet" href="src/landing.css" />
   </head>
@@ -18,28 +27,29 @@
       <div class="landing-scene" aria-hidden="true">
         <img
           class="scene-layer scene-background"
-          src="src/assets/landing/carrier-sunset-sky.png"
-          data-parallax-x="5"
-          data-parallax-y="3"
+          src="src/assets/landing/carrier-original-1280.webp"
+          srcset="src/assets/landing/carrier-original-1280.webp 1280w, src/assets/landing/carrier-original-2560.webp 2560w"
+          sizes="100vw"
+          data-parallax-x="0"
+          data-parallax-y="0"
           alt=""
           fetchpriority="high"
-        />
-        <img
-          class="scene-layer scene-carrier"
-          src="src/assets/landing/carrier-sunset-island.png"
-          data-parallax-x="23"
-          data-parallax-y="15"
-          alt=""
+          decoding="async"
         />
         <img
           class="scene-layer scene-aircraft"
-          src="src/assets/landing/carrier-sunset-hornet.png"
-          data-parallax-x="52"
-          data-parallax-y="34"
+          src="src/assets/landing/carrier-flight-1280.webp"
+          srcset="src/assets/landing/carrier-flight-1280.webp 1280w, src/assets/landing/carrier-flight-2560.webp 2560w"
+          sizes="100vw"
+          data-parallax-x="4"
+          data-parallax-y="2"
           alt=""
+          decoding="async"
         />
       </div>
       <div class="landing-atmosphere" aria-hidden="true"></div>
+      <div class="landing-lighting" aria-hidden="true"></div>
+      <div class="landing-heat" aria-hidden="true"></div>
       <div class="landing-grain" aria-hidden="true"></div>
 
       <header class="landing-nav">
