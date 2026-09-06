@@ -531,8 +531,14 @@ export function scanSensors(sim, dt) {
   if (ships && !sim._sensorShipGrid) sim._sensorShipGrid = ships;
   if (missiles && !sim._sensorMissileGrid) sim._sensorMissileGrid = missiles;
   const missileProfile = {};
+  // Build the active-jammer list once per scan instead of rescanning all
+  // ships per observer inside electronicAttackPressure (same result, O(j) build).
+  const jammers = [];
+  for (const ship of sim.ships) {
+    if (ship.alive && ship.jammerActive && (ship.jammerStrength ?? 0) > 0 && (ship.jammerRangeM ?? 0) > 0) jammers.push(ship);
+  }
   for (const observer of observers) {
-    const eaPressure = electronicAttackPressure(observer, sim.ships);
+    const eaPressure = electronicAttackPressure(observer, jammers);
     for (const target of sensorCandidates(ships, observer, observer.radarRangeM)) {
       if (target.id === observer.id || target.side === observer.side || !target.alive) continue;
       if (target.domain === "subsurface") continue;

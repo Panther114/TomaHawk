@@ -302,6 +302,12 @@ function waterMaskCellIsClear(index, point, clearanceM) {
     maxY: (cellY + 1) * WATER_MASK_CELL_M + clearanceKey
   };
   const clear = entriesInBounds(index, bounds).length === 0;
+  // Bound the mask: long coastal runs otherwise grow it without limit
+  // (64MiB heap). Evict the oldest entry when over cap — recompute is cheap.
+  if (index.safeWaterMask.size >= 20000) {
+    const oldest = index.safeWaterMask.keys().next().value;
+    index.safeWaterMask.delete(oldest);
+  }
   index.safeWaterMask.set(key, clear);
   return clear;
 }

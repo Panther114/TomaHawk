@@ -76,7 +76,12 @@ function statsFor(cls) {
 
 let _catalogCache = null;
 let _catalogSize = -1;
+let _catalogKeys = "";
 let _presentationById = null;
+
+function catalogKeys() {
+  return Object.keys(SHIP_CLASSES).join("|");
+}
 
 function rebuildCatalogCache() {
   const entries = Object.entries(SHIP_CLASSES);
@@ -102,18 +107,22 @@ function rebuildCatalogCache() {
   });
   _presentationById = new Map(_catalogCache.map((item) => [item.id, item]));
   _catalogSize = entries.length;
+  _catalogKeys = entries.map(([id]) => id).join("|");
 }
 
 export function unitCatalog() {
-  // Invalidate when the live registry grows/shrinks (Unit Workshop register*).
-  if (!_catalogCache || _catalogSize !== Object.keys(SHIP_CLASSES).length) {
+  // Invalidate when the live registry grows/shrinks OR swaps an entry
+  // (Unit Workshop same-count replace kept stale data before).
+  const keys = catalogKeys();
+  if (!_catalogCache || _catalogSize !== Object.keys(SHIP_CLASSES).length || _catalogKeys !== keys) {
     rebuildCatalogCache();
   }
   return _catalogCache;
 }
 
 export function unitPresentation(id, cls = SHIP_CLASSES[id]) {
-  if (!_presentationById || _catalogSize !== Object.keys(SHIP_CLASSES).length) {
+  const keys = catalogKeys();
+  if (!_presentationById || _catalogSize !== Object.keys(SHIP_CLASSES).length || _catalogKeys !== keys) {
     rebuildCatalogCache();
   }
   return _presentationById.get(id) || {

@@ -330,7 +330,7 @@ export const DEFAULTS = {
   })
 };
 
-const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9 .\-]*$/;
+const TAG_RE = /^[A-Za-z0-9]+$/;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /** Validate an editor-JSON unit against its schema. Returns {ok, errors:[{field,msg}]}.

@@ -6,7 +6,7 @@ import { SCENARIO_MODE, SIDE } from "./constants.js";
 import { addEvent } from "./events.js";
 import { canRunScenario } from "./scenario.js";
 import { ageTracks, scanSensors, shareTracks, pruneDeadTracks, markContactDead } from "./sensors.js";
-import { buildForcePicture } from "./command.js";
+import { buildForcePicture, computeFleetCommand } from "./command.js";
 import { moveShips, decideShip } from "./movement.js";
 import { decideAircraft, updateAircraft } from "./aircraft.js";
 import { scanSonar } from "./sonar.js";
@@ -109,6 +109,14 @@ export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
     buildForcePicture(sim, { dirtyOnly: !pictureDue && (sensorChanged || sharedChanged) });
     sim.nextForcePictureAt = sim.time + FORCE_PICTURE_INTERVAL_S;
   }
+  // Fleet command BEFORE movement decisions so navigation/CAP uses a fresh
+  // axis instead of a 1-tick-stale one. planEngagements reuses it same-tick.
+  // Gated to fire-plan cadence so RNG draws and cost match the old schedule —
+  // just earlier in the tick, not more often.
+  if (sim._fleetCommandAt == null || sim.time >= (sim.nextFirePlanAt ?? 0)) {
+    computeFleetCommand(sim);
+    sim._fleetCommandAt = sim.time;
+  }
   for (const ship of sim.ships) {
     if (!ship.alive) continue;
     if (ship.domain === "air") decideAircraft(sim, ship);
@@ -161,7 +169,16 @@ export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
   // long peer logs left two WINCHESTER DDGs circling for 6000s. Aircraft with
   // any remaining AAM/ASUW and live strike/AAM weapons still count.
   if (!sim.ended && aliveSideCount === 2) {
-    const stillDangerous = (side) => {
+    // Throttle the O(ships×loadout) scan to 1s cadence; the 90s hold makes
+    // 1s quantization lossless. Cache per side.
+    if (sim._stalemateCacheAt == null || sim.time - sim._stalemateCacheAt >= 1) {
+      sim._stalemateCacheAt = sim.time;
+      sim._stalemateCache = {
+        [SIDE.BLUE]: stillDangerous(SIDE.BLUE),
+        [SIDE.RED]: stillDangerous(SIDE.RED),
+      };
+    }
+    function stillDangerous(side) {
       let hasAir = false;
       let hasBase = false;
       for (const ship of sim._shipsBySide?.get(side) || sim.ships) {
@@ -180,6 +197,9 @@ export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
       // Air + base regenerates combat power. Solo airborne units without a base
       // and without munitions will splash on fuel — leave that path open rather
       // than declaring a premature draw (airfield-destroyed divert tests).
+      // NOTE: unarmed AWAC + base intentionally still blocks a draw so fuel/RTB
+      // lifecycle tests keep running; CVN+AWAC-only endless orbit is a known
+      // accepted tradeoff (documented, not silently "fixed").
       if (hasAir && hasBase) return true;
       // Still-airborne aircraft (even empty) are not a settled stalemate until
       // they splash or recover — only pure surface WINCHESTER pairs draw.
@@ -191,8 +211,10 @@ export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
         if (m.launchRole === "anti_air" && !String(m.targetId || "").startsWith("M-")) return true;
       }
       return false;
-    };
-    if (!stillDangerous(SIDE.BLUE) && !stillDangerous(SIDE.RED)) {
+    }
+    const blueDangerous = sim._stalemateCache[SIDE.BLUE];
+    const redDangerous = sim._stalemateCache[SIDE.RED];
+    if (!blueDangerous && !redDangerous) {
       sim._stalemateSince = sim._stalemateSince ?? sim.time;
       if (sim.time - sim._stalemateSince >= STALEMATE_HOLD_S) {
         sim.ended = "draw";

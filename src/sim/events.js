@@ -3,10 +3,11 @@
 // object's own `events`/`time` fields.
 
 export function eventSeverity(text) {
-  if (/mission-killed|sinking|hit by/i.test(text)) return "kill";
-  if (/intercepted|destroyed incoming/i.test(text)) return "intercept";
-  if (/launched|queued/i.test(text)) return "launch";
-  if (/missed|failed|exhausted|leaked/i.test(text)) return "miss";
+  const t = String(text).toLowerCase();
+  if (t.includes("mission-killed") || t.includes("sinking") || t.includes("hit by")) return "kill";
+  if (t.includes("intercepted") || t.includes("destroyed incoming")) return "intercept";
+  if (t.includes("launched") || t.includes("queued")) return "launch";
+  if (t.includes("missed") || t.includes("failed") || t.includes("exhausted") || t.includes("leaked")) return "miss";
   return "info";
 }
 

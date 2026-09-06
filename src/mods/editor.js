@@ -32,6 +32,8 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
   let isNew = false;      // form is an unsaved new unit
   let dirty = false;
   let open = false;
+  let query = "";
+  let kindFilter = "all";
 
   const findUnit = (key) => units.find((u) => recordKey(u) === key);
   const unitTag = (u) => u.prefixZh || u.prefix;
@@ -40,27 +42,56 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
   const safeNotify = () => { try { onChange?.(); } catch (e) { console.warn("[mods] onChange failed", e); } };
 
   // --- list ----------------------------------------------------------------
+  function matchesQuery(u) {
+    if (kindFilter !== "all" && u.kind !== kindFilter) return false;
+    if (kindFilter === "custom" && isBuiltinUnit(u)) return false;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return labelOf(u).toLowerCase().includes(q) || String(unitId(u)).toLowerCase().includes(q);
+  }
   function renderList() {
     const groups = { ammo: [], naval: [], ground: [], aircraft: [] };
-    for (const u of units) (groups[u.kind] || groups.naval).push(u);
+    for (const u of units) {
+      if (!matchesQuery(u)) continue;
+      (groups[u.kind] || groups.naval).push(u);
+    }
+    const customCount = units.filter((u) => !isBuiltinUnit(u)).length;
+    const countChip = (kind, label) => {
+      const n = kind === "all" ? units.length : kind === "custom" ? customCount : units.filter((u) => u.kind === kind).length;
+      const active = kindFilter === kind ? " active" : "";
+      return `<button class="mods-chip${active}" data-filter="${kind}">${esc(label)} ${n}</button>`;
+    };
     const section = (kind) => {
       const items = groups[kind].sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
+      if (!items.length) return "";
       const rows = items.map((u) => {
         const key = recordKey(u);
-        const lock = isBuiltinUnit(u) ? `<span class="mods-lock" title="Built-in">●</span>` : "";
+        const builtin = isBuiltinUnit(u);
+        const lock = builtin ? `<span class="mods-lock" title="内置">锁</span>` : `<span class="mods-custom" title="自创">改</span>`;
         const sel = key === selectedKey ? " selected" : "";
-        return `<button class="mods-item${sel}" data-key="${esc(key)}">${lock}<span>${esc(labelOf(u))}</span></button>`;
+        const sub = u.kind === "ammo" ? esc((u.targets || []).join("/")) : esc(u.prefixZh || u.prefix || "");
+        return `<button class="mods-item${sel}" data-key="${esc(key)}" title="${esc(labelOf(u))}">${lock}<span class="mods-item-main"><span class="mods-item-name">${esc(labelOf(u))}</span><span class="mods-item-sub">${sub}</span></span></button>`;
       }).join("");
-      return `<div class="mods-group"><div class="mods-group-h">${esc(KIND_LABEL[kind].zh)}</div>${rows || `<div class="mods-empty">—</div>`}</div>`;
+      return `<div class="mods-group"><div class="mods-group-h">${esc(KIND_LABEL[kind].zh)} · ${items.length}</div>${rows}</div>`;
     };
+    const total = groups.naval.length + groups.ground.length + groups.aircraft.length + groups.ammo.length;
     listEl.innerHTML = `
+      <div class="mods-searchbar"><input type="search" data-search placeholder="搜索名称 / 代号" value="${esc(query)}" aria-label="搜索单位" /></div>
+      <div class="mods-chips">${countChip("all", "全部")}${countChip("naval", "海上")}${countChip("ground", "陆基")}${countChip("aircraft", "空中")}${countChip("ammo", "弹药")}${countChip("custom", "自创")}</div>
       <div class="mods-newbar">
         <button class="mods-new" data-new="naval">+ ${esc(L(KIND_LABEL.naval))}</button>
         <button class="mods-new" data-new="ground">+ ${esc(L(KIND_LABEL.ground))}</button>
         <button class="mods-new" data-new="aircraft">+ ${esc(L(KIND_LABEL.aircraft))}</button>
         <button class="mods-new" data-new="ammo">+ ${esc(L(KIND_LABEL.ammo))}</button>
       </div>
-      ${section("naval")}${section("ground")}${section("aircraft")}${section("ammo")}`;
+      ${section("naval")}${section("ground")}${section("aircraft")}${section("ammo")}
+      ${total === 0 ? `<div class="mods-empty">无匹配 — 清空搜索或新建单位。</div>` : ""}`;
+    const searchInput = listEl.querySelector("[data-search]");
+    if (searchInput && document.activeElement?.dataset?.search !== undefined) {
+      searchInput.focus();
+      const len = searchInput.value.length;
+      try { searchInput.setSelectionRange(len, len); } catch {}
+    }
   }
 
   // --- detail form ---------------------------------------------------------
@@ -93,9 +124,9 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     const lo = form.baseLoadout || {};
     const rows = Object.entries(lo).map(([id, count]) => {
       const label = MISSILES[id]?.shortLabel ?? id;
-      const rm = locked ? "" : `<button class="mods-lo-rm" data-loadout-remove="${esc(id)}" title="Remove">×</button>`;
+      const rm = locked ? "" : `<button class="mods-lo-rm" data-loadout-remove="${esc(id)}" title="移除" aria-label="移除${esc(id)}">×</button>`;
       return `<div class="mods-lo-row"><span class="mods-lo-name" title="${esc(id)}">${esc(label)}</span>
-        <input type="number" min="0" step="1" data-loadout-id="${esc(id)}" value="${esc(count)}"${locked ? " disabled" : ""} />${rm}</div>`;
+        <input type="number" min="0" step="1" data-loadout-id="${esc(id)}" value="${esc(count)}" aria-label="${esc(id)}数量"${locked ? " disabled" : ""} />${rm}</div>`;
     }).join("");
     // Only offer ammo this unit's platform type can actually carry (see
     // missileAllowedForDomain) -- this is the fix for a naval/ground/aircraft
@@ -103,18 +134,18 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     // it makes any sense for that platform (e.g. an aircraft equipping ESSM).
     const avail = availableAmmoIds(UNIT_KIND_DOMAIN[form.kind]).filter((id) => !(id in lo));
     const addSel = locked
-      ? `<div class="mods-lo-hint">${esc("内置单位：点击「复制」后即可添加/编辑载弹")}</div>`
-      : `<div class="mods-lo-add"><select data-loadout-add>
-        <option value="">+ ${esc("添加弹药")}</option>
-        ${avail.map((id) => `<option value="${esc(id)}">${esc(MISSILES[id]?.shortLabel ?? id)}</option>`).join("")}
+      ? `<div class="mods-lo-hint">内置单位：点击「复制」后即可添加/编辑载弹。</div>`
+      : `<div class="mods-lo-add"><select data-loadout-add aria-label="添加弹药">
+        <option value="">+ 添加弹药（${avail.length}种可选）</option>
+        ${avail.map((id) => `<option value="${esc(id)}">${esc(MISSILES[id]?.shortLabel ?? id)} · ${esc(id)}</option>`).join("")}
       </select></div>`;
-    const title = "载弹";
     // Live cell-budget readout (counts per-missile cell cost, not just counts).
     const used = +usedCells(lo).toFixed(2);
     const cap = Number(form.vlsCells) || 0;
     const over = used > cap;
-    const cellTag = `<span class="mods-lo-cells${over ? " over" : ""}">${used} / ${cap} 单元</span>`;
-    return `<fieldset class="mods-section mods-loadout"><legend>${esc(title)} ${cellTag}</legend>${rows || `<div class="mods-empty">—</div>`}${addSel}</fieldset>`;
+    const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+    const budget = `<div class="mods-budget" role="status" aria-label="弹库占用"><div class="mods-budget-bar"><i style="width:${pct}%" class="${over ? "over" : ""}"></i></div><span class="mods-lo-cells${over ? " over" : ""}">${used} / ${cap} 单元${over ? " · 超载" : ""}</span></div>`;
+    return `<details class="mods-section mods-loadout" open><summary>载弹 ${budget}</summary><div class="mods-lo-body">${rows || `<div class="mods-empty">暂无载弹 — 从下方添加。</div>`}${addSel}</div></details>`;
   }
 
   // Role-dependent fields on ammo: salvo is for surface-strike weapons;
@@ -130,7 +161,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
   function renderDetail() {
     if (!form) {
-      detailEl.innerHTML = `<div class="mods-placeholder">从左侧选择一个单位，或新建一个。</div>`;
+      detailEl.innerHTML = `<div class="mods-placeholder"><b>从左侧选择一个单位，或新建一个。</b><span>内置单位只读 — 「复制」后即可自定义。支持搜索过滤，载弹超载会实时标红。</span></div>`;
       return;
     }
     const schema = SCHEMAS[form.kind];
@@ -138,28 +169,36 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     const typeField = isNew
       ? `<label class="mods-field"><span class="mods-flabel">类型</span>
           <select data-type-select>${DEPLOYABLE_TYPES.concat("ammo").map((k) => `<option value="${k}"${k === form.kind ? " selected" : ""}>${esc(L(KIND_LABEL[k]))}</option>`).join("")}</select></label>`
-      : `<div class="mods-field mods-typeshow"><span class="mods-flabel">类型</span><span class="mods-typeval">${esc(L(KIND_LABEL[form.kind]))}${locked ? " · 内置（复制后可编辑）" : ""}</span></div>`;
+      : "";
+    const chips = [];
+    if (form.vlsCells != null) chips.push(`<span class="mods-stat">${esc(String(form.vlsCells))} 单元</span>`);
+    if (form.radarRangeNm != null) chips.push(`<span class="mods-stat">雷达 ${esc(String(form.radarRangeNm))}NM</span>`);
+    if (form.cruiseSpeedKt != null && form.kind !== "ground") chips.push(`<span class="mods-stat">${esc(String(form.cruiseSpeedKt))}kt</span>`);
+    if (form.damageResist != null || form.squadronSize != null) chips.push(`<span class="mods-stat">耐久 ${esc(String(form.squadronSize ?? form.damageResist))}</span>`);
+    if (locked) chips.push(`<span class="mods-stat lock">内置只读</span>`);
+    if (isNew) chips.push(`<span class="mods-stat new">新建未保存</span>`);
 
-    const sections = schema.sections.map((sec) =>
-      `<fieldset class="mods-section"><legend>${esc(L(sec.title))}</legend>
-        <div class="mods-grid">${sec.fields.filter(fieldVisible).map((f) => fieldHtml(f, locked)).join("")}</div></fieldset>`
+    const sections = schema.sections.map((sec, idx) =>
+      `<details class="mods-section"${idx === 0 ? " open" : ""}><summary>${esc(L(sec.title))}</summary>
+        <div class="mods-grid">${sec.fields.filter(fieldVisible).map((f) => fieldHtml(f, locked)).join("")}</div></details>`
     ).join("");
 
     const loadout = schema.loadout ? loadoutHtml(locked) : "";
 
-    const dirtyTag = dirty ? `<span class="mods-dirty">未保存</span>` : "";
-    // Actions sit at the top: 保存 (library), 复制 (clone), 导出 JSON as 保存 for locked-only flows.
-    // When both library-save and file-export exist, file export is labeled 保存文件.
+    const dirtyTag = dirty ? `<span class="mods-dirty">未保存</span>` : `<span class="mods-clean">已保存</span>`;
     const toolbar = `<div class="mods-actions mods-actions-top">
+      ${locked ? `<button type="button" class="mods-btn primary" data-action="clone">复制并自定义</button>` : ""}
       ${locked ? "" : `<button type="button" class="mods-btn primary" data-action="save">保存</button>`}
-      <button type="button" class="mods-btn" data-action="clone">复制</button>
-      <button type="button" class="mods-btn" data-action="export">${locked ? "保存" : "保存文件"}</button>
+      ${locked ? "" : `<button type="button" class="mods-btn" data-action="clone">复制</button>`}
+      <button type="button" class="mods-btn" data-action="export">${locked ? "导出 JSON" : "导出文件"}</button>
       ${locked || isNew ? "" : `<button type="button" class="mods-btn danger" data-action="delete">删除</button>`}
       ${dirtyTag}<span class="mods-errs" data-errs></span></div>`;
 
     detailEl.innerHTML = `<div class="mods-form">
+      <div class="mods-summary"><div class="mods-summary-main"><span class="mods-kind">${esc(L(KIND_LABEL[form.kind]))}</span><b class="mods-name">${esc(form.kind === "ammo" ? unitId(form) : (form.name || "未命名"))}</b><span class="mods-id">${esc(form.kind === "ammo" ? "" : (form.id || form.prefix || ""))}</span></div><div class="mods-stats">${chips.join("")}</div></div>
       ${toolbar}
       <div class="mods-toprow">${typeField}</div>${sections}${loadout}</div>`;
+    detailEl.scrollTop = 0;
   }
 
   function showErrors(errs) {
@@ -244,11 +283,14 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     const clean = JSON.parse(JSON.stringify(form));
     delete clean._key; delete clean.builtin; delete clean.locked;
     const blob = new Blob([JSON.stringify(clean, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = `${unitId(form)}.json`;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(a.href);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
   async function doDelete() {
@@ -291,10 +333,29 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
   // --- events --------------------------------------------------------------
   listEl.addEventListener("click", (e) => {
+    const filter = e.target.closest("[data-filter]");
+    if (filter) {
+      kindFilter = filter.dataset.filter;
+      renderList();
+      return;
+    }
     const newBtn = e.target.closest("[data-new]");
     if (newBtn) return startNew(newBtn.dataset.new);
     const item = e.target.closest("[data-key]");
     if (item) return selectKey(item.dataset.key);
+  });
+
+  listEl.addEventListener("input", (e) => {
+    if (e.target.matches("[data-search]")) {
+      query = e.target.value;
+      const pos = e.target.selectionStart;
+      renderList();
+      const input = listEl.querySelector("[data-search]");
+      if (input) {
+        input.focus();
+        try { input.setSelectionRange(pos, pos); } catch {}
+      }
+    }
   });
 
   detailEl.addEventListener("input", (e) => {
@@ -397,11 +458,27 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     if (dirty) return;
     dirty = true;
     const tag = detailEl.querySelector(".mods-actions");
-    if (tag && !tag.querySelector(".mods-dirty")) {
-      const span = document.createElement("span");
-      span.className = "mods-dirty";
-      span.textContent = "未保存";
-      tag.insertBefore(span, tag.querySelector("[data-errs]"));
+    if (tag) {
+      const clean = tag.querySelector(".mods-clean");
+      if (clean) {
+        clean.className = "mods-dirty";
+        clean.textContent = "未保存";
+      } else if (!tag.querySelector(".mods-dirty")) {
+        const span = document.createElement("span");
+        span.className = "mods-dirty";
+        span.textContent = "未保存";
+        tag.insertBefore(span, tag.querySelector("[data-errs]"));
+      }
+    }
+    const summary = detailEl.querySelector(".mods-stats .mods-stat.new");
+    if (!summary) {
+      const stats = detailEl.querySelector(".mods-stats");
+      if (stats && isNew) {
+        const s = document.createElement("span");
+        s.className = "mods-stat new";
+        s.textContent = "新建未保存";
+        stats.appendChild(s);
+      }
     }
   }
 

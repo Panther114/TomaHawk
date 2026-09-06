@@ -92,6 +92,17 @@ function sonarTrack(sim, observer, target, rangeM, detectRangeM, active) {
 
 export function scanSonar(sim, dt) {
   let changed = false;
+  // Early-out before rebuilding target lists: tick cooldowns first so idle
+  // ticks (no sonar due) pay O(observers) instead of O(observers×targets).
+  const due = [];
+  for (const observer of sim.ships) {
+    if (!observer.alive || !((observer.passiveSonarRangeM ?? 0) > 0 || (observer.activeSonarRangeM ?? 0) > 0)) continue;
+    observer.sonarCooldown = (observer.sonarCooldown ?? 0) - dt;
+    if (observer.sonarCooldown > 0) continue;
+    observer.sonarCooldown = observer.sonarInterval ?? 6;
+    due.push(observer);
+  }
+  if (!due.length) return false;
   const acousticTargets = sim._sonarAcousticTargets ??= [];
   acousticTargets.length = 0;
   for (const unit of sim.ships) {
@@ -108,13 +119,15 @@ export function scanSonar(sim, dt) {
   targets.length = 0;
   for (const target of acousticTargets) targets.push(target);
   for (const target of underwaterWeapons) targets.push(target);
-  for (const observer of sim.ships) {
-    if (!observer.alive || !((observer.passiveSonarRangeM ?? 0) > 0 || (observer.activeSonarRangeM ?? 0) > 0)) continue;
-    observer.sonarCooldown = (observer.sonarCooldown ?? 0) - dt;
-    if (observer.sonarCooldown > 0) continue;
-    observer.sonarCooldown = observer.sonarInterval ?? 6;
+  // Max plausible sonar reach² for a cheap squared pre-gate before distance3d.
+  const MAX_SONAR_M = 130 * 1852;
+  const MAX_SONAR_SQ = MAX_SONAR_M * MAX_SONAR_M;
+  for (const observer of due) {
     for (const target of targets) {
       if (!target.alive || target.side === observer.side || target.id === observer.id) continue;
+      const dx = (observer.x ?? 0) - (target.x ?? 0);
+      const dy = (observer.y ?? 0) - (target.y ?? 0);
+      if (dx * dx + dy * dy > MAX_SONAR_SQ) continue;
       const rangeM = distance3d(observer, target);
       const sonarHealth = clamp(observer.subsystems?.sonar ?? 1, 0.12, 1);
       const depthFactor = isUnderwaterTarget(target)

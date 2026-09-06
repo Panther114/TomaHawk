@@ -154,6 +154,9 @@ export async function loadMods() {
  *  Persists BEFORE registering so a failed write never leaves a phantom unit
  *  live in the sim catalogues but missing from storage. */
 export async function saveMod(unit) {
+  if (isBuiltinUnit(unit)) {
+    throw new Error(`Cannot overwrite built-in unit ${recordKey(unit)} — clone it first`);
+  }
   const record = { ...unit, _key: recordKey(unit) };
   if (hasIndexedDb()) await dbPut((dbHandle ||= await openDb()), record);
   registerUnit(record);

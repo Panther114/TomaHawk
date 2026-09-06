@@ -390,7 +390,7 @@ export const MISSILES = {
     symbol: "circle",
     medium: "underwater",
     rangeM: 27 * NM,
-    speedMps: 55,
+    speedMps: 28,
     cellCost: 1,
     damage: 2,
     pk: 0.72,
@@ -520,6 +520,9 @@ export function isBuiltinMissile(id) {
 export function registerMissile(spec) {
   if (!spec || typeof spec.name !== "string" || !spec.name) {
     throw new Error("registerMissile: spec.name is required");
+  }
+  if (BUILTIN_MISSILE_IDS.has(spec.name)) {
+    throw new Error(`registerMissile: ${spec.name} is a built-in and cannot be overwritten`);
   }
   MISSILES[spec.name] = spec;
   return spec.name;

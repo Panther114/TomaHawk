@@ -628,45 +628,72 @@ function launchMissile(sim, launcher, order) {
 export function processLaunchQueues(sim) {
   for (const ship of sim.ships) {
     if (!ship.alive || !ship.launchQueue?.length) continue;
-    let selectedOrder = null;
-    let selectedIndex = -1;
-    const invalidIndexes = [];
-    for (let index = 0; index < ship.launchQueue.length; index++) {
-      const order = ship.launchQueue[index];
-      const spec = MISSILES[order.missileId];
-      if (!spec || availableCount(ship, order.missileId) <= 0) {
-        invalidIndexes.push(index);
-        continue;
+    // Defensive and offensive queues are serviced separately so a saturated
+    // offensive backlog can never starve self-defence. Offense keeps the
+    // 1/ship/tick salvo spacing (covered by tests); defence may release up to
+    // 2 ready interceptors per tick (channel caps still enforced upstream).
+    // Out-of-envelope orders are still discarded (target left release
+    // envelope) — see "queued launch is canceled..." test.
+    const pickBest = (defensive) => {
+      let selectedOrder = null;
+      let selectedIndex = -1;
+      const invalidIndexes = [];
+      for (let index = 0; index < ship.launchQueue.length; index++) {
+        const order = ship.launchQueue[index];
+        if (!!order.defensive !== defensive) continue;
+        const spec = MISSILES[order.missileId];
+        if (!spec || availableCount(ship, order.missileId) <= 0) {
+          invalidIndexes.push(index);
+          continue;
+        }
+        const queueReadyAt = order.defensive ? (ship.nextDefensiveLaunchAt || 0) : (ship.nextLaunchAt || 0);
+        const lastTypeLaunch = ship.lastLaunchAtByMissile?.[order.missileId] ?? -Infinity;
+        if (sim.time < Math.max(order.readyAt, queueReadyAt) || sim.time - lastTypeLaunch < effectiveLaunchIntervalS(ship, spec)) continue;
+        if (!revalidateLaunchOrder(sim, ship, order, spec)) {
+          invalidIndexes.push(index);
+          continue;
+        }
+        if (!selectedOrder) {
+          selectedOrder = order;
+          selectedIndex = index;
+          continue;
+        }
+        const earlier = (order.priority ?? 50) - (selectedOrder.priority ?? 50)
+          || order.readyAt - selectedOrder.readyAt
+          || index - selectedIndex;
+        if (earlier < 0) {
+          selectedOrder = order;
+          selectedIndex = index;
+        }
       }
-      const queueReadyAt = order.defensive ? (ship.nextDefensiveLaunchAt || 0) : (ship.nextLaunchAt || 0);
-      const lastTypeLaunch = ship.lastLaunchAtByMissile?.[order.missileId] ?? -Infinity;
-      if (sim.time < Math.max(order.readyAt, queueReadyAt) || sim.time - lastTypeLaunch < effectiveLaunchIntervalS(ship, spec)) continue;
-      // Targets are intentionally revalidated only once the order is eligible
-      // for release. A moving contact may leave the envelope while queued; a
-      // shot must never be released against the stale snapshot in that order.
-      if (!revalidateLaunchOrder(sim, ship, order, spec)) {
-        invalidIndexes.push(index);
-        continue;
+      return { selectedOrder, selectedIndex, invalidIndexes };
+    };
+    const prune = (invalidIndexes) => {
+      for (let i = invalidIndexes.length - 1; i >= 0; i--) {
+        ship.launchQueue.splice(invalidIndexes[i], 1);
       }
-      if (!selectedOrder) {
-        selectedOrder = order;
-        selectedIndex = index;
-        continue;
-      }
-      const earlier = (order.priority ?? 50) - (selectedOrder.priority ?? 50)
-        || order.readyAt - selectedOrder.readyAt
-        || index - selectedIndex;
-      if (earlier < 0) {
-        selectedOrder = order;
-        selectedIndex = index;
+    };
+    const def = pickBest(true);
+    prune(def.invalidIndexes);
+    if (def.selectedOrder) {
+      const launchIndex = ship.launchQueue.indexOf(def.selectedOrder);
+      if (launchIndex >= 0 && launchMissile(sim, ship, def.selectedOrder)) {
+        ship.launchQueue.splice(launchIndex, 1);
+        const def2 = pickBest(true);
+        prune(def2.invalidIndexes);
+        if (def2.selectedOrder) {
+          const idx2 = ship.launchQueue.indexOf(def2.selectedOrder);
+          if (idx2 >= 0 && launchMissile(sim, ship, def2.selectedOrder)) {
+            ship.launchQueue.splice(idx2, 1);
+          }
+        }
       }
     }
-    for (let i = invalidIndexes.length - 1; i >= 0; i--) {
-      ship.launchQueue.splice(invalidIndexes[i], 1);
-    }
-    if (selectedOrder) {
-      const launchIndex = ship.launchQueue.indexOf(selectedOrder);
-      if (launchIndex >= 0 && launchMissile(sim, ship, selectedOrder)) {
+    const off = pickBest(false);
+    prune(off.invalidIndexes);
+    if (off.selectedOrder) {
+      const launchIndex = ship.launchQueue.indexOf(off.selectedOrder);
+      if (launchIndex >= 0 && launchMissile(sim, ship, off.selectedOrder)) {
         ship.launchQueue.splice(launchIndex, 1);
       }
     }
@@ -1202,7 +1229,7 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
     if (samOpen && sm6Count > 0 && sm6 && rangeM <= sm6.rangeM) return "SM-6";
     if (samOpen && sm2Count > 0 && sm2 && rangeM <= sm2.rangeM) return "SM-2MR";
     if (samOpen && essmCount > 0 && essm && rangeM <= essm.rangeM) return "ESSM";
-    return null;
+    return chooseGenericSamWeapon(ship, rangeM, samOpen, true);
   }
   if (cheapFollowupPreferred && essmAvailable) return "ESSM";
   if (urgent && essmAvailable && rangeM <= essm.rangeM) return "ESSM";
@@ -1217,7 +1244,27 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   if (samOpen && essmCount > 0 && essm && rangeM <= essm.rangeM) return "ESSM";
   if (samOpen && sm2Count > 0 && sm2 && rangeM <= sm2.rangeM) return "SM-2MR";
   if (samOpen && sm6Count > 0 && sm6 && rangeM <= sm6.rangeM) return "SM-6";
-  return null;
+  return chooseGenericSamWeapon(ship, rangeM, samOpen, false);
+}
+
+// Workshop SAM fallback: any missile-target-capable round actually in the
+// magazine, longest reach first. Vanilla ships return before reaching here
+// (their SM-2/6/ESSM paths above), so vanilla behavior is unchanged — this
+// only enables custom SAMs that were previously dead weight on ships.
+function chooseGenericSamWeapon(ship, rangeM, samOpen, highEnergy) {
+  if (!samOpen || !ship.loadout) return null;
+  const vanilla = new Set(["SM-2MR", "SM-6", "ESSM"]);
+  let best = null;
+  for (const id of Object.keys(ship.loadout)) {
+    if (vanilla.has(id)) continue;
+    if (!(ship.loadout[id] > 0)) continue;
+    const spec = MISSILES[id];
+    if (!spec || !missileCanTarget(spec, "missile")) continue;
+    if (isHypersonicOnlyInterceptor(spec) && !highEnergy) continue;
+    if (rangeM > (spec.rangeM ?? 0)) continue;
+    if (!best || (spec.rangeM ?? 0) > (MISSILES[best].rangeM ?? 0)) best = id;
+  }
+  return best;
 }
 
 function missileThreatScore(sim, missile) {
@@ -1749,7 +1796,12 @@ export function planEngagements(sim) {
   sim._raidCountCache = sim._raidCountCachePool ?? (sim._raidCountCachePool = new Map());
   sim._raidCountCache.clear();
   sim._engagementIndex = buildEngagementIndex(sim);
-  computeFleetCommand(sim);
+  // stepSim already computed fleet command pre-decisions same tick — reuse it
+  // instead of paying a second O(ships×tracks) pass.
+  if (sim._fleetCommandAt !== sim.time) {
+    computeFleetCommand(sim);
+    sim._fleetCommandAt = sim.time;
+  }
   planDefensiveFires(sim);
   planOffensiveFires(sim);
   for (const ship of sim.ships) {
@@ -1783,7 +1835,7 @@ function handleTargetLoss(sim, missile, spec) {
 function closureRate(missile, target) {
   const dx = target.x - missile.x;
   const dy = target.y - missile.y;
-  const d = Math.hypot(dx, dy) || 1;
+  const d = Math.sqrt(dx * dx + dy * dy) || 1;
   const lx = dx / d;
   const ly = dy / d;
   const mvx = Math.cos(missile.heading) * missile.speed;
@@ -2229,9 +2281,13 @@ export function pointDefense(sim) {
       // CIWS against hypersonic / high-energy threats: almost no kinematic window.
       const seaSkimPenalty = threat.seaSkimming ? 0.18 : 0;
       const diff = interceptDifficultyVsThreat(threat, null, { ciws: true });
+      // The pkFloor is a per-mount minimum, but it must scale with saturation —
+      // otherwise an overwhelming raid becomes EASIER per-mount to stop than the
+      // model intends (floor raising a 0.09 PK to 0.10 under saturation).
+      const scaledFloor = diff.pkFloor * saturationRatio;
       const pKill = clamp(
         basePk * ciwsEffectiveness(ship) * saturationRatio - seaSkimPenalty - damagePenalty - diff.total,
-        diff.pkFloor,
+        scaledFloor,
         Math.min(0.72, diff.pkCeil)
       );
       if (sim.rng.next() < pKill) {

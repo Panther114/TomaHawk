@@ -15,10 +15,10 @@ function isPublicAsset(rel) {
   return ["index.html", "sandbox.html", "guide.html"].includes(rel) || rel.startsWith("src/");
 }
 
-// Fixed on-disk save location: strips anything but word chars/space/dash so the
+// Fixed on-disk save location: strips anything but word chars/space/dash/CJK so the
 // name can't escape saves/scenarios/ via "../" or an absolute path.
 function safeScenarioName(name) {
-  const cleaned = String(name || "").replace(/[^\w \-]/g, "").trim();
+  const cleaned = String(name || "").replace(/[^\w \-\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/g, "").trim();
   return (cleaned || "Untitled").slice(0, 80);
 }
 
@@ -58,9 +58,11 @@ createServer(async (req, res) => {
     // payload is malformed.
     if (scenarioStoreEnabled && url.pathname === "/debug/save" && req.method === "POST") {
       const chunks = [];
+      let size = 0;
       for await (const chunk of req) {
+        size += chunk.length;
+        if (size > 8 * 1024 * 1024) break; // 8MB cap
         chunks.push(chunk);
-        if (chunks.reduce((n, c) => n + c.length, 0) > 8 * 1024 * 1024) break; // 8MB cap
       }
       try {
         const { perf, sim: simLog } = JSON.parse(Buffer.concat(chunks).toString("utf8"));

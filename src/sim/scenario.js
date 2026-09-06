@@ -274,7 +274,8 @@ export function restoreScenario(data) {
   const heightM = scenarioDimension(data.heightM, SIM_HEIGHT_M);
   const mapId = normalizeMapId(data.mapId ?? DEFAULT_MAP_ID);
   resetShipIds(Math.max(1, ...ships.map((s) => {
-    const num = Number(String(s.id).replace(/^[A-Z]+-/, "")) || 0;
+    const m = String(s.id).match(/-(\d+)$/);
+    const num = m ? Number(m[1]) : 0;
     return num;
   })) + 1);
   const restored = {

@@ -48,11 +48,16 @@ export function reactToAntiRadiationThreat(sim, missile, spec, target) {
 // with jammer distance; target-specific burn-through is applied separately.
 export function electronicAttackPressure(observer, hostileUnits) {
   let pressure = 0;
+  const ox = observer.x ?? 0;
+  const oy = observer.y ?? 0;
   for (const jammer of hostileUnits) {
     if (!jammer.alive || jammer.side === observer.side || !jammer.jammerActive || !(jammer.jammerStrength > 0)) continue;
-    const rangeM = distance(observer, jammer);
     const reachM = jammer.jammerRangeM ?? 0;
-    if (!(reachM > 0) || rangeM > reachM) continue;
+    if (!(reachM > 0)) continue;
+    const dx = ox - (jammer.x ?? 0);
+    const dy = oy - (jammer.y ?? 0);
+    if (dx * dx + dy * dy > reachM * reachM) continue;
+    const rangeM = Math.sqrt(dx * dx + dy * dy);
     const health = clamp(jammer.subsystems?.electronicWarfare ?? 1, 0.12, 1);
     const received = jammer.jammerStrength * health * (1 - 0.55 * rangeM / reachM);
     if (received > pressure) pressure = received;

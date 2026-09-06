@@ -270,6 +270,9 @@ export function registerShipClass(cls) {
   if (!cls || typeof cls.hull !== "string" || !cls.hull) {
     throw new Error("registerShipClass: cls.hull is required");
   }
+  if (BUILTIN_SHIP_IDS.has(cls.hull)) {
+    throw new Error(`registerShipClass: ${cls.hull} is a built-in and cannot be overwritten`);
+  }
   SHIP_CLASSES[cls.hull] = cls;
   return cls.hull;
 }
