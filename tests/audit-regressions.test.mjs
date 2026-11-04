@@ -174,11 +174,12 @@ test("an unknown in-flight custom weapon is rejected before installation", () =>
 
 test("battle archive, interception percentages and translated outcomes survive checkpoint", () => {
   const { sim } = battle();
+  battleStatusState(sim);
   for (let n = 0; n < 600; n++) {
     addEvent(sim, "launch", SIDE.RED, "attack");
     if (n % 4 === 0) addEvent(sim, "intercept", SIDE.BLUE, "intercept");
-    battleStatusState(sim);
   }
+  assert.equal(battleStatusState(sim).blue.intercept.value, "25%");
   const resumed = checkpoint(sim);
   assert.equal(battleStatusState(resumed).blue.intercept.value, "25%");
   assert.equal(exportAfterAction(resumed).events.length, sim.events.length + sim.eventArchive.length);

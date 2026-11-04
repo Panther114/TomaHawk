@@ -254,6 +254,7 @@ export function serializeScenario(sim) {
     eventArchive: sim.eventArchive ?? [],
     omittedEvents: sim.omittedEvents ?? 0,
     interceptionTotals: sim.interceptionTotals,
+    interceptionCounts: sim.interceptionCounts,
     ships: sim.ships.map((ship) => ({
       ...ship,
       tracks: [...ship.tracks.values()]
@@ -482,6 +483,7 @@ export function restoreScenario(data) {
     omittedEvents: Number.isSafeInteger(data.omittedEvents) ? Math.max(0, data.omittedEvents)
       : Math.max(0, (events.at(-1)?.id ?? 1) - 1),
     interceptionTotals: data.interceptionTotals,
+    interceptionCounts: data.interceptionCounts,
     _entityIndexesDirty: true,
     _trackIndexReady: false
   };

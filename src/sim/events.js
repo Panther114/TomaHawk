@@ -27,6 +27,12 @@ export function emptyInterceptionTotals() {
   };
 }
 
+export function historicalInterceptionTotals(sim) {
+  const totals = structuredClone(sim.interceptionTotals ?? emptyInterceptionTotals());
+  for (const event of sim.eventArchive ?? []) countInterceptionEvent(totals, event);
+  return totals;
+}
+
 export function eventSeverity(text) {
   const t = String(text).toLowerCase();
   if (t.includes("mission-killed") || t.includes("sinking") || t.includes("hit by")) return "kill";
@@ -39,7 +45,13 @@ export function eventSeverity(text) {
 export function addEvent(sim, text, side = "SYS", combat) {
   const id = sim._nextEventId ?? 1;
   sim._nextEventId = id + 1;
-  sim.events.unshift({ id, t: sim.time, side, text, severity: eventSeverity(text), ...(combat ? { combat } : {}) });
+  const event = { id, t: sim.time, side, text, severity: eventSeverity(text), ...(combat ? { combat } : {}) };
+  if (combat && !sim.interceptionCounts) {
+    sim.interceptionCounts = historicalInterceptionTotals(sim);
+    for (const previous of sim.events) countInterceptionEvent(sim.interceptionCounts, previous);
+  }
+  if (sim.interceptionCounts) countInterceptionEvent(sim.interceptionCounts, event);
+  sim.events.unshift(event);
   if (sim.events.length <= 500) return;
   const archive = sim.eventArchive ??= [];
   archive.push(sim.events.pop());

@@ -1,4 +1,4 @@
-import { countInterceptionEvent, emptyInterceptionTotals } from "../sim/events.js";
+import { countInterceptionEvent, historicalInterceptionTotals } from "../sim/events.js";
 // Pure presentation helpers for the tactical UI.
 //
 // Everything here is free of canvas/DOM access and global state: coordinate
@@ -254,10 +254,9 @@ export function postureBar(side, posture) {
 // Launches aimed at another missile are defensive and excluded from the
 // offensive denominator; successful interceptor and CIWS events are hard kills.
 function interceptionStats(sim) {
+  if (sim.interceptionCounts) return sim.interceptionCounts;
   if (!sim._uiInterceptionStats) {
-    const sides = structuredClone(sim.interceptionTotals ?? emptyInterceptionTotals());
-    for (const event of sim.eventArchive ?? []) countInterceptionEvent(sides, event);
-    sim._uiInterceptionStats = { seen: new Set(), sides };
+    sim._uiInterceptionStats = { seen: new Set(), sides: historicalInterceptionTotals(sim) };
   }
   const ledger = sim._uiInterceptionStats;
   const events = Array.isArray(sim.events) ? sim.events : [];
