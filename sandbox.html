@@ -17,7 +17,7 @@
       <canvas id="map" aria-label="战斧战术地图" tabindex="0"></canvas>
 
       <header id="brand-panel" class="hud-panel">
-        <a class="brand-lockup" href="/" aria-label="返回战斧首页">
+        <a class="brand-lockup" href="index.html" aria-label="返回战斧首页">
           <img src="src/assets/icon.png" alt="" />
           <span><b>战斧</b><small>TOMAHAWK · V1.0</small></span>
         </a>
@@ -29,6 +29,7 @@
         </div>
       </header>
 
+      <div id="operation-status" role="status" aria-live="polite"></div>
       <section id="battle-overview" class="hud-panel battle-overview" aria-label="双方战况">
         <button id="summary-collapse" class="icon-control summary-collapse" type="button" aria-expanded="true" aria-label="收起战况总览"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#chevron"></use></svg></button>
         <div id="status"></div>
@@ -36,7 +37,7 @@
       <button id="top-reset" class="top-reset" data-reset type="button" aria-label="重置沙盘" title="重置沙盘"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#reset"></use></svg><span>重置沙盘</span></button>
 
       <div class="top-actions">
-        <a class="icon-control" href="/guide" aria-label="打开操作手册" title="操作手册"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#help"></use></svg></a>
+        <a class="icon-control" href="guide.html" aria-label="打开操作手册" title="操作手册"><svg class="ui-icon"><use href="src/assets/ui-icons.svg#help"></use></svg></a>
       </div>
       <aside id="tools-menu" class="hud-popover tools-menu is-open">
         <button id="save" type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#save"></use></svg>保存推演</span><kbd>Ctrl S</kbd></button>
@@ -44,7 +45,7 @@
         <button id="aar" type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#report"></use></svg>导出战报 AAR</span></button>
         <button id="mods-toggle" type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#workshop"></use></svg>单位工坊</span></button>
         <button id="tools-reset" class="danger" data-reset type="button"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#reset"></use></svg>清空并重置</span></button>
-        <a href="/"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#home"></use></svg>返回首页</span></a>
+        <a href="index.html"><span><svg class="ui-icon"><use href="src/assets/ui-icons.svg#home"></use></svg>返回首页</span></a>
       </aside>
 
       <aside id="right-panel" class="hud-panel context-panel retracted" aria-label="单位信息">
@@ -88,9 +89,9 @@
         </label>
       </section>
 
-      <button id="placement-chip" class="placement-chip" type="button" hidden>
+      <div id="placement-chip" class="placement-chip" hidden>
         <span class="side-dot"></span><b id="placement-name">蓝方 · 驱逐舰 DDG</b><small>单击连续部署 · Esc 结束</small>
-      </button>
+      </div>
       <div id="placement-message" class="placement-message" role="status" aria-live="polite"></div>
 
       <select id="ship-class" hidden aria-hidden="true"></select>
@@ -135,7 +136,7 @@
     </div>
 
     <div id="save-overlay" class="about-overlay" hidden>
-      <div class="about-card save-card">
+      <div class="about-card save-card" role="dialog" aria-modal="true" aria-label="保存推演">
         <h1>保存推演</h1>
         <label class="save-field"><span>推演名称</span><input id="save-name" type="text" placeholder="未命名推演" /></label>
         <div class="save-location">
@@ -149,7 +150,7 @@
       </div>
     </div>
     <div id="load-overlay" class="about-overlay" hidden>
-      <div class="about-card save-card">
+      <div class="about-card save-card" role="dialog" aria-modal="true" aria-label="载入推演">
         <h1>载入推演</h1>
         <div id="load-list" class="load-list"></div>
         <div class="save-actions">
@@ -173,7 +174,7 @@
       <img src="src/assets/icon.png" alt="" />
       <h1>沙盘需要更大的桌面视口</h1>
       <p>请使用至少 960×560 的桌面浏览器窗口。你仍可在当前设备阅读操作手册。</p>
-      <a href="/guide">查看操作手册</a>
+      <a href="guide.html">查看操作手册</a>
     </div>
 
     <script type="module" src="src/app.js"></script>

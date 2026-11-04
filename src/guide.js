@@ -96,6 +96,7 @@ const STEPS = [
         check: (doc) => unitsOf(doc, "red") >= 1,
         action: "回到海面，单击放置红方单位。",
         spot: { fx: 0.68, fy: 0.58 },
+        coach: "left",
         hint: "点击海面",
         allowed: ["#map"]
       }
@@ -409,6 +410,10 @@ function renderAction() {
   const action = phase?.action ?? step.action;
   byId("coach-action").textContent = action;
   byId("coach-pill-action").textContent = action;
+  const side = phase?.coach ?? step.coach;
+  byId("coach").style.cssText = "position:fixed;" + coachSideStyle(side);
+  byId("coach-card").style.maxHeight = ["top", "bottom"].includes(side)
+    ? "calc(100vh - 190px)" : "calc(100vh - 40px)";
 }
 
 function renderCoach() {
@@ -439,11 +444,6 @@ function renderCoach() {
   } else {
     setCoachStatus("waiting");
   }
-  const coach = byId("coach");
-  coach.style.cssText = `position:fixed;${coachSideStyle(step.coach)}`;
-  byId("coach-card").style.maxHeight = ["top", "bottom"].includes(step.coach)
-    ? "calc(100vh - 190px)"
-    : "calc(100vh - 40px)";
   byId("coach-pill-step").textContent = `第 ${stepIndex + 1} 步 · ${step.title}`;
   renderDots();
   renderProgress();
@@ -467,7 +467,7 @@ function updateGuides() {
   const spot = byId("spotlight");
   const scrim = byId("scrim");
   const cursor = byId("cursor-hint");
-  if (!frameReady || finished) {
+  if (!frameReady || finished || !byId("stage-size-notice").hidden) {
     spot.hidden = true;
     scrim.hidden = true;
     cursor.hidden = true;
@@ -608,7 +608,7 @@ function completeStep() {
 }
 
 function poll() {
-  if (!frameReady || busy || finished) return;
+  if (!frameReady || busy || finished || !byId("stage-size-notice").hidden) return;
   const doc = frame.contentDocument;
   if (!doc) return;
   const step = currentStep();
@@ -654,7 +654,7 @@ function reloadFrame() {
   byId("completion").hidden = true;
   byId("stage-loading").hidden = false;
   byId("stage-fallback").hidden = true;
-  frame.src = `/sandbox?t=${Date.now()}`;
+  frame.src = `sandbox.html?t=${Date.now()}`;
   onFrameLoaded();
 }
 
@@ -708,6 +708,7 @@ function onFrameLoaded() {
       byId("stage-loading").hidden = true;
       lockSandbox(doc);
       wireQuickPoll(doc);
+      updateStageSize();
       prepareStage();
       updateGuides();
       return;
@@ -738,9 +739,18 @@ function resetAll() {
   reloadFrame();
 }
 
+function updateStageSize() {
+  const tooSmall = matchMedia("(max-width: 959px), (max-height: 559px)").matches;
+  const active = byId("quick-start").hidden && !finished;
+  byId("stage-size-notice").hidden = !active || !tooSmall;
+  if (active) byId("coach").hidden = tooSmall;
+  updateGuides();
+}
+
 function startTutorial() {
   byId("quick-start").hidden = true;
   gotoStep(0);
+  updateStageSize();
 }
 
 // ---------- 事件绑定 ----------
@@ -748,6 +758,8 @@ function startTutorial() {
 byId("start-tutorial").addEventListener("click", startTutorial);
 byId("restart-tutorial").addEventListener("click", resetAll);
 byId("stage-retry").addEventListener("click", reloadFrame);
+byId("stage-size-reference").addEventListener("click", openReference);
+window.addEventListener("resize", updateStageSize);
 byId("coach-prev").addEventListener("click", () => gotoStep(stepIndex - 1));
 byId("coach-reset").addEventListener("click", reloadFrame);
 byId("coach-next").addEventListener("click", () => {

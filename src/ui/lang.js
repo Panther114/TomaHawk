@@ -129,8 +129,15 @@ export function translateEventText(rawText) {
     [/^(.*?) placed\.$/, "$1 已部署。"],
     [/^(.*?) duplicated from (.*?)\.$/, "$1 已复制自 $2。"],
     [/^(.*?) removed from scenario\.$/, "$1 已从推演中移除。"],
-    [/^(BLUE|RED) side cleared from scenario\.$/, "$1已从推演中清除。"],
-    [/^(BLUE|RED) side controls the battlespace\. Simulation ended\.$/, "$1控制战场，推演结束。"]
+    [/^(Blue|Red) side cleared from scenario\.$/i, "$1已从推演中清除。"],
+    [/^(Blue|Red) side controls the battlespace\. Simulation ended\.$/i, "$1控制战场，推演结束。"],
+    [/^Mutual annihilation .* Draw\.$/, "双方单位均已损失，推演以平局结束。"],
+    [/^Mutual exhaustion .* Draw\.$/, "双方均已失去有效进攻手段，推演以平局结束。"],
+    [/^(.*?) lost an aircraft to (.*?) \((\d+) of (\d+) remaining\)\.$/, "$1 被 $2 击落一架飞机，剩余 $3/$4 架。"],
+    [/^(.*?) squadron destroyed .* all (\d+) aircraft downed\.$/, "$1 编队全灭，$2 架飞机均被击落。"],
+    [/^(.*?) seduced (.*?) with an RF decoy\.$/, "$1 使用射频诱饵诱偏了 $2。"],
+    [/^(.*?) deployed an RF decoy; (.*?) maintained lock\.$/, "$1 投放了射频诱饵，$2 仍保持锁定。"],
+    [/^(.*?) entered EMCON against (.*?)\.$/, "$1 对来袭的 $2 实施了电磁静默。"]
   ];
   for (const [pattern, replacement] of sentencePatterns) {
     if (pattern.test(text)) return normalizeChineseEvent(text.replace(pattern, replacement));

@@ -4,6 +4,17 @@ import { clamp, distance3d } from "./math.js";
 import { MISSILES } from "./missiles.js";
 import { setLocalTrack } from "./sensors.js";
 
+const SHELF_LAYER_DEPTH_M = 120;
+
+// Scenario-level approximation for a shallow, busier littoral. The layer
+// depth and multipliers are modeling parameters rather than local forecasts.
+export function shelfAcousticFactor(observer, target, active = false) {
+  const crossesLayer = ((observer.depthM ?? 0) > SHELF_LAYER_DEPTH_M)
+    !== ((target.depthM ?? 0) > SHELF_LAYER_DEPTH_M);
+  if (active) return crossesLayer ? 0.82 : 0.94;
+  return crossesLayer ? 0.65 : 0.85;
+}
+
 export function initialSonarState(cls) {
   const acousticDecoys = Math.max(0, Math.round(cls.acousticDecoys ?? 0));
   return {
@@ -71,13 +82,23 @@ function sonarTrack(sim, observer, target, rangeM, detectRangeM, active) {
     active ? 0.96 : 0.84
   );
   const uncertainty = (1 - quality) * (active ? 3.5 : 9) * NM + (active ? 0.2 : 0.8) * NM;
+  const errorA = sim.rng.range(-uncertainty, uncertainty);
+  const errorB = sim.rng.range(-uncertainty, uncertainty);
+  let errorX = errorA, errorY = errorB;
+  if (!active && sim.mapId === "eastChinaSea" && rangeM > 1) {
+    const alongX = (target.x - observer.x) / rangeM;
+    const alongY = (target.y - observer.y) / rangeM;
+    // Passive bearings are more precise across the line of sight than along it.
+    errorX = alongX * errorA - alongY * errorB * 0.32;
+    errorY = alongY * errorA + alongX * errorB * 0.32;
+  }
   return setLocalTrack(sim, observer, target.id, {
     id: target.id,
     side: target.side,
     domain: String(target.id).startsWith("M-") ? "missile" : target.domain,
     classification: sonarClassification(target, quality),
-    x: target.x + sim.rng.range(-uncertainty, uncertainty),
-    y: target.y + sim.rng.range(-uncertainty, uncertainty),
+    x: target.x + errorX,
+    y: target.y + errorY,
     vx: Math.cos(target.heading ?? 0) * (target.speed ?? 0),
     vy: Math.sin(target.heading ?? 0) * (target.speed ?? 0),
     quality,
@@ -122,6 +143,7 @@ export function scanSonar(sim, dt) {
   // Max plausible sonar reach² for a cheap squared pre-gate before distance3d.
   const MAX_SONAR_M = 130 * 1852;
   const MAX_SONAR_SQ = MAX_SONAR_M * MAX_SONAR_M;
+  const shelf = sim.mapId === "eastChinaSea";
   for (const observer of due) {
     for (const target of targets) {
       if (!target.alive || target.side === observer.side || target.id === observer.id) continue;
@@ -135,8 +157,10 @@ export function scanSonar(sim, dt) {
         : 1;
       const activeRangeM = observer.sonarActive
         ? (observer.activeSonarRangeM ?? 0) * sonarHealth * depthFactor
+          * (shelf ? shelfAcousticFactor(observer, target, true) : 1)
         : 0;
-      const passiveRangeM = passiveSonarDetectionRange(observer, target);
+      const passiveRangeM = passiveSonarDetectionRange(observer, target)
+        * (shelf ? shelfAcousticFactor(observer, target) : 1);
       const active = activeRangeM > 0 && rangeM <= activeRangeM;
       const detectRangeM = active ? activeRangeM : passiveRangeM;
       if (!(detectRangeM > 0) || rangeM > detectRangeM) continue;

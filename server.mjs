@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, writeFile, mkdir, readdir, unlink, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, unlink, stat, link, rename } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 
@@ -22,7 +23,7 @@ function safeScenarioName(name) {
   return (cleaned || "Untitled").slice(0, 80);
 }
 
-async function readJsonBody(req, maxBytes = 5 * 1024 * 1024) {
+async function readJsonBody(req, maxBytes = 24 * 1024 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
@@ -41,6 +42,7 @@ const types = {
   ".svg": "image/svg+xml; charset=utf-8",
   ".png": "image/png",
   ".webp": "image/webp",
+  ".woff2": "font/woff2",
   ".ttf": "font/ttf"
 };
 
@@ -84,14 +86,22 @@ createServer(async (req, res) => {
         const filename = `${safeScenarioName(name)}.json`;
         const file = resolve(scenarioDir, filename);
         await mkdir(scenarioDir, { recursive: true });
-        let exists = false;
-        try { await stat(file); exists = true; } catch {}
-        if (exists && !force) {
+        if (![1, 2].includes(data?.version) || !Array.isArray(data.ships) || data.ships.length > 200) {
+          throw new Error("Invalid scenario");
+        }
+        const temp = resolve(scenarioDir, `.${randomUUID()}.tmp`);
+        try {
+          await writeFile(temp, JSON.stringify(data), { encoding: "utf8", flag: "wx" });
+          if (force === true) await rename(temp, file);
+          else await link(temp, file);
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
           res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ ok: false, reason: "exists", name: filename.replace(/\.json$/, "") }));
           return;
+        } finally {
+          await unlink(temp).catch(() => {});
         }
-        await writeFile(file, JSON.stringify(data, null, 2), "utf8");
         res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ ok: true, name: filename.replace(/\.json$/, "") }));
       } catch {
@@ -153,12 +163,15 @@ createServer(async (req, res) => {
       }
       return;
     }
+    if (url.pathname === "/sandbox/" || url.pathname === "/guide/") {
+      res.writeHead(308, { location: url.pathname.slice(0, -1) + url.search });
+      res.end();
+      return;
+    }
     const pageRoutes = {
       "/": "index.html",
       "/sandbox": "sandbox.html",
-      "/sandbox/": "sandbox.html",
-      "/guide": "guide.html",
-      "/guide/": "guide.html"
+      "/guide": "guide.html"
     };
     const rel = pageRoutes[url.pathname] || url.pathname.slice(1);
     if (!isPublicAsset(rel)) {

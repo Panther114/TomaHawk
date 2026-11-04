@@ -8,12 +8,11 @@ import { canRunScenario } from "./scenario.js";
 import { ageTracks, scanSensors, shareTracks, pruneDeadTracks, markContactDead } from "./sensors.js";
 import { buildForcePicture, computeFleetCommand } from "./command.js";
 import { moveShips, decideShip } from "./movement.js";
-import { decideAircraft, updateAircraft } from "./aircraft.js";
+import { canRecoverAtBase, decideAircraft, updateAircraft } from "./aircraft.js";
 import { scanSonar } from "./sonar.js";
 import { decideSubmarine, updateSubmarineDepth } from "./submarines.js";
 import { updateElectronicWarfareState } from "./ew.js";
 import { planEngagements, processLaunchQueues, updateMissiles, pointDefense } from "./combat.js";
-import { offensiveMissileCount } from "./ships.js";
 import { missileHasSurfaceTarget, missileCanTarget, MISSILES } from "./missiles.js";
 
 const FORCE_PICTURE_INTERVAL_S = 0.5;
@@ -77,7 +76,7 @@ export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
   if (sim.mode === SCENARIO_MODE.SETUP) return sim;
   if (sim.mode === SCENARIO_MODE.ENDED) return sim;
   if (sim.paused && !allowPaused) return sim;
-  if (!canRunScenario(sim)) {
+  if (sim.time === 0 && !canRunScenario(sim)) {
     sim.paused = true;
     sim.mode = SCENARIO_MODE.SETUP;
     addEvent(sim, "Cannot run: both Blue and Red require at least one alive ship.");
@@ -158,6 +157,10 @@ export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
     return sim;
   }
   if (aliveSideCount === 1 && !sim.ended) {
+    const pendingAttack = (sim._aliveMissiles ?? sim.missiles).some(missile =>
+      missile.alive && missile.side !== soleSide && !String(missile.targetId).startsWith("M-")
+      && (sim._shipById?.get(missile.targetId)?.alive ?? false));
+    if (pendingAttack) return sim;
     sim.ended = soleSide;
     sim.paused = true;
     sim.mode = SCENARIO_MODE.ENDED;
@@ -179,31 +182,32 @@ export function stepSim(sim, dt = 0.25, { allowPaused = false } = {}) {
       };
     }
     function stillDangerous(side) {
-      let hasAir = false;
-      let hasBase = false;
-      for (const ship of sim._shipsBySide?.get(side) || sim.ships) {
-        if (!ship.alive || ship.side !== side) continue;
-        // Dedicated surface-strike magazines (not dual-role SAMs).
-        if (offensiveMissileCount(ship, false) > 0) return true;
-        if (ship.domain === "air") {
-          hasAir = true;
-          // Aircraft that still carry anything can still fight (A2A or A2G).
-          const lo = ship.loadout;
-          if (lo) for (const id of Object.keys(lo)) if (lo[id] > 0) return true;
-        }
-        // Living airfield/CVN can rearm squadrons — combat power regenerates.
-        if (ship.isAirfield) hasBase = true;
+      const friendlies = sim._shipsBySide?.get(side) ?? [];
+      const enemy = side === SIDE.BLUE ? SIDE.RED : SIDE.BLUE;
+      const hostileDomains = new Set((sim._shipsBySide?.get(enemy) ?? [])
+        .filter(unit => unit.alive).map(unit => unit.domain));
+      const bases = friendlies.filter(unit => unit.alive && unit.isAirfield);
+      const canAttack = (ship, loadout) => Object.entries(loadout ?? {}).some(([id, count]) => {
+        const weapon = MISSILES[id];
+        if (!(count > 0) || !weapon) return false;
+        if (hostileDomains.has("air") && missileCanTarget(weapon, "air")) return true;
+        if (hostileDomains.has("subsurface") && missileCanTarget(weapon, "subsurface")) return true;
+        return (ship.domain === "air" || missileHasSurfaceTarget(weapon))
+          && ((hostileDomains.has("sea") && missileCanTarget(weapon, "sea"))
+            || (hostileDomains.has("ground") && missileCanTarget(weapon, "ground")));
+      });
+      for (const ship of friendlies) {
+        if (!ship.alive) continue;
+        if (ship.airState !== "rearming" && canAttack(ship, ship.loadout)) return true;
+        if (ship.domain !== "air") continue;
+        const compatible = bases.filter(base => canRecoverAtBase(ship, base));
+        const serviceable = compatible.some(base => (base.sortiesRemaining ?? 0) > 0
+          && (ship.airState !== "rearming" || ship.homeBaseId === base.id));
+        if (serviceable && (canAttack(ship, ship.baseLoadoutSnapshot)
+          || ship.airState !== "mission" || ship.fuelS <= ship.enduranceS * 0.2)) return true;
+        // Let airborne flights finish recovery or run out of fuel.
+        if (!compatible.length || ship.airState === "rtb") return true;
       }
-      // Air + base regenerates combat power. Solo airborne units without a base
-      // and without munitions will splash on fuel — leave that path open rather
-      // than declaring a premature draw (airfield-destroyed divert tests).
-      // NOTE: unarmed AWAC + base intentionally still blocks a draw so fuel/RTB
-      // lifecycle tests keep running; CVN+AWAC-only endless orbit is a known
-      // accepted tradeoff (documented, not silently "fixed").
-      if (hasAir && hasBase) return true;
-      // Still-airborne aircraft (even empty) are not a settled stalemate until
-      // they splash or recover — only pure surface WINCHESTER pairs draw.
-      if (hasAir) return true;
       for (const m of sim._aliveMissiles || sim.missiles) {
         if (!m.alive || m.side !== side) continue;
         // In-flight strike weapons, or AAMs engaging a unit (not SAM-vs-missile).

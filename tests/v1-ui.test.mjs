@@ -79,7 +79,7 @@ test("guide is a fullscreen immersive manual: live sandbox fills the screen", ()
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(html, /src="src\/guide\.js"/);
-  assert.match(html, /src="\/sandbox"/);
+  assert.match(html, /src="sandbox\.html"/);
   assert.doesNotMatch(html, /assets\/guide\//);
 
   const stepIds = ["deploy-open", "library-pick", "place-unit", "deploy-red", "layers", "playback", "speed", "overview", "select-unit", "save", "workshop"];
@@ -153,8 +153,8 @@ test("landing shell preserves the original carrier composition with cinematic de
   const css = read("../src/landing.css");
   const script = read("../src/landing.js");
 
-  assert.equal(html.match(/href="\/sandbox"/g)?.length, 1);
-  assert.match(html, /href="\/guide"/);
+  assert.equal(html.match(/href="sandbox\.html"/g)?.length, 1);
+  assert.match(html, /href="guide\.html"/);
   assert.match(html, /github\.com\/Panther114\/TomaHawk/);
   for (const asset of [
     "carrier-original-1280.webp",

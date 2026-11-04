@@ -2514,3 +2514,39 @@ kbd {
   .mods-new:active, .mods-btn:active, .mods-item:active, .mods-chip:active { transform: none; }
   .mods-section > summary::before { transition: none; }
 }
+
+/* Save/load feedback is separate from the live tactical metrics. */
+#operation-status:not(:empty) {
+  position: fixed;
+  z-index: 220;
+  right: 16px;
+  bottom: 62px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-solid);
+  color: var(--text);
+  pointer-events: none;
+}
+
+.load-row .load-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.equipment-side-hit {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+#placement-chip { pointer-events: none; }

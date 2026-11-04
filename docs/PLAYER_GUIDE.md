@@ -32,7 +32,7 @@ Naval units and submarines need open water; ground radar, SAM, and strike batter
 - Top: living units per side, total durability, anti-ship inventory, air-defence inventory, and aggression.
 - Right: unit detail and force list; expands automatically when a unit is selected.
 - Bottom left: scale bar, coordinates, and layer controls.
-- Bottom: play, single-step, 1–60× rate, and scenario time.
+- Bottom: play, single-step, 1–100× rate, and scenario time.
 - Top right: save, load, AAR, Unit Workshop, and reset.
 
 The map is the main information surface. Tracks are not true target positions: dashed lines, transparency, and error rings reflect shared or uncertain data.
@@ -45,7 +45,7 @@ The map is the main information surface. Tracks are not true target positions: d
 | Single step | `.` |
 | Ruler | `R` |
 | End deploy or cancel tool | `Esc` |
-| Cycle units | `Tab` (when the map has focus) |
+| Cycle units | `N` (when the map has focus) |
 | Delete unit | `Delete` (setup only) |
 | Zoom | Mouse wheel |
 | Pan | Middle mouse or `Alt` + drag |

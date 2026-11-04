@@ -1,5 +1,10 @@
 <div align="center">
 
+[Play on GitHub Pages](https://panther114.github.io/TomaHawk/) · [Play on Railway](https://tomahawk.up.railway.app/)
+
+Both public deployments support scenario file import and export. The local Node server also provides a scenario library on disk.
+
+
 <img src="src/assets/icon.png" width="88" alt="战斧 Tomahawk" />
 
 # 战斧 · Tomahawk

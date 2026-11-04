@@ -35,6 +35,9 @@ function mergeTrack(fused, track) {
       domain: track.domain ?? "sea",
       classification: track.classification,
       source: track.source,
+      linkX: track.linkX,
+      linkY: track.linkY,
+      linkAltitudeM: track.linkAltitudeM,
       x: track.x,
       y: track.y,
       vx: track.vx ?? 0,
@@ -68,6 +71,9 @@ function mergeTrack(fused, track) {
     existing.vy = track.vy ?? 0;
     existing.depthM = Number.isFinite(track.depthM) ? track.depthM : existing.depthM;
     existing.source = track.source;
+    existing.linkX = track.linkX;
+    existing.linkY = track.linkY;
+    existing.linkAltitudeM = track.linkAltitudeM;
     existing.classification = track.classification;
   }
 }

@@ -27,6 +27,18 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
   let units = [];
   let loaded = false;
+  let loading;
+  function preload() {
+    if (!loading) loading = loadMods().then(records => {
+      units = records;
+      loaded = true;
+      safeNotify();
+    }).catch(error => {
+      loading = null;
+      throw error;
+    });
+    return loading;
+  }
   let selectedKey = null;
   let form = null;        // working copy of the selected/edited unit
   let isNew = false;      // form is an unsaved new unit
@@ -37,7 +49,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
 
   const findUnit = (key) => units.find((u) => recordKey(u) === key);
   const unitTag = (u) => u.prefixZh || u.prefix;
-  const labelOf = (u) => (u.kind === "ammo" ? unitId(u) : `${unitTag(u)} · ${u.name}`);
+  const labelOf = (u) => (u.kind === "ammo" ? u.name : `${unitTag(u)} · ${u.name}`);
   // Host callback must never break the editor's own flow (e.g. a render fault).
   const safeNotify = () => { try { onChange?.(); } catch (e) { console.warn("[mods] onChange failed", e); } };
 
@@ -195,7 +207,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
       ${dirtyTag}<span class="mods-errs" data-errs></span></div>`;
 
     detailEl.innerHTML = `<div class="mods-form">
-      <div class="mods-summary"><div class="mods-summary-main"><span class="mods-kind">${esc(L(KIND_LABEL[form.kind]))}</span><b class="mods-name">${esc(form.kind === "ammo" ? unitId(form) : (form.name || "未命名"))}</b><span class="mods-id">${esc(form.kind === "ammo" ? "" : (form.id || form.prefix || ""))}</span></div><div class="mods-stats">${chips.join("")}</div></div>
+      <div class="mods-summary"><div class="mods-summary-main"><span class="mods-kind">${esc(L(KIND_LABEL[form.kind]))}</span><b class="mods-name">${esc(form.name || "未命名")}</b><span class="mods-id">${esc(form.kind === "ammo" ? "" : (form.id || form.prefix || ""))}</span></div><div class="mods-stats">${chips.join("")}</div></div>
       ${toolbar}
       <div class="mods-toprow">${typeField}</div>${sections}${loadout}</div>`;
     detailEl.scrollTop = 0;
@@ -244,6 +256,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     const result = validateUnit(form);
     if (!result.ok) { showErrors(result.errors); return; }
     if (isNew) ensureUniqueIdentity(form);
+    if (form.kind === "ammo") form.weaponId ??= isNew ? form.name : findUnit(selectedKey)?.name ?? form.name;
     try {
       const record = await saveMod(form);
       const key = recordKey(record);
@@ -269,7 +282,7 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
       copy.name = `${unitId(form)}-copy`;
       // Drop the source's identity fields so the clone labels itself by its new
       // ID instead of inheriting e.g. MaritimeStrike's "MSTK"/id.
-      delete copy.id; delete copy.shortLabel; delete copy.displayName;
+      delete copy.id; delete copy.weaponId; delete copy.shortLabel; delete copy.displayName;
     } else { copy.id = makeUniqueShipId(copy.prefix); }
     form = copy;
     selectedKey = null;
@@ -317,6 +330,9 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     try { parsed = JSON.parse(text); } catch { return alert("无效的 JSON 文件"); }
     if (!parsed || !SCHEMAS[parsed.kind]) return alert("无法识别的单位文件");
     delete parsed.builtin; delete parsed.locked; delete parsed._key;
+    if (parsed.kind === "ammo" && units.some(unit => unit.kind === "ammo" && unitId(unit) === unitId(parsed))) {
+      delete parsed.weaponId;
+    }
     ensureUniqueIdentity(parsed);
     const result = validateUnit(parsed);
     if (!result.ok) return alert("校验失败：" + result.errors.map((e) => `${e.field} ${e.msg}`).join("，"));
@@ -494,13 +510,15 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
   });
 
   async function openEditor() {
-    if (!loaded) { units = await loadMods(); loaded = true; safeNotify(); }
+    if (!loaded) await preload();
+    if (open) return;
     open = true;
     overlay.hidden = false;
     selectedKey = null; form = null; isNew = false; dirty = false;
     renderList();
     renderDetail();
     onOpenChange?.(true);
+    listEl.querySelector("[data-search]")?.focus();
   }
 
   function closeEditor() {
@@ -516,11 +534,11 @@ export function createModEditor({ overlay, onChange, onOpenChange } = {}) {
     isOpen: () => open,
     // expose a one-shot loader so the app can register stored units at boot
     // without opening the popup
-    async preload() { if (!loaded) { units = await loadMods(); loaded = true; safeNotify(); } },
+    preload,
     // Debug accessor (also wired to window.tomahawkMods): inspect or extract a
     // stored unit's JSON from the browser, and check whether it is registered.
     async dump(name) {
-      if (!loaded) { units = await loadMods(); loaded = true; }
+      if (!loaded) await preload();
       const all = JSON.parse(JSON.stringify(units));
       if (!name) return all;
       const hit = all.find((u) => unitId(u) === name || u.name === name);

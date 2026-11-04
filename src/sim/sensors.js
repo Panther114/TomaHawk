@@ -402,6 +402,9 @@ function indexTrack(sim, map, id, track, ship = null) {
 }
 
 export function setLocalTrack(sim, ship, id, track) {
+  track.linkX = ship.x;
+  track.linkY = ship.y;
+  track.linkAltitudeM = ship.altitudeM ?? 0;
   const previous = ship.tracks.get(id);
   if (previous) {
     const current = currentTrack(previous, sim.time);
@@ -461,12 +464,33 @@ export function ensureTrackIndexes(sim) {
   for (const tracks of sim.sharedTracksBySide?.values?.() ?? []) {
     for (const [id, track] of tracks) indexTrack(sim, tracks, id, track);
   }
+  if (sim._savedTrackHolders) {
+    const byId = new Map(sim.ships.map(ship => [ship.id, ship]));
+    for (const [id, savedOrder] of sim._savedTrackHolders) {
+      const holders = sim._trackHolders.get(id);
+      if (!holders) continue;
+      const ordered = new Set(savedOrder.map(shipId => byId.get(shipId)).filter(ship => holders.has(ship)));
+      for (const ship of holders) ordered.add(ship);
+      sim._trackHolders.set(id, ordered);
+    }
+    sim._savedTrackHolders = null;
+  }
   sim._trackIndexReady = true;
+}
+
+export function canReceiveTrack(receiver, track) {
+  if (track?.linkX == null || track.linkY == null) return true;
+  const dx = receiver.x - track.linkX, dy = receiver.y - track.linkY;
+  const altitudeM = Math.max(receiver.altitudeM ?? 0, track.linkAltitudeM ?? 0);
+  // Tactical link budget, including a baseline relay allowance. Aircraft extend reach.
+  const range = (altitudeM >= 1500 ? 420 : 220) * NM;
+  return dx * dx + dy * dy <= range * range;
 }
 
 export function trackForShip(sim, ship, id) {
   const local = currentTrack(ship.tracks.get(id), sim.time);
-  const shared = currentTrack(sim.sharedTracksBySide?.get(ship.side)?.get(id), sim.time);
+  const report = sim.sharedTracksBySide?.get(ship.side)?.get(id);
+  const shared = canReceiveTrack(ship, report) ? currentTrack(report, sim.time) : null;
   if (!local) return shared;
   if (!shared) return local;
   return shared.quality > local.quality
@@ -481,7 +505,7 @@ export function* iterateTracksForShip(sim, ship) {
     if (best) yield best;
   }
   for (const [id, shared] of sim.sharedTracksBySide?.get(ship.side) ?? []) {
-    if (ship.tracks.has(id)) continue;
+    if (ship.tracks.has(id) || !canReceiveTrack(ship, shared)) continue;
     yield currentTrack(shared, sim.time);
   }
 }
@@ -493,14 +517,26 @@ export function tracksForShipInto(sim, ship, out) {
     if (best) out.push(best);
   }
   for (const [id, shared] of sim.sharedTracksBySide?.get(ship.side) ?? []) {
-    if (ship.tracks.has(id)) continue;
+    if (ship.tracks.has(id) || !canReceiveTrack(ship, shared)) continue;
     out.push(currentTrack(shared, sim.time));
   }
   return out;
 }
 
 export function tracksForShip(sim, ship) {
-  return [...iterateTracksForShip(sim, ship)];
+  const shared = sim.sharedTracksBySide?.get(ship.side);
+  const result = [];
+  for (const [id, track] of ship.tracks) {
+    const local = currentTrack({ ...track }, sim.time);
+    const remote = shared?.get(id);
+    const linked = remote && canReceiveTrack(ship, remote) && currentTrack({ ...remote }, sim.time);
+    result.push(linked && (linked.quality > local.quality
+      || (linked.quality === local.quality && linked.lastSeen > local.lastSeen)) ? linked : local);
+  }
+  for (const [id, track] of shared ?? []) {
+    if (!ship.tracks.has(id) && canReceiveTrack(ship, track)) result.push(currentTrack({ ...track }, sim.time));
+  }
+  return result;
 }
 
 export function markContactDead(sim, id) {
@@ -791,6 +827,9 @@ export function shareTracks(sim) {
           quality: winner.quality,
           uncertainty: winner.track.uncertainty + 1500,
           source: `${winner.source.id} datalink`,
+          linkX: winner.source.x,
+          linkY: winner.source.y,
+          linkAltitudeM: winner.source.altitudeM ?? 0,
           _stateTime: sim.time
         };
         shared.set(id, networkTrack);

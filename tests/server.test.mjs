@@ -4,6 +4,10 @@ import { readFileSync } from "node:fs";
 import net from "node:net";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 async function freePort() {
   const probe = net.createServer();
@@ -54,4 +58,38 @@ test("production entrypoint caps heap and static assets are streamed", () => {
   assert.match(packageJson.scripts.start, /--max-old-space-size=64/);
   assert.match(serverSource, /pipeline\(createReadStream\(file\), res\)/);
   assert.doesNotMatch(serverSource, /const body = await readFile\(file\)/);
+});
+
+test("same-name scenario creation is atomic and larger saves round trip", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "tomahawk-server-test-"));
+  const port = await freePort();
+  const child = spawn(process.execPath, [fileURLToPath(new URL("../server.mjs", import.meta.url))], {
+    cwd,
+    env: { ...process.env, HOST: "127.0.0.1", PORT: String(port), RAILWAY_ENVIRONMENT: "" },
+    stdio: "ignore"
+  });
+  const exited = once(child, "exit");
+  t.after(async () => {
+    child.kill();
+    await exited;
+    await rm(cwd, { recursive: true, force: true });
+  });
+  const base = "http://127.0.0.1:" + port;
+  await waitForHealthy(base);
+  const save = (name, data, force = false) => fetch(base + "/scenario/save", {
+    method: "POST", body: JSON.stringify({ name, data, force })
+  });
+  const responses = await Promise.all(Array.from({ length: 20 }, async (_, client) => {
+    const response = await save("same-name", { version: 2, ships: [], client });
+    return { client, ...await response.json() };
+  }));
+  const winners = responses.filter(result => result.ok);
+  assert.equal(winners.length, 1);
+  assert.ok(responses.filter(result => !result.ok).every(result => result.reason === "exists"));
+  const stored = await (await fetch(base + "/scenario/load?name=same-name")).json();
+  assert.equal(stored.client, winners[0].client);
+  const data = { version: 2, ships: [], fixture: "x".repeat(9 * 1024 * 1024) };
+  assert.equal((await save("same-name", data, true)).status, 200);
+  assert.equal((await (await fetch(base + "/scenario/load?name=same-name")).json()).fixture.length, data.fixture.length);
+  assert.equal((await save("invalid", {})).status, 400);
 });

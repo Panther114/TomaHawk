@@ -3,7 +3,7 @@
 // with scenario setup/restore.
 
 import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE, WEAPON_STATE, FLEET_ROLE } from "./constants.js";
-import { MISSILES, missileCanTarget, missileHasSurfaceTarget } from "./missiles.js";
+import { MISSILES, missileAllowedForDomain, missileCanTarget, missileHasSurfaceTarget } from "./missiles.js";
 import { clamp } from "./math.js";
 import { initialAircraftState } from "./aircraft.js";
 import { initialElectronicWarfareState } from "./ew.js";
@@ -137,7 +137,10 @@ export function validateLoadout(loadout, ship = null) {
   const errors = [];
   if (cells > maxCells) errors.push(`VLS capacity exceeded: ${cells.toFixed(1)} / ${maxCells} cells`);
   for (const [id, count] of Object.entries(loadout)) {
-    if (!MISSILES[id]) errors.push(`Unknown missile: ${id}`);
+    if (!Object.hasOwn(MISSILES, id)) errors.push(`Unknown missile: ${id}`);
+    else if (ship?.domain && count > 0 && !missileAllowedForDomain(id, ship.domain)) {
+      errors.push(`${id} cannot launch from ${ship.domain}`);
+    }
     if (!Number.isInteger(count) || count < 0) errors.push(`${id} count must be a non-negative integer`);
   }
   return { ok: errors.length === 0, cells, errors };
@@ -145,6 +148,7 @@ export function validateLoadout(loadout, ship = null) {
 
 export function setLoadout(ship, missileId, count) {
   const maxCells = vlsCapacity(ship);
+  if (!Object.hasOwn(MISSILES, missileId)) return { ok: false, cells: usedCells(ship.loadout), errors: [`Unknown missile: ${missileId}`] };
   const next = normalizeLoadout({ ...ship.loadout, [missileId]: clamp(Math.round(count), 0, maxCells) });
   const result = validateLoadout(next, ship);
   if (result.ok) ship.loadout = next;
@@ -307,9 +311,8 @@ export function defaultAltitudeM(cls) {
   return (cls.domain ?? "sea") === "air" ? 9000 : 0;
 }
 
-export function makeShip(side, x, y, hull = "DDG") {
+export function makeShip(side, x, y, hull = "DDG", seq = nextId++) {
   const cls = SHIP_CLASSES[hull] || SHIP_CLASSES.DDG;
-  const seq = nextId++;
   const id = `${cls.prefix}-${seq}`;
   const cruise = cls.cruiseSpeedKt * KNOT * SHIP_SPEED_MULTIPLIER;
   const loadout = normalizeLoadout(defaultLoadout(hull));
@@ -319,6 +322,7 @@ export function makeShip(side, x, y, hull = "DDG") {
     id, name: `${side} ${cls.prefix} ${seq}`, side, hull, className: cls.className, x, y,
     domain: cls.domain ?? "sea", isFixed: cls.isFixed ?? false, glyph: cls.glyph ?? null,
     isAirfield: cls.isAirfield ?? false,
+    ...(cls.isAirfield ? { sortiesRemaining: cls.isFixed ? 48 : 24, nextSortieAt: 0 } : {}),
     // Air-unit state (squadron lifecycle/fuel/rearm). Empty object for non-air
     // so consumers can read uniformly; populated only for domain "air".
     ...(isAir ? initialAircraftState(cls) : {}),

@@ -1,4 +1,5 @@
 # Dependencies (none are committed; the project is dependency-light)
+.pages/
 node_modules/
 
 # Isolated local video build workspace and untracked trailer source/output

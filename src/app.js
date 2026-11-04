@@ -43,6 +43,7 @@ import {
   worldToScreen as projectWorldToScreen,
   screenToWorld as projectScreenToWorld
 } from "./ui/view.js";
+import { geographicDistanceM } from "./world/map-spec.js";
 import { t, translateEventText } from "./ui/lang.js";
 import { UNIT_CATEGORIES, unitCatalog, unitPresentation } from "./ui/catalog.js";
 import { drawTacticalSymbol } from "./ui/symbols.js";
@@ -70,6 +71,8 @@ const shipClassSelect = document.querySelector("#ship-class");
 const clock = document.querySelector("#clock");
 const cursor = document.querySelector("#cursor");
 const status = document.querySelector("#status");
+const operationStatus = document.querySelector("#operation-status");
+const staticHosting = document.documentElement.dataset.staticHosting === "true";
 const unitTab = document.querySelector("#unit-tab");
 const unitInfoPopover = document.createElement("div");
 unitInfoPopover.className = "inventory-info-popover";
@@ -135,33 +138,24 @@ let lastDebugSaveAt = 0;
 // Wall-clock sim work left over when a frame hits its budget (seconds of sim).
 let simTimeDebt = 0;
 let frameRequest = null;
-let idleFrameTimer = null;
+const SIM_STEP_S = 0.25;
+const MAX_FRAME_DEBT_S = 2;
 
 // Keep the active simulation at display cadence, but let a paused, unchanged
 // sandbox sleep between the existing 20 Hz panel refresh opportunities. Any
 // state-changing input marks the canvas dirty and wakes the loop immediately.
 function wakeRenderLoop() {
-  if (idleFrameTimer !== null) {
-    clearTimeout(idleFrameTimer);
-    idleFrameTimer = null;
-  }
   if (frameRequest === null) frameRequest = requestAnimationFrame(tick);
 }
 
 function scheduleRenderLoop() {
-  if (frameRequest !== null || idleFrameTimer !== null) return;
-  if (sim.paused && !canvasDirty) {
-    idleFrameTimer = setTimeout(() => {
-      idleFrameTimer = null;
-      scheduleRenderLoop();
-    }, PANEL_RENDER_INTERVAL_MS);
-    return;
-  }
-  frameRequest = requestAnimationFrame(tick);
+  if (sim.paused && !canvasDirty) return;
+  wakeRenderLoop();
 }
 
 function markCanvasDirty() {
   canvasDirty = true;
+  if (sim.paused) lastPanelRenderAt = -Infinity;
   wakeRenderLoop();
 }
 
@@ -366,6 +360,10 @@ function setPrimarySelection(ship) {
 
 function installScenario(nextSim) {
   sim = nextSim;
+  simTimeDebt = 0;
+  last = performance.now();
+  lastPanelRenderAt = -Infinity;
+  debugRunActive = false;
   selectedIds = new Set([sim.selectedId].filter(Boolean));
   activeRuler = null;
   rulers = [];
@@ -1296,7 +1294,9 @@ function drawRuler() {
   for (const ruler of [...rulers, activeRuler].filter(Boolean)) {
     const a = worldToScreen(ruler.a);
     const b = worldToScreen(ruler.b);
-    const dKm = distance(ruler.a, ruler.b) / KM;
+    const distanceM = tacticalMap(sim.mapId).projection
+      ? geographicDistanceM(ruler.a, ruler.b) : distance(ruler.a, ruler.b);
+    const dKm = distanceM / KM;
     const bearing = (Math.atan2(ruler.b.x - ruler.a.x, ruler.a.y - ruler.b.y) * 180 / Math.PI + 360) % 360;
     ctx.strokeStyle = "#1a1e23";
     ctx.fillStyle = "#1a1e23";
@@ -1726,7 +1726,7 @@ function pickShip(world) {
 const FRAME_SIM_BUDGET_MS = 12;
 
 function tick(now) {
-  const elapsed = Math.min(0.1, (now - last) / 1000);
+  const elapsed = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
   // Returning to SETUP (a fresh scenario / reset) ends the current capture so
   // the next run starts clean rather than appending to the previous one.
@@ -1738,26 +1738,25 @@ function tick(now) {
     if (!debugRunActive && sim.mode === SCENARIO_MODE.RUNNING) beginDebugRun();
     const rate = Number(speed.value);
     let remaining = elapsed * rate + simTimeDebt;
-    simTimeDebt = 0;
     const budgetStart = performance.now();
     let steppedThisFrame = false;
-    while (remaining > 0) {
+    while (!sim.paused && remaining + 1e-9 >= SIM_STEP_S) {
       // Always allow the first tick of the frame so a slow device still advances;
       // subsequent ticks respect the budget and carry leftover sim time as debt.
       if (steppedThisFrame && performance.now() - budgetStart > FRAME_SIM_BUDGET_MS) {
-        simTimeDebt = remaining;
         break;
       }
       const t0 = performance.now();
-      stepSim(sim, Math.min(0.25, remaining));
+      stepSim(sim, SIM_STEP_S);
       steppedThisFrame = true;
       markCanvasDirty();
       if (debugRunActive) {
         perfRec.record(sim, performance.now() - t0);
         battleLog.sample(sim);
       }
-      remaining -= 0.25;
+      remaining -= SIM_STEP_S;
     }
+    simTimeDebt = sim.paused ? 0 : Math.min(MAX_FRAME_DEBT_S, Math.max(0, remaining));
     // Persist while live (throttled) and once more the instant the run ends, so
     // the logs always reflect the latest run even if the tab is closed.
     if (debugRunActive) {
@@ -2005,7 +2004,7 @@ function renderEquipmentLibrary() {
     `<button type="button" data-category="${category.id}" class="${category.id === equipmentCategory ? "active" : ""}">${category.label}</button>`
   ).join("");
   equipmentGrid.innerHTML = items.map((item) => `
-    <button class="equipment-card" type="button" data-equipment="${escapeHtml(item.id)}">
+    <div class="equipment-card" data-equipment="${escapeHtml(item.id)}">
       <span class="equipment-stats">${item.statSummary.map((stat) => `<i>${escapeHtml(stat)}</i>`).join("")}</span>
       <span class="equipment-name"><strong>${escapeHtml(item.zhName)}</strong><b>${escapeHtml(item.designation)}</b></span>
       <span class="equipment-role">${escapeHtml(item.role)}${item.custom ? " · 自定义" : ""}</span>
@@ -2015,9 +2014,9 @@ function renderEquipmentLibrary() {
           : `<i class="art-fallback ${escapeHtml(item.category)}"></i>`}
       </span>
       <span class="equipment-hover-name" aria-hidden="true"><strong>${escapeHtml(item.zhName)}</strong><small>${escapeHtml(item.designation)}</small></span>
-      <span class="equipment-side-hit equipment-side-blue" data-deploy-side="blue" role="button" tabindex="0" aria-label="蓝方部署"></span>
-      <span class="equipment-side-hit equipment-side-red" data-deploy-side="red" role="button" tabindex="0" aria-label="红方部署"></span>
-    </button>`).join("");
+      <button type="button" class="equipment-side-hit equipment-side-blue" data-deploy-side="blue" aria-label="蓝方部署 ${escapeHtml(item.zhName)}"></button>
+      <button type="button" class="equipment-side-hit equipment-side-red" data-deploy-side="red" aria-label="红方部署 ${escapeHtml(item.zhName)}"></button>
+    </div>`).join("");
   equipmentGrid.querySelectorAll(".equipment-art img").forEach((image) => {
     image.addEventListener("error", () => {
       const art = image.closest(".equipment-art");
@@ -2042,7 +2041,7 @@ function openEquipmentLibrary() {
     return;
   }
   markEmptyStateSeen();
-  sim.paused = true;
+  setPlaybackPaused(true);
   equipmentOverlay.hidden = false;
   renderEquipmentLibrary();
   equipmentSearch.focus();
@@ -2089,7 +2088,6 @@ equipmentOverlay?.addEventListener("click", (event) => {
   }
 });
 equipmentSearch?.addEventListener("input", renderEquipmentLibrary);
-placementChip?.addEventListener("click", openEquipmentLibrary);
 
 function startScenario() {
   if (!canRunScenario(sim)) {
@@ -2098,6 +2096,7 @@ function startScenario() {
   }
   if (sim.mode === SCENARIO_MODE.SETUP) sim.mode = SCENARIO_MODE.RUNNING;
   if (sim.mode !== SCENARIO_MODE.ENDED) sim.paused = false;
+  last = performance.now();
   return true;
 }
 
@@ -2105,11 +2104,21 @@ play.addEventListener("click", () => {
   if (sim.mode === SCENARIO_MODE.SETUP) {
     startScenario();
   } else if (sim.mode !== SCENARIO_MODE.ENDED) {
-    sim.paused = !sim.paused;
+    setPlaybackPaused(!sim.paused);
   }
   markCanvasDirty();
 });
+function setPlaybackPaused(paused) {
+  sim.paused = paused;
+  simTimeDebt = 0;
+  last = performance.now();
+  lastPanelRenderAt = -Infinity;
+  markCanvasDirty();
+}
+
 speed.addEventListener("input", () => {
+  simTimeDebt = 0;
+  last = performance.now();
   document.querySelector("#speed-value").textContent = `${Number(speed.value)}×`;
 });
 async function resetSandbox() {
@@ -2119,12 +2128,12 @@ async function resetSandbox() {
 document.querySelectorAll("[data-reset]").forEach((button) => button.addEventListener("click", resetSandbox));
 
 function downloadJson(name, data) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // Custom-location save: File System Access API where available (a real "Save
@@ -2133,7 +2142,7 @@ function downloadJson(name, data) {
 // Returns false if the user cancelled the OS file picker (so the caller can
 // keep the Save form open); true once the file is written or downloaded.
 async function saveJsonToCustomLocation(name, data) {
-  const text = JSON.stringify(data, null, 2);
+  const text = JSON.stringify(data);
   if (window.showSaveFilePicker) {
     try {
       const handle = await window.showSaveFilePicker({
@@ -2167,10 +2176,14 @@ document.querySelector("#aar").addEventListener("click", () => {
 // dismissed — unacceptable in a real-time simulator.
 function confirmDialog(message) {
   return new Promise((resolve) => {
+    const previousFocus = document.activeElement;
     const overlay = document.createElement("div");
     overlay.className = "about-overlay";
     const card = document.createElement("div");
     card.className = "about-card save-card";
+    card.setAttribute("role", "alertdialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-label", message);
     const p = document.createElement("p");
     p.textContent = message;
     const actions = document.createElement("div");
@@ -2188,15 +2201,16 @@ function confirmDialog(message) {
     const finish = (result) => {
       overlay.remove();
       document.removeEventListener("keydown", onKey, true);
+      previousFocus?.focus();
       resolve(result);
     };
-    // Trap keyboard while the modal is open: Escape = cancel, Enter = confirm.
-    // Capture phase + stopPropagation stops the global keydown handler from
-    // toggling the sim or cycling ships behind the dialog.
     const onKey = (event) => {
       event.stopPropagation();
       if (event.key === "Escape") { event.preventDefault(); finish(false); }
-      else if (event.key === "Enter") { event.preventDefault(); finish(true); }
+      else if (event.key === "Tab") {
+        event.preventDefault();
+        (document.activeElement === no ? yes : no).focus();
+      }
     };
     document.addEventListener("keydown", onKey, true);
     no.addEventListener("click", () => finish(false));
@@ -2222,7 +2236,24 @@ function showNoticeDialog(message) {
     card.append(p, hint, ok);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
-    const finish = () => { overlay.remove(); resolve(); };
+    const previousFocus = document.activeElement;
+  card.setAttribute("role", "alertdialog");
+  card.setAttribute("aria-modal", "true");
+  card.setAttribute("aria-label", message);
+  const finish = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey, true);
+    previousFocus?.focus();
+    resolve();
+  };
+  const onKey = (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape" || event.key === "Tab") {
+      event.preventDefault();
+      if (event.key === "Escape") finish();
+    }
+  };
+  document.addEventListener("keydown", onKey, true);
     ok.addEventListener("click", finish);
     overlay.addEventListener("click", finish);
     ok.focus();
@@ -2233,60 +2264,81 @@ function showNoticeDialog(message) {
 const saveOverlay = document.querySelector("#save-overlay");
 const saveNameInput = document.querySelector("#save-name");
 let savePrevPaused = false;
+let saveFocus;
+let saveSession = 0;
+let saveBusy = false;
+let operationStatusTimer;
+function reportOperation(message) {
+  clearTimeout(operationStatusTimer);
+  operationStatus.textContent = message;
+  if (message) operationStatusTimer = setTimeout(() => { operationStatus.textContent = ""; }, 6000);
+}
 
 function openSavePopup() {
+  if (!saveOverlay.hidden) return;
+  saveSession++;
+  saveFocus = document.activeElement;
   savePrevPaused = sim.paused;
-  sim.paused = true;
+  setPlaybackPaused(true);
+  reportOperation("");
   saveNameInput.value = "";
-  document.querySelector('input[name="save-location"][value="default"]').checked = true;
+  const localLibrary = document.querySelector('input[name="save-location"][value="default"]');
+  localLibrary.disabled = staticHosting;
+  document.querySelector(`input[name="save-location"][value="${staticHosting ? "custom" : "default"}"]`).checked = true;
   saveOverlay.hidden = false;
   saveNameInput.focus();
 }
 
 function closeSavePopup() {
+  if (saveOverlay.hidden) return;
+  saveSession++;
   saveOverlay.hidden = true;
-  sim.paused = savePrevPaused;
+  setPlaybackPaused(savePrevPaused);
+  saveFocus?.focus();
 }
 
-async function submitSave(name, force) {
+async function submitSave(name) {
+  if (saveBusy || saveOverlay.hidden) return;
+  saveBusy = true;
+  const session = saveSession;
+  const isCurrent = () => session === saveSession;
   const location = document.querySelector('input[name="save-location"]:checked')?.value;
-  const data = serializeScenario(sim);
-  if (location === "custom") {
-    try {
-      // If the user dismissed the OS file picker, keep the Save form open so
-      // they can retry instead of losing their typed scenario name.
-      const saved = await saveJsonToCustomLocation(`${name || "Untitled"}.json`, data);
-      if (saved === false) return;
-      status.textContent = t("save.done");
-      closeSavePopup();
-    } catch {
-      status.textContent = t("save.failed");
-    }
-    return;
-  }
+  const filename = (name || "Untitled") + ".json";
+  reportOperation("");
   try {
-    const res = await fetch("/scenario/save", {
+    const data = serializeScenario(sim);
+    data.paused = savePrevPaused;
+    const post = (force) => fetch("./scenario/save", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name, data, force })
     });
-    if (!res.ok) {
-      await saveJsonToCustomLocation(`${name || "Untitled"}.json`, data);
-      status.textContent = t("save.done");
-      closeSavePopup();
-      return;
-    }
-    const result = await res.json();
-    if (!result.ok && result.reason === "exists") {
-      if (await confirmDialog(t("save.overwrite").replace("{n}", result.name))) {
-        await submitSave(name, true);
+    if (location === "custom") {
+      if (!(await saveJsonToCustomLocation(filename, data))) return;
+    } else {
+      let response = await post(false);
+      if (!isCurrent()) return;
+      if (!response.ok) {
+        if (!(await saveJsonToCustomLocation(filename, data))) return;
+      } else {
+        let result = await response.json();
+        if (!isCurrent()) return;
+        if (result.reason === "exists") {
+          const overwrite = await confirmDialog(t("save.overwrite").replace("{n}", result.name));
+          if (!overwrite || !isCurrent()) return;
+          response = await post(true);
+          result = response.ok ? await response.json() : null;
+        }
+        if (!result?.ok) throw new Error("Save failed");
       }
-      return;
     }
-    status.textContent = t("save.done");
+    if (!isCurrent()) return;
+    reportOperation(t("save.done"));
     closeSavePopup();
   } catch {
-    status.textContent = t("save.failed");
+    if (isCurrent()) reportOperation(t("save.failed"));
+  } finally {
+    saveBusy = false;
   }
 }
 
@@ -2294,24 +2346,32 @@ document.querySelector("#save").addEventListener("click", openSavePopup);
 document.querySelector("#save-cancel").addEventListener("click", closeSavePopup);
 document.querySelector("#save-confirm").addEventListener("click", () => submitSave(saveNameInput.value.trim(), false));
 saveOverlay.addEventListener("click", (e) => { if (e.target === saveOverlay) closeSavePopup(); });
+const loadOverlay = document.querySelector("#load-overlay");
+const loadList = document.querySelector("#load-list");
+let loadPrevPaused = false;
+let loadFocus;
+let loadRequest;
+let loadSession = 0;
+
 document.querySelector("#load-file").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
+  const session = loadSession;
+  loadRequest?.abort();
+  const request = new AbortController();
+  loadRequest = request;
   try {
-    if (file.size > 5 * 1024 * 1024) throw new Error("Scenario file exceeds the 5 MB import limit.");
-    installScenario(restoreScenario(JSON.parse(await file.text())));
+    await modEditor.preload();
+    const data = JSON.parse(await file.text());
+    if (request.signal.aborted || session !== loadSession) return;
+    installScenario(restoreScenario(data));
     closeLoadPopup({ restorePreviousPause: false });
   } catch (error) {
-    alert(error.message);
+    if (!request.signal.aborted && session === loadSession) showNoticeDialog("无法载入推演。" + error.message);
   } finally {
     event.target.value = "";
   }
 });
-
-// --- load scenario popup -----------------------------------------------------
-const loadOverlay = document.querySelector("#load-overlay");
-const loadList = document.querySelector("#load-list");
-let loadPrevPaused = false;
 
 function formatSavedAt(ms) {
   const d = new Date(ms);
@@ -2320,21 +2380,28 @@ function formatSavedAt(ms) {
 
 async function refreshLoadList() {
   loadList.textContent = "";
+  const session = loadSession;
   let entries = [];
   try {
-    const response = await fetch("/scenario/list");
-    if (response.ok) entries = await response.json();
+    if (!staticHosting) {
+      const response = await fetch("./scenario/list");
+      if (response.ok) entries = await response.json();
+    }
+    if (session !== loadSession) return;
   } catch {
     loadList.innerHTML = `<div class="load-empty">${t("load.failed")}</div>`;
     return;
   }
   if (!entries.length) {
-    loadList.innerHTML = `<div class="load-empty">${t("load.empty")}</div>`;
+    loadList.innerHTML = `<div class="load-empty">${staticHosting ? "此站点使用推演文件。请选择从文件导入。" : t("load.empty")}</div>`;
     return;
   }
   for (const entry of entries) {
     const row = document.createElement("div");
     row.className = "load-row";
+    const loadButton = document.createElement("button");
+    loadButton.type = "button";
+    loadButton.className = "load-entry";
     const name = document.createElement("span");
     name.className = "load-name";
     name.textContent = entry.name;
@@ -2345,20 +2412,32 @@ async function refreshLoadList() {
     del.className = "load-delete";
     del.type = "button";
     del.textContent = t("load.delete");
-    del.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      if (!(await confirmDialog(t("load.deleteConfirm").replace("{n}", entry.name)))) return;
-      await fetch(`/scenario/delete?name=${encodeURIComponent(entry.name)}`, { method: "DELETE" });
-      refreshLoadList();
-    });
-    row.append(name, date, del);
-    row.addEventListener("click", async () => {
+    del.addEventListener("click", async () => {
+      if (!(await confirmDialog(t("load.deleteConfirm").replace("{n}", entry.name))) || session !== loadSession) return;
       try {
-        const data = await (await fetch(`/scenario/load?name=${encodeURIComponent(entry.name)}`)).json();
+        const response = await fetch("./scenario/delete?name=" + encodeURIComponent(entry.name), { method: "DELETE" });
+        if (!response.ok) throw new Error("Delete failed");
+        if (session === loadSession) refreshLoadList();
+      } catch {
+        if (session === loadSession) reportOperation(t("load.failed"));
+      }
+    });
+    loadButton.append(name, date);
+    row.append(loadButton, del);
+    loadButton.addEventListener("click", async () => {
+      loadRequest?.abort();
+      const request = new AbortController();
+      loadRequest = request;
+      try {
+        const response = await fetch("./scenario/load?name=" + encodeURIComponent(entry.name), { signal: request.signal });
+        if (!response.ok) throw new Error("Load failed");
+        const data = await response.json();
+        await modEditor.preload();
+        if (request.signal.aborted || session !== loadSession) return;
         installScenario(restoreScenario(data));
         closeLoadPopup({ restorePreviousPause: false });
       } catch (error) {
-        status.textContent = error.message;
+        if (!request.signal.aborted && session === loadSession) showNoticeDialog("无法载入推演。" + error.message);
       }
     });
     loadList.appendChild(row);
@@ -2366,17 +2445,25 @@ async function refreshLoadList() {
 }
 
 function openLoadPopup() {
+  if (!loadOverlay.hidden) return;
+  loadSession++;
+  loadFocus = document.activeElement;
   loadPrevPaused = sim.paused;
-  sim.paused = true;
+  setPlaybackPaused(true);
   loadOverlay.hidden = false;
-  markCanvasDirty();
+  document.querySelector("#load-import").focus();
   refreshLoadList();
 }
 
 function closeLoadPopup({ restorePreviousPause = true } = {}) {
+  if (loadOverlay.hidden) return;
+  loadSession++;
+  loadRequest?.abort();
+  loadRequest = null;
   loadOverlay.hidden = true;
-  if (restorePreviousPause) sim.paused = loadPrevPaused;
+  if (restorePreviousPause) setPlaybackPaused(loadPrevPaused);
   markCanvasDirty();
+  loadFocus?.focus();
 }
 
 document.querySelector("#load").addEventListener("click", openLoadPopup);
@@ -2387,31 +2474,45 @@ loadOverlay.addEventListener("click", (e) => { if (e.target === loadOverlay) clo
 
 window.addEventListener("keydown", (event) => {
   const target = event.target;
-  // Never hijack keys while the user is typing in a field, dropdown, or any
-  // editable control — Space/Tab/Delete there must serve the control itself.
-  if (target instanceof HTMLInputElement
-      || target instanceof HTMLSelectElement
-      || target instanceof HTMLTextAreaElement
-      || target.isContentEditable) return;
-  if (modEditor.isOpen()) {
-    if (event.key === "Escape") { event.preventDefault(); modEditor.close(); }
+  const modal = [
+    [saveOverlay, closeSavePopup],
+    [loadOverlay, closeLoadPopup],
+    [equipmentOverlay, closeEquipmentLibrary],
+    [modsOverlay, () => modEditor.close()]
+  ].find(([overlay]) => !overlay.hidden);
+  if (modal) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      modal[1]();
+    } else if (event.key === "Tab") {
+      const controls = [...modal[0].querySelectorAll("button, input, select, textarea, a[href], [tabindex='0']")]
+        .filter(control => !control.disabled && control.tabIndex >= 0 && control.getClientRects().length);
+      const first = controls[0], last = controls.at(-1);
+      if (first && (!modal[0].contains(target) || (event.shiftKey ? target === first : target === last))) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    }
     return;
   }
-  if (!equipmentOverlay.hidden && event.key === "Escape") {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
     event.preventDefault();
-    closeEquipmentLibrary();
+    openSavePopup();
     return;
   }
+  if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement
+      || target instanceof HTMLTextAreaElement || target.isContentEditable) return;
+  if (target.closest?.("button, a[href], [role='button']") && ["Space", "Enter"].includes(event.code)) return;
   if (event.code === "Space") {
     event.preventDefault();
     if (sim.mode === SCENARIO_MODE.SETUP) startScenario();
-    else if (sim.mode !== SCENARIO_MODE.ENDED) sim.paused = !sim.paused;
+    else if (sim.mode !== SCENARIO_MODE.ENDED) setPlaybackPaused(!sim.paused);
     markCanvasDirty();
   }
   if (event.key === ".") {
     if (sim.mode === SCENARIO_MODE.SETUP && !startScenario()) return;
-    sim.paused = true;
-    stepSim(sim, 0.25, { allowPaused: true });
+    setPlaybackPaused(true);
+    stepSim(sim, SIM_STEP_S, { allowPaused: true });
     markCanvasDirty();
   }
   if (event.key === "Escape") {
@@ -2428,19 +2529,15 @@ window.addEventListener("keydown", (event) => {
       setMapTool("ruler");
     }
   }
-  if (event.key === "Tab") {
-    // Tab cycles units only when no control is focused (focus rests on the
-    // body/canvas). When a button or field is focused, let Tab move focus
-    // normally so keyboard navigation between controls stays usable.
-    if (target === document.body || target === document.documentElement || target === canvas) {
-      event.preventDefault();
-      cycleShip();
-    }
+  if (event.key.toLowerCase() === "n" && target === canvas) {
+    event.preventDefault();
+    cycleShip();
   }
   if ((event.key === "Delete" || event.key === "Backspace") && sim.mode === SCENARIO_MODE.SETUP) {
     event.preventDefault();
     for (const id of [...selectedIds]) deleteShip(sim, id);
     selectedIds = new Set([sim.selectedId].filter(Boolean));
+    markCanvasDirty();
   }
 });
 
@@ -2530,8 +2627,8 @@ const modEditor = createModEditor({
   // (and calling it re-entrantly could fault mid-frame).
   onChange: () => { populateSpawnDropdown(); },
   onOpenChange: (isOpen) => {
-    if (isOpen) { modsPrevPaused = sim.paused; sim.paused = true; }
-    else { sim.paused = modsPrevPaused; }
+    if (isOpen) { modsPrevPaused = sim.paused; setPlaybackPaused(true); }
+    else { setPlaybackPaused(modsPrevPaused); }
     applyI18n();
   }
 });
@@ -2622,7 +2719,7 @@ document.querySelector("#tour-next")?.addEventListener("click", () => {
   if (tourIndex >= TUTORIAL_STEPS.length - 1) closeTour();
   else showTourStep(tourIndex + 1);
 });
-// --- ship cycling via Tab --------------------------------------------------
+// --- ship cycling via N --------------------------------------------------
 function cycleShip() {
   const alive = sim.ships.filter((s) => s.alive);
   if (!alive.length) return;

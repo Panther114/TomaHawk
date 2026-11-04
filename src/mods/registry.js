@@ -22,7 +22,7 @@ import {
 
 /** Registry key for a unit: ammo keys on its name/id, ships on their hull id. */
 export function unitId(unit) {
-  return unit.kind === "ammo" ? String(unit.name) : String(unit.id);
+  return unit.kind === "ammo" ? String(unit.weaponId ?? unit.name) : String(unit.id);
 }
 
 // Maps an editor-JSON unit kind to the missile-platform domain it corresponds
@@ -122,12 +122,8 @@ function toMissileSpec(u) {
   else if (u.strategic === false) strategic = false;
   else if (terminalProfile === "hypersonic_glide" || rangeM >= 800 * NM) strategic = true;
   const spec = {
-    name: u.name,
-    // The ammo editor only exposes the ID, so a custom weapon labels itself with
-    // its ID everywhere (map ring, inventory, loadout picker). We force shortLabel
-    // to the name rather than honoring a stale value carried over from a clone —
-    // otherwise e.g. an SM-7X cloned from MaritimeStrike would display as "MSTK".
-    displayName: u.displayName || u.name,
+    name: unitId(u),
+    displayName: u.weaponId ? u.name : (u.displayName || u.name),
     shortLabel: u.name,
     role: u.role || "custom",
     category: u.category || legacyCategory(targets),

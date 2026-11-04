@@ -7,12 +7,10 @@ import { clamp, Rng } from "./math.js";
 import {
   SHIP_CLASSES,
   makeShip,
-  makeBurke,
   normalizeLoadout,
   restoreLoadout,
   defaultLoadout,
   defaultRoe,
-  resetShipIds,
   defaultRcsM2,
   defaultAltitudeM
 } from "./ships.js";
@@ -22,7 +20,8 @@ import { initialSonarState } from "./sonar.js";
 import { addEvent } from "./events.js";
 import { MAP_HEIGHT_M, MAP_WIDTH_M } from "../world/terrain.js";
 import { isLandPoint, isWaterPoint, normalizeMapId, tacticalMap } from "../world/terrain.js";
-import { currentTrack } from "./sensors.js";
+import { MISSILES } from "./missiles.js";
+import { projectLonLat } from "../world/map-spec.js";
 import DEFAULT_SCENARIO_TEMPLATE from "./default-scenario.json" with { type: "json" };
 
 const DEFAULT_MAP_ID = "openSea";
@@ -186,7 +185,6 @@ export function ensureShipInOpenWater(sim, ship, { fallbackToFormation = false }
 }
 
 export function createScenario(seed = 7, mapId = DEFAULT_MAP_ID) {
-  resetShipIds(1);
   const sim = {
     time: 0,
     seed,
@@ -198,6 +196,7 @@ export function createScenario(seed = 7, mapId = DEFAULT_MAP_ID) {
     missiles: [],
     events: [],
     _nextEventId: 1,
+    _nextShipId: 3,
     selectedId: null,
     mode: SCENARIO_MODE.SETUP,
     paused: true,
@@ -206,8 +205,8 @@ export function createScenario(seed = 7, mapId = DEFAULT_MAP_ID) {
     sharedTracksBySide: new Map(),
     _entityIndexesDirty: true
   };
-  sim.ships.push(makeBurke(SIDE.BLUE, waterAnchor(SIDE.BLUE).x, 0));
-  sim.ships.push(makeBurke(SIDE.RED, waterAnchor(SIDE.RED).x, 0));
+  sim.ships.push(makeShip(SIDE.BLUE, waterAnchor(SIDE.BLUE).x, 0, "DDG", 1));
+  sim.ships.push(makeShip(SIDE.RED, waterAnchor(SIDE.RED).x, 0, "DDG", 2));
   assignFleetWaterPositions(sim, sim.ships);
   sim.selectedId = sim.ships[0].id;
   return sim;
@@ -238,13 +237,30 @@ export function serializeScenario(sim) {
     nextFirePlanAt: sim.nextFirePlanAt ?? 0,
     nextForcePictureAt: sim.nextForcePictureAt ?? 0,
     nextEventId: sim._nextEventId ?? 1,
+    nextShipId: sim._nextShipId,
+    fleetCommandAt: sim._fleetCommandAt,
+    strategicEstimate: [...(sim._strategicEstimate ?? [])],
+    fleetCommand: [...(sim.fleetCommand ?? [])].map(([side, command]) => [side, {
+      axis: command.axis, otc: command.otc?.id, aawc: command.aawc?.id,
+      ships: command.ships.map(ship => ship.id)
+    }]),
+    commandState: [...(sim.commandState ?? [])],
+    forcePicture: sim.forcePicture ? [...sim.forcePicture].map(([side, tracks]) => [side, [...tracks]]) : undefined,
+    dirtyTrackIds: [...(sim._dirtyTrackIds ?? [])],
+    trackHolders: [...(sim._trackHolders ?? [])].map(([id, ships]) => [id, [...ships].map(ship => ship.id)]),
+    stalemateSince: sim._stalemateSince,
+    stalemateCacheAt: sim._stalemateCacheAt,
+    stalemateCache: sim._stalemateCache,
+    eventArchive: sim.eventArchive ?? [],
+    omittedEvents: sim.omittedEvents ?? 0,
+    interceptionTotals: sim.interceptionTotals,
     ships: sim.ships.map((ship) => ({
       ...ship,
-      tracks: [...ship.tracks.values()].map((track) => ({ ...currentTrack(track, sim.time) }))
+      tracks: [...ship.tracks.values()]
     })),
     sharedTracksBySide: [...(sim.sharedTracksBySide?.entries?.() ?? [])].map(([side, tracks]) => [
       side,
-      [...tracks.values()].map((track) => ({ ...currentTrack(track, sim.time) }))
+      [...tracks.values()]
     ]),
     missiles: sim.missiles,
     events: sim.events
@@ -256,9 +272,24 @@ export function restoreScenario(data) {
     throw new Error("Unsupported scenario file");
   }
   const ships = boundedScenarioArray(data.ships, "ships", MAX_SCENARIO_SHIPS, { required: true })
-    .map((ship) => structuredClone(ship));
+    .map(ship => {
+      if (!ship || typeof ship.id !== "string" || !Object.values(SIDE).includes(ship.side)) {
+        throw new Error("Invalid scenario unit.");
+      }
+      return structuredClone(ship);
+    });
   const missiles = boundedScenarioArray(data.missiles, "missiles", MAX_SCENARIO_MISSILES)
-    .map((missile) => structuredClone(missile));
+    .map((missile) => {
+      if (!missile || typeof missile.id !== "string" || !Object.hasOwn(MISSILES, missile.missileId)
+        || ![missile.x, missile.y, missile.speed, missile.heading].every(Number.isFinite)) {
+        throw new Error(`Invalid scenario weapon: ${missile?.missileId ?? "unknown"}.`);
+      }
+      return structuredClone(missile);
+    });
+  if (new Set(ships.map(ship => ship.id)).size !== ships.length
+    || new Set(missiles.map(missile => missile.id)).size !== missiles.length) {
+    throw new Error("Invalid scenario: duplicate entity IDs.");
+  }
   const restoredEventIds = new Set();
   const events = boundedScenarioArray(data.events, "events", MAX_SCENARIO_EVENTS)
     .map((event, index) => {
@@ -273,13 +304,14 @@ export function restoreScenario(data) {
   const widthM = scenarioDimension(data.widthM, SIM_WIDTH_M);
   const heightM = scenarioDimension(data.heightM, SIM_HEIGHT_M);
   const mapId = normalizeMapId(data.mapId ?? DEFAULT_MAP_ID);
-  resetShipIds(Math.max(1, ...ships.map((s) => {
+  const nextShipId = Math.max(0, ...ships.map((s) => {
     const m = String(s.id).match(/-(\d+)$/);
     const num = m ? Number(m[1]) : 0;
     return num;
-  })) + 1);
+  })) + 1;
   const restored = {
-    time: Number(data.time) || 0,
+    time: Number.isFinite(data.time) && data.time >= 0 ? data.time : 0,
+    _nextShipId: Math.max(nextShipId, Number.isSafeInteger(data.nextShipId) ? data.nextShipId : 1),
     seed,
     rng: new Rng(rngState),
     widthM,
@@ -290,7 +322,7 @@ export function restoreScenario(data) {
       const cls = SHIP_CLASSES[hull] || SHIP_CLASSES.DDG;
       const domain = ship.domain ?? cls.domain ?? "sea";
       const legacyAim120Id = legacyAim120IdForHull(hull);
-      const capacityShape = { vlsCells: ship.vlsCells ?? cls.vlsCells };
+      const capacityShape = { vlsCells: ship.vlsCells ?? cls.vlsCells, domain };
       const loadout = Object.prototype.hasOwnProperty.call(ship, "loadout")
         ? restoreLoadout(ship.loadout, capacityShape, legacyAim120Id)
         : defaultLoadout(hull);
@@ -322,6 +354,11 @@ export function restoreScenario(data) {
         domain,
         isFixed: ship.isFixed ?? cls.isFixed ?? false,
         isAirfield: ship.isAirfield ?? cls.isAirfield ?? false,
+        ...((ship.isAirfield ?? cls.isAirfield) ? {
+          sortiesRemaining: Number.isInteger(ship.sortiesRemaining) ? Math.max(0, ship.sortiesRemaining)
+            : (ship.isFixed ?? cls.isFixed) ? 48 : 24,
+          nextSortieAt: Number.isFinite(ship.nextSortieAt) ? ship.nextSortieAt : 0
+        } : {}),
         isCarrier: ship.isCarrier === true || cls.isCarrier === true
           || ((ship.isAirfield ?? cls.isAirfield) && (domain === "sea") && !(ship.isFixed ?? cls.isFixed)),
         carrierCapable: ship.carrierCapable === true || cls.carrierCapable === true,
@@ -431,9 +468,30 @@ export function restoreScenario(data) {
       side,
       new Map(structuredClone(tracks || []).map((track) => [track.id, track]))
     ])),
+    _fleetCommandAt: Number.isFinite(data.fleetCommandAt) ? data.fleetCommandAt : undefined,
+    _strategicEstimate: new Map(data.strategicEstimate ?? []),
+    commandState: new Map(data.commandState ?? []),
+    forcePicture: Array.isArray(data.forcePicture)
+      ? new Map(data.forcePicture.map(([side, tracks]) => [side, new Map(tracks)])) : undefined,
+    _dirtyTrackIds: new Set(data.dirtyTrackIds ?? []),
+    _savedTrackHolders: new Map(data.trackHolders ?? []),
+    _stalemateSince: data.stalemateSince,
+    _stalemateCacheAt: data.stalemateCacheAt,
+    _stalemateCache: data.stalemateCache,
+    eventArchive: structuredClone(boundedScenarioArray(data.eventArchive, "archived events", 25000)),
+    omittedEvents: Number.isSafeInteger(data.omittedEvents) ? Math.max(0, data.omittedEvents)
+      : Math.max(0, (events.at(-1)?.id ?? 1) - 1),
+    interceptionTotals: data.interceptionTotals,
     _entityIndexesDirty: true,
     _trackIndexReady: false
   };
+  const restoredShipsById = new Map(restored.ships.map(ship => [ship.id, ship]));
+  restored.fleetCommand = new Map((data.fleetCommand ?? []).map(([side, command]) => [side, {
+    axis: command.axis,
+    otc: restoredShipsById.get(command.otc) ?? null,
+    aawc: restoredShipsById.get(command.aawc) ?? null,
+    ships: command.ships.map(id => restoredShipsById.get(id)).filter(Boolean)
+  }]));
   // Version-2 saves from before the centralized CEC store may contain one
   // datalink copy per receiver. Collapse those copies while restoring.
   for (const ship of restored.ships) {
@@ -472,13 +530,14 @@ export function exportAfterAction(sim) {
       damage: s.damage,
       remainingLoadout: { ...s.loadout }
     })),
-    events: [...sim.events].reverse().map((event) => ({ ...event }))
+    omittedEvents: sim.omittedEvents ?? 0,
+    events: [...(sim.eventArchive ?? []), ...[...sim.events].reverse()]
   });
 }
 
 export function placeShip(sim, side, x, y, hull = "DDG") {
   if (!sim || sim.ships.length >= MAX_SCENARIO_SHIPS) return null;
-  const ship = clampShipToBounds(sim, makeShip(side, x, y, hull));
+  const ship = clampShipToBounds(sim, makeShip(side, x, y, hull, sim._nextShipId ?? 1));
   // Placement rules by unit kind:
   //   air units may be placed anywhere (land or water);
   //   ground airfields (AFB) may be placed anywhere;
@@ -493,6 +552,7 @@ export function placeShip(sim, side, x, y, hull = "DDG") {
       return null;
     }
   }
+  sim._nextShipId = (sim._nextShipId ?? 1) + 1;
   sim.ships.push(ship);
   sim._entityIndexesDirty = true;
   sim.selectedId = ship.id;
@@ -504,10 +564,14 @@ export function duplicateShip(sim, shipId) {
   const original = sim.ships.find((ship) => ship.id === shipId);
   if (!original || sim.ships.length >= MAX_SCENARIO_SHIPS) return null;
   const hull = original.hull || "DDG";
-  const copy = makeShip(original.side, original.x + 2 * NM, original.y + 2 * NM, hull);
+  const copy = makeShip(original.side, original.x + 2 * NM, original.y + 2 * NM, hull, sim._nextShipId ?? 1);
   copy.heading = original.heading;
   copy.desiredSpeed = original.desiredSpeed;
   copy.radarActive = original.radarActive;
+  copy.sonarActive = original.sonarActive;
+  copy.jammerActive = original.jammerActive;
+  copy.jammerNormallyActive = original.jammerNormallyActive;
+  copy.roe = { ...original.roe };
   copy.loadout = normalizeLoadout({ ...original.loadout });
   copy.baseLoadoutSnapshot = normalizeLoadout({
     ...(original.baseLoadoutSnapshot ?? original.loadout)
@@ -526,6 +590,7 @@ export function duplicateShip(sim, shipId) {
   } else if (!ensureShipInOpenWater(sim, copy)) {
     assignFleetWaterPositions(sim, [copy]);
   }
+  sim._nextShipId = (sim._nextShipId ?? 1) + 1;
   sim.ships.push(copy);
   sim._entityIndexesDirty = true;
   sim.selectedId = copy.id;
@@ -593,7 +658,20 @@ export function setScenarioMap(sim, mapId) {
   }
   const nextMapId = normalizeMapId(mapId);
   if (nextMapId === sim.mapId) return { ok: true, changed: false, mapId: nextMapId };
+  const nextMap = { ...sim, mapId: nextMapId };
+  const invalidGround = sim.ships.filter(ship => ship.isFixed && !ship.isAirfield && !canEmplaceOnLand(nextMap, ship));
+  const fallbackLand = projectLonLat(121.1, 31.2);
+  if (invalidGround.length && !canEmplaceOnLand(nextMap, fallbackLand)) {
+    return { ok: false, reason: "ground_position", mapId: sim.mapId };
+  }
   sim.mapId = nextMapId;
+  invalidGround.forEach((ship, index) => {
+    const offset = { x: fallbackLand.x - (index % 10) * NM, y: fallbackLand.y - Math.floor(index / 10) * NM };
+    Object.assign(ship, canEmplaceOnLand(sim, offset) ? offset : fallbackLand);
+    ship.tracks.clear();
+    ship.waypoint = null;
+    ship.navigationWaypoint = null;
+  });
   assignFleetWaterPositions(sim, sim.ships);
   addEvent(sim, `Scenario map set to ${tacticalMap(nextMapId).id}; ship positions reset to open water.`);
   return { ok: true, changed: true, mapId: nextMapId };

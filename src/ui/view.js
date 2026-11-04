@@ -1,3 +1,4 @@
+import { countInterceptionEvent, emptyInterceptionTotals } from "../sim/events.js";
 // Pure presentation helpers for the tactical UI.
 //
 // Everything here is free of canvas/DOM access and global state: coordinate
@@ -253,13 +254,12 @@ export function postureBar(side, posture) {
 // Launches aimed at another missile are defensive and excluded from the
 // offensive denominator; successful interceptor and CIWS events are hard kills.
 function interceptionStats(sim) {
-  const ledger = sim._uiInterceptionStats ||= {
-    seen: new Set(),
-    sides: {
-      [SIDE.BLUE]: { launched: 0, intercepted: 0 },
-      [SIDE.RED]: { launched: 0, intercepted: 0 }
-    }
-  };
+  if (!sim._uiInterceptionStats) {
+    const sides = structuredClone(sim.interceptionTotals ?? emptyInterceptionTotals());
+    for (const event of sim.eventArchive ?? []) countInterceptionEvent(sides, event);
+    sim._uiInterceptionStats = { seen: new Set(), sides };
+  }
+  const ledger = sim._uiInterceptionStats;
   const events = Array.isArray(sim.events) ? sim.events : [];
   // The simulation keeps only the newest event records. Drop ledger keys for
   // compacted records as well, otherwise a long battle grows a second,
@@ -275,19 +275,7 @@ function interceptionStats(sim) {
     const key = event.id != null ? event.id : event;
     if (ledger.seen.has(key)) continue;
     ledger.seen.add(key);
-    const text = String(event.text || "");
-    const side = event.side === SIDE.RED || event.side === SIDE.BLUE ? event.side : null;
-    if (!side) continue;
-    if (/ launched /.test(text) && !/ queued /.test(text)) {
-      const target = text.split(" at ").pop().replace(/\.+$/, "");
-      const isMissileTarget = Object.entries(MISSILES).some(([id, spec]) => (
-        id === target || spec.shortLabel === target
-      ));
-      if (!isMissileTarget) ledger.sides[side].launched++;
-    }
-    if (/intercepted incoming|CIWS destroyed incoming/i.test(text)) {
-      ledger.sides[side].intercepted++;
-    }
+    countInterceptionEvent(ledger.sides, event);
   }
   return ledger.sides;
 }
@@ -311,7 +299,7 @@ export function battleStatusState(sim, counts = null) {
     const enemySide = side === SIDE.BLUE ? SIDE.RED : SIDE.BLUE;
     const enemyOffensive = intercepts[enemySide]?.launched ?? 0;
     const interceptionRate = enemyOffensive
-      ? Math.round((intercepts[side]?.intercepted ?? 0) / enemyOffensive * 100)
+      ? Math.min(100, Math.round((intercepts[side]?.intercepted ?? 0) / enemyOffensive * 100))
       : 0;
     state[prefix] = {
       units: { value: String(ships), pct: null },
@@ -558,6 +546,7 @@ export function unitInfoPopoverHtml(unit, sim = null) {
   const state = inventoryRowState(unit);
   const title = unitListName(unit);
   const rows = [infoMetric("生命", `${state.hp}/${state.hpMax}`)];
+  if (unit.isAirfield) rows.push(infoMetric("剩余出动保障", unit.sortiesRemaining ?? 0));
   if (unit.domain === "air") {
     const base = sim?.ships?.find((candidate) => candidate.id === unit.homeBaseId);
     rows.push(
@@ -565,7 +554,7 @@ export function unitInfoPopoverHtml(unit, sim = null) {
       infoMetric("高度", `${state.altitudeKm.toFixed(1)} km`),
       infoMetric("速度", `${state.speedKts} kt`),
       infoMetric("燃料", `${state.fuelPct}% (${Math.round(state.fuelS)} s)`),
-      infoMetric("状态", AIR_STATE_ABBR[unit.airState] ?? "MSN"),
+      infoMetric("状态", unit.airState === "rearming" && base?.sortiesRemaining === 0 ? "停飞：保障耗尽" : AIR_STATE_ABBR[unit.airState] ?? "MSN"),
       infoMetric("基地", base ? unitListName(base) : "未指定"),
       infoMetric("诱饵", `${Math.max(0, Math.round(unit.flares ?? 0))}/${Math.max(0, Math.round(unit.flaresMax ?? 0))}`),
       infoMetric("弹药", infoLoadout(unit))

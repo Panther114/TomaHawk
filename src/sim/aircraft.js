@@ -16,7 +16,7 @@ import { NM, KNOT, SHIP_SPEED_MULTIPLIER, SIDE, SCENARIO_MODE } from "./constant
 import { distance, angleTo } from "./math.js";
 import { MISSILES, missileCanTarget, missileHasSurfaceTarget } from "./missiles.js";
 import { addEvent } from "./events.js";
-import { markContactDead, iterateTracksForShip } from "./sensors.js";
+import { markContactDead, iterateTracksForShip, trackForShip } from "./sensors.js";
 
 // Squadron / endurance / rearm tunables. All provisional.
 export const AIRCRAFT_TEMP_CONFIG = Object.freeze({
@@ -575,8 +575,13 @@ function nearestIncomingMissile(sim, ship) {
   let bestD = Infinity;
   for (const m of list) {
     if (!m.alive || m.side === ship.side || m.targetId !== ship.id) continue;
+    const track = trackForShip(sim, ship, m.id);
     const d = distance(ship, m);
-    if (d < bestD) { bestD = d; best = m; }
+    // A close-in warning receiver can cue on the threat even between scans.
+    if (!track && d > 5 * NM) continue;
+    const cue = track ?? m;
+    const cueDistance = distance(ship, cue);
+    if (cueDistance < bestD) { bestD = cueDistance; best = cue; }
   }
   return best;
 }
@@ -621,9 +626,11 @@ function everCarriesWeapons(ship) {
 }
 
 function refillFromBase(ship) {
-  ship.loadout = { ...(ship.baseLoadoutSnapshot || {}) };
+  const fraction = aliveAircraftCount(ship) / Math.max(1, squadronSize(ship));
+  ship.loadout = Object.fromEntries(Object.entries(ship.baseLoadoutSnapshot ?? {}).map(([id, count]) =>
+    [id, Math.floor(count * fraction)]));
   ship.fuelS = ship.enduranceS;
-  ship.flares = ship.flaresMax ?? ship.flares ?? 0;
+  ship.flares = Math.floor((ship.flaresMax ?? ship.flares ?? 0) * fraction);
   ship.airState = AIR_STATE.MISSION;
   ship.evading = false;
   ship.evadeUntil = 0;
@@ -682,7 +689,15 @@ export function decideAircraft(sim, ship) {
   if (ship.airState === AIR_STATE.REARMING) {
     if (stickToBaseDeck(sim, ship)) {
       setPhase(sim, ship, "rearming", ship.homeBaseId);
-      if (sim.time >= (ship.rearmUntil ?? 0)) {
+      const base = lockedRecoveryBase(sim, ship);
+      const sortiesRemaining = base.sortiesRemaining ?? 0;
+      if (sortiesRemaining <= 0) {
+        setPhase(sim, ship, "grounded", base.id);
+        return;
+      }
+      if (sim.time >= Math.max(ship.rearmUntil ?? 0, base.nextSortieAt ?? 0)) {
+        base.sortiesRemaining = sortiesRemaining - 1;
+        base.nextSortieAt = sim.time + (isCarrier(base) ? 8 : 4);
         refillFromBase(ship);
         // Climb out after relaunch so the next mission tick is not stuck at deck
         // altitude (LO stand-in / CAP both assume a cruising height).

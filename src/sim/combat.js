@@ -7,7 +7,7 @@ import { clamp, distance, distance3d, angleTo, wrapAngle, interceptPoint, interc
 import { MISSILES, missileDisplayRole, missileCanTarget, missileHasSurfaceTarget, missileHasAirDefenseTarget } from "./missiles.js";
 import { availableCount, setAvailableCount, defaultLoadout, defaultRoe } from "./ships.js";
 import { addEvent } from "./events.js";
-import { currentTrack, markContactDead } from "./sensors.js";
+import { canReceiveTrack, currentTrack, markContactDead, trackForShip } from "./sensors.js";
 import { AIRCRAFT_TEMP_CONFIG, aliveAircraftCount } from "./aircraft.js";
 import {
   applySubsystemDamage,
@@ -349,6 +349,10 @@ function deactivateShip(sim, ship) {
 function makeLaunchOrder(sim, launcher, track, missileId, sequence = 0) {
   const spec = MISSILES[missileId];
   if (!spec || availableCount(launcher, missileId) <= 0) return false;
+  if (!canReceiveTrack(launcher, track)) {
+    track = trackForShip(sim, launcher, track.id);
+    if (!track) return false;
+  }
   const rangeM = engagementDistance(launcher, track, spec);
   if (rangeM > spec.rangeM) return false;
   const defensive = track.id?.startsWith?.("M-") && missileCanTarget(spec, "missile");
@@ -403,14 +407,18 @@ function revalidateLaunchOrder(sim, launcher, order, spec) {
     : target.domain ?? "sea";
   if (!canEngageQueuedTarget(launcher, spec, targetDomain)) return null;
   if (engagementDistance(launcher, target, spec) > spec.rangeM + 1e-6) return null;
+  if (isHypersonicOnlyInterceptor(spec) && !hasHighAltitudeSolution(launcher, target, spec)) return null;
   order.targetSide = target.side;
   order.targetDomain = targetDomain;
   order.targetClassification = target.missileId ?? target.className ?? order.targetClassification;
-  order.targetX = target.x;
-  order.targetY = target.y;
-  order.targetVx = Math.cos(target.heading ?? 0) * (target.speed ?? 0);
-  order.targetVy = Math.sin(target.heading ?? 0) * (target.speed ?? 0);
-  order.targetDepthM = Number.isFinite(target.depthM) ? target.depthM : null;
+  const observed = trackForShip(sim, launcher, target.id) ?? forceTrack(sim, launcher.side, target.id);
+  if (observed && canReceiveTrack(launcher, observed)) {
+    order.targetX = observed.x;
+    order.targetY = observed.y;
+    order.targetVx = observed.vx ?? 0;
+    order.targetVy = observed.vy ?? 0;
+    order.targetDepthM = observed.depthM ?? null;
+  }
   return target;
 }
 
@@ -547,6 +555,11 @@ function launchMissile(sim, launcher, order) {
     flownM: 0,
     targetX: order.targetX,
     targetY: order.targetY,
+    datumX: order.targetX,
+    datumY: order.targetY,
+    datumVx: order.targetVx ?? 0,
+    datumVy: order.targetVy ?? 0,
+    datumAt: sim.time,
     aimX: lead.x,
     aimY: lead.y,
     phase: missileHasSurfaceTarget(spec) && order.targetDomain !== "air" && !String(order.targetId).startsWith("M-") ? "cruise" : "boost",
@@ -621,7 +634,8 @@ function launchMissile(sim, launcher, order) {
   } else {
     launcher.nextLaunchAt = sim.time + effectiveLaunchIntervalS(launcher, spec);
   }
-  addEvent(sim, `${launcher.name} launched ${spec.shortLabel} at ${order.targetClassification}.`, launcher.side);
+  addEvent(sim, `${launcher.name} launched ${spec.shortLabel} at ${order.targetClassification}.`, launcher.side,
+    String(order.targetId).startsWith("M-") ? "defense" : "attack");
   return true;
 }
 
@@ -1156,6 +1170,16 @@ export function isHypersonicOnlyInterceptor(spec) {
 
 // Best specialized BMD interceptor (THAAD etc.) still aboard and in range.
 // Returns null for cruise/aircraft threats so THAAD magazines are never wasted.
+function hasHighAltitudeSolution(ship, threat, spec) {
+  if (!isHighEnergyThreat(threat)) return false;
+  const altitude = threat.altitudeM ?? MISSILES[threat.missileId]?.cruiseAltitudeM ?? 0;
+  const range = distance(ship, threat);
+  const closeTime = range / (spec.speedMps + (threat.speed ?? 0));
+  const projectedAltitude = altitude + Math.min(0, threat.verticalRateMps ?? 0) * closeTime;
+  return projectedAltitude >= 15000 && projectedAltitude <= 150000
+    && range * range + projectedAltitude * projectedAltitude <= spec.rangeM ** 2;
+}
+
 function chooseHypersonicOnlyWeapon(ship, threat, rangeM, samOpen) {
   if (!samOpen || !isHighEnergyThreat(threat)) return null;
   let best = null;
@@ -1166,7 +1190,7 @@ function chooseHypersonicOnlyWeapon(ship, threat, rangeM, samOpen) {
     const spec = MISSILES[id];
     if (!spec || !isHypersonicOnlyInterceptor(spec)) continue;
     if (!missileCanTarget(spec, "missile")) continue;
-    if (rangeM > spec.rangeM) continue;
+    if (rangeM > spec.rangeM || !hasHighAltitudeSolution(ship, threat, spec)) continue;
     // Hypersonic raids always release — survival layer (no magazine reserve).
     if (!best || spec.rangeM > MISSILES[best].rangeM || spec.speedMps > (MISSILES[best].speedMps || 0)) {
       best = id;
@@ -1212,7 +1236,7 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
     }
     return anySam;
   })();
-  if (hasOnlyHypersonicSams && !highEnergy) return null;
+  if (hasOnlyHypersonicSams) return null;
 
   const survivalRisk = threat.terminal || tti < 35 || raidCount >= ship.defenseDoctrine.saturationThreshold || highEnergy;
   const sm2Available = samOpen && sm2 && (survivalRisk ? sm2Count > 0 : sm2Count > sm2Reserve) && rangeM <= sm2.rangeM;
@@ -1229,7 +1253,7 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
     if (samOpen && sm6Count > 0 && sm6 && rangeM <= sm6.rangeM) return "SM-6";
     if (samOpen && sm2Count > 0 && sm2 && rangeM <= sm2.rangeM) return "SM-2MR";
     if (samOpen && essmCount > 0 && essm && rangeM <= essm.rangeM) return "ESSM";
-    return chooseGenericSamWeapon(ship, rangeM, samOpen, true);
+    return chooseGenericSamWeapon(ship, rangeM, samOpen);
   }
   if (cheapFollowupPreferred && essmAvailable) return "ESSM";
   if (urgent && essmAvailable && rangeM <= essm.rangeM) return "ESSM";
@@ -1244,14 +1268,14 @@ export function chooseDefensiveWeapon(sim, ship, threat, options = {}) {
   if (samOpen && essmCount > 0 && essm && rangeM <= essm.rangeM) return "ESSM";
   if (samOpen && sm2Count > 0 && sm2 && rangeM <= sm2.rangeM) return "SM-2MR";
   if (samOpen && sm6Count > 0 && sm6 && rangeM <= sm6.rangeM) return "SM-6";
-  return chooseGenericSamWeapon(ship, rangeM, samOpen, false);
+  return chooseGenericSamWeapon(ship, rangeM, samOpen);
 }
 
 // Workshop SAM fallback: any missile-target-capable round actually in the
 // magazine, longest reach first. Vanilla ships return before reaching here
 // (their SM-2/6/ESSM paths above), so vanilla behavior is unchanged — this
 // only enables custom SAMs that were previously dead weight on ships.
-function chooseGenericSamWeapon(ship, rangeM, samOpen, highEnergy) {
+function chooseGenericSamWeapon(ship, rangeM, samOpen) {
   if (!samOpen || !ship.loadout) return null;
   const vanilla = new Set(["SM-2MR", "SM-6", "ESSM"]);
   let best = null;
@@ -1260,7 +1284,7 @@ function chooseGenericSamWeapon(ship, rangeM, samOpen, highEnergy) {
     if (!(ship.loadout[id] > 0)) continue;
     const spec = MISSILES[id];
     if (!spec || !missileCanTarget(spec, "missile")) continue;
-    if (isHypersonicOnlyInterceptor(spec) && !highEnergy) continue;
+    if (isHypersonicOnlyInterceptor(spec)) continue;
     if (rangeM > (spec.rangeM ?? 0)) continue;
     if (!best || (spec.rangeM ?? 0) > (MISSILES[best].rangeM ?? 0)) best = id;
   }
@@ -1980,6 +2004,11 @@ export function updateMissiles(sim, dt) {
     if (!missile.alive) continue;
     const spec = missile._spec ?? MISSILES[missile.missileId];
     if (!missile._spec) Object.defineProperty(missile, "_spec", { value: spec, writable: true, configurable: true });
+    if (!spec) {
+      deactivateMissile(sim, missile);
+      addEvent(sim, `Unavailable weapon ${missile.missileId} was removed from flight.`, missile.side);
+      continue;
+    }
     const launchRole = missileDisplayRole(missile);
     // Resolve the target by id namespace, not by weapon role: in-flight missiles
     // have "M-…" ids, every platform (ship/ground/air) has a hull id. This lets a
@@ -1998,8 +2027,11 @@ export function updateMissiles(sim, dt) {
       continue;
     }
 
+    const depthBefore = missile.depthM ?? 0;
     if (missile.medium === "underwater") {
-      const targetDepthM = isUnderwaterEntity(target) ? (target.depthM ?? 250) : 0;
+      const targetDepthM = isUnderwaterEntity(target)
+        ? (missile.terminal ? target.depthM : missile.targetDepthM) ?? missile.depthM ?? 250
+        : 0;
       const currentDepthM = Number.isFinite(missile.depthM) ? missile.depthM : 0;
       const depthRateMps = Math.max(0, missile.depthRateMps ?? 18);
       missile.depthM = Math.max(
@@ -2022,6 +2054,8 @@ export function updateMissiles(sim, dt) {
     // Anti-surface strike vs a platform; otherwise (intercepting a missile, or a
     // SAM running down an aircraft) it is an air-intercept engagement.
     const isAntiShipTarget = !targetIsInFlightMissile && launchRole === "anti_ship";
+    const interceptsInAir = !isAntiShipTarget && missile.medium !== "underwater";
+    const altitudeBefore = missile.altitudeM ?? 0;
     if (spec.medium === "air_to_underwater"
       && missile.medium !== "underwater"
       && target.domain === "subsurface"
@@ -2038,11 +2072,17 @@ export function updateMissiles(sim, dt) {
       missile.depthM = Math.max(0, clamp(targetDepthM, 0, depthRateMps * dt));
       distToTarget = engagementDistance(missile, target, spec);
     }
+    if (interceptsInAir) {
+      const altitude = target.altitudeM ?? 0;
+      const climbM = missile.speed * 0.55 * dt;
+      missile.altitudeM = altitudeBefore + clamp(altitude - altitudeBefore, -climbM, climbM);
+    }
     if (targetIsInFlightMissile && distToTarget < 4 * NM) {
       missile.terminal = true;
       missile.phase = "terminal";
       missile.terminalReason = "intercept endgame";
-    } else if (isAntiShipTarget && distToTarget < spec.seekerRangeM) {
+    } else if (isAntiShipTarget && distToTarget < spec.seekerRangeM
+      && (missile.terminal || Math.abs(wrapAngle(angleTo(missile, target) - missile.heading)) <= Math.PI / 2)) {
       const enteringTerminal = !missile.terminal;
       missile.terminal = true;
       missile.phase = "terminal";
@@ -2071,7 +2111,7 @@ export function updateMissiles(sim, dt) {
     // over the first ~8 NM (O(1) per missile). Stops the previous teleport to
     // sea-skim / glide altitude on the launch tick while still settling onto
     // the weapon's design profile before terminal.
-    if (!missile.terminal
+    if (!interceptsInAir && !missile.terminal
       && Number.isFinite(missile.launchAltitudeM)
       && Number.isFinite(missile.cruiseAltitudeM)
       && missile.launchAltitudeM !== missile.cruiseAltitudeM) {
@@ -2090,16 +2130,21 @@ export function updateMissiles(sim, dt) {
     const aimIsShip = isAntiShipTarget;
     if (aimIsShip && !missile.terminal) {
       const fused = forceTrack(sim, missile.controllerSide ?? missile.side, missile.targetId);
-      if (fused) {
-        aimX = fused.x;
-        aimY = fused.y;
-        aimVx = fused.vx;
-        aimVy = fused.vy;
-      } else {
-        const targetSpeed = target.speed ?? 0;
-        aimVx = Math.cos(target.heading) * targetSpeed;
-        aimVy = Math.sin(target.heading) * targetSpeed;
+      if (fused && canReceiveTrack(missile, fused)) {
+        missile.datumX = fused.x;
+        missile.datumY = fused.y;
+        missile.datumVx = fused.vx ?? 0;
+        missile.datumVy = fused.vy ?? 0;
+        missile.datumAt = sim.time;
       }
+      missile.datumX ??= missile.targetX ?? missile.x;
+      missile.datumY ??= missile.targetY ?? missile.y;
+      missile.datumAt ??= sim.time;
+      const elapsed = sim.time - missile.datumAt;
+      aimVx = missile.datumVx ?? 0;
+      aimVy = missile.datumVy ?? 0;
+      aimX = missile.datumX + aimVx * elapsed;
+      aimY = missile.datumY + aimVy * elapsed;
     } else {
       // Terminal seeker lock (or interceptor under fire-control radar): lead
       // the true target motion.
@@ -2137,12 +2182,39 @@ export function updateMissiles(sim, dt) {
         * dragSpeedFactor(missile)
         * (1 + (missile.terminalDiveBoost ?? 0))
         * missileManeuverDragFactor(headingDeltaRad, dt, availableTurn);
-    const travel = missile.speed * dt;
-    missile.x += Math.cos(missile.heading) * travel;
-    missile.y += Math.sin(missile.heading) * travel;
-    missile.flownM += travel;
-    const postMoveDistance = engagementDistance(missile, target, spec);
-    if (targetIsInFlightMissile && postMoveDistance < 850) {
+    const requestedTravel = missile.speed * dt;
+    const rangeLeft = Math.max(0, (missile.maxRangeM ?? spec.rangeM) - (missile.flownM ?? 0));
+    const travel = Math.min(requestedTravel, rangeLeft);
+    const travelFraction = requestedTravel > 0 ? travel / requestedTravel : 1;
+    const dx = Math.cos(missile.heading) * travel;
+    const dy = Math.sin(missile.heading) * travel;
+    const underwater = missile.medium === "underwater";
+    const z0 = underwater ? -depthBefore : interceptsInAir ? altitudeBefore : 0;
+    const z1 = underwater ? -(missile.depthM ?? 0) : interceptsInAir ? missile.altitudeM : 0;
+    const tz = underwater ? -(isUnderwaterEntity(target) ? (target.depthM ?? 0) : 0)
+      : interceptsInAir ? (target.altitudeM ?? 0) : 0;
+    const dz = (z1 - z0) * travelFraction;
+    const radius = targetIsInFlightMissile ? 850 : underwater ? 260 : 420;
+    const ox = target.x - missile.x, oy = target.y - missile.y;
+    let withinFuseRange = false;
+    // Most flight ticks are nowhere near an intercept. Only evaluate the
+    // swept solution when the segment's horizontal bounds can reach the fuse.
+    if (Math.abs(ox) <= travel + radius && Math.abs(oy) <= travel + radius) {
+      const oz = tz - z0;
+      const travelSquared = dx * dx + dy * dy + dz * dz;
+      const closest = travelSquared > 0 ? clamp((ox * dx + oy * dy + oz * dz) / travelSquared, 0, 1) : 0;
+      const sx = ox - dx * closest, sy = oy - dy * closest, sz = oz - dz * closest;
+      withinFuseRange = sx * sx + sy * sy + sz * sz < radius * radius;
+    }
+    missile.x += dx;
+    missile.y += dy;
+    missile.flownM = (missile.flownM ?? 0) + travel;
+    if (spec.terminalProfile === "hypersonic_glide") {
+      missile.verticalRateMps = ((missile.altitudeM ?? 0) - altitudeBefore) / Math.max(dt, 1e-9);
+    }
+    if (underwater) missile.depthM = -(z0 + dz);
+    else if (interceptsInAir) missile.altitudeM = z0 + dz;
+    if (targetIsInFlightMissile && withinFuseRange) {
       // Interceptor PK: base PK minus O(1) kinematic / profile / layer difficulty
       // (hypersonic boost-glide is far harder than a subsonic ASCM), sea-skim,
       // local saturation, and track cue quality. See missileInterceptHitChance.
@@ -2162,13 +2234,13 @@ export function updateMissiles(sim, dt) {
       });
       if (sim.rng.next() < interceptChance) {
         deactivateMissile(sim, target);
-        addEvent(sim, `${missile.missileId} intercepted incoming ${target.missileId}.`, missile.side);
+        addEvent(sim, `${missile.missileId} intercepted incoming ${target.missileId}.`, missile.side, "intercept");
       } else {
         addEvent(sim, `${missile.missileId} failed to intercept ${target.missileId}.`, missile.side);
       }
       deactivateMissile(sim, missile);
     } else if (!targetIsInFlightMissile
-      && postMoveDistance < (missile.medium === "underwater" ? 260 : 420)) {
+      && withinFuseRange) {
       const isAir = target.domain === "air";
       let hitChance;
       let decoyed = missile.medium === "underwater"
@@ -2224,7 +2296,7 @@ export function updateMissiles(sim, dt) {
       }
       deactivateMissile(sim, missile);
     }
-    if (missile.flownM > missile.maxRangeM) {
+    if (missile.alive && requestedTravel >= rangeLeft) {
       deactivateMissile(sim, missile);
       addEvent(sim, `${missile.missileId} exhausted fuel and fell into the sea.`, missile.side);
     }
@@ -2240,7 +2312,10 @@ export function pointDefense(sim) {
     const inbound = [];
     for (const missile of incomingMissilesFor(sim, ship.id)) {
       if (!missile.alive || missile.side === ship.side || missile.targetId !== ship.id || !missile.terminal) continue;
-      if (distance(ship, missile) >= ciwsRange) continue;
+      if (isUnderwaterEntity(missile)) continue;
+      const dx = ship.x - missile.x, dy = ship.y - missile.y;
+      const dz = (missile.altitudeM ?? 0) - (ship.altitudeM ?? 0);
+      if (dx * dx + dy * dy + dz * dz >= ciwsRange * ciwsRange) continue;
       inbound.push(missile);
     }
     if (!inbound.length) continue;
@@ -2292,7 +2367,7 @@ export function pointDefense(sim) {
       );
       if (sim.rng.next() < pKill) {
         deactivateMissile(sim, threat);
-        addEvent(sim, `${ship.name} CIWS destroyed incoming ${threat.missileId}.`, ship.side);
+        addEvent(sim, `${ship.name} CIWS destroyed incoming ${threat.missileId}.`, ship.side, "intercept");
       } else {
         addEvent(sim, `${ship.name} CIWS failed against ${threat.missileId}.`, ship.side);
       }

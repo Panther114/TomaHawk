@@ -1,6 +1,6 @@
 import { KNOT, NM, SCENARIO_MODE, SIDE } from "./constants.js";
 import { angleTo, clamp, distance } from "./math.js";
-import { iterateTracksForShip } from "./sensors.js";
+import { iterateTracksForShip, trackForShip } from "./sensors.js";
 
 export function isSubmarine(unit) {
   return unit?.domain === "subsurface";
@@ -30,8 +30,13 @@ export function decideSubmarine(sim, ship) {
       nearestRange = rangeM;
     }
   }
-  const incoming = (sim._missilesByTarget?.get(ship.id) ?? sim.missiles)
-    .find((missile) => missile.alive && missile.side !== ship.side && missile.targetId === ship.id);
+  let incoming;
+  const candidates = sim._missilesByTarget ? (sim._missilesByTarget.get(ship.id) ?? []) : sim.missiles;
+  for (const missile of candidates) {
+    if (!missile.alive || missile.side === ship.side || missile.targetId !== ship.id) continue;
+    const track = trackForShip(sim, ship, missile.id);
+    if (track?.quality >= 0.2) { incoming = track; break; }
+  }
   if (incoming) {
     ship.targetDepthM = Math.min(ship.maxDepthM ?? 450, 400);
     ship.desiredSpeed = ship.maxSpeed;

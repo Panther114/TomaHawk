@@ -50,7 +50,7 @@ test("frame rendering preserves interactive panel DOM when content is unchanged"
 test("hosted save fallback preserves browser-file export when server storage is unavailable", () => {
   const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
 
-  assert.match(appSource, /if \(!res\.ok\) \{\s*await saveJsonToCustomLocation/s);
+  assert.match(appSource, /if \(!response\.ok\) \{\s*if \(!\(await saveJsonToCustomLocation\(filename, data\)\)\) return;/s);
 });
 
 test("visible tactical feed is removed while AAR keeps Chinese event text", () => {

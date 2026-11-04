@@ -211,7 +211,7 @@ const AMMO_SCHEMA = {
   loadout: false,
   sections: [
     { title: { en: "Identity", zh: "标识" }, fields: [
-      text("name", { en: "Weapon ID", zh: "武器编号" }, { placeholder: "SM-2MR", maxlength: 24 })
+      text("name", { en: "Weapon name", zh: "武器名称" }, { placeholder: "SM-2MR", maxlength: 24 })
     ] },
     { title: { en: "Classification", zh: "分类" }, fields: [
       { key: "launchers", type: "multicheck", label: { en: "Launchers", zh: "发射方" }, options: LAUNCHER_OPTIONS },

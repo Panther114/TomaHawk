@@ -17,7 +17,7 @@
     <iframe
       id="sandbox-frame"
       title="推演沙盘教学实例"
-      src="/sandbox"
+      src="sandbox.html"
       aria-label="可操作的推演沙盘（教学）"
     ></iframe>
 
@@ -58,7 +58,7 @@
           </p>
           <div class="welcome-actions">
             <button id="start-tutorial" class="primary" type="button">开始学习</button>
-            <a class="ghost" href="/sandbox">直接进入沙盘</a>
+            <a class="ghost" href="sandbox.html">直接进入沙盘</a>
           </div>
           <ul class="welcome-facts" aria-label="教程概况">
             <li><b>11</b><span>个步骤</span></li>
@@ -80,7 +80,7 @@
               <button id="coach-ref" type="button" title="快捷键速查" aria-label="快捷键速查">
                 <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#help"></use></svg>
               </button>
-              <a id="coach-exit" href="/sandbox" title="退出教程，进入沙盘" aria-label="退出教程，进入沙盘">
+              <a id="coach-exit" href="sandbox.html" title="退出教程，进入沙盘" aria-label="退出教程，进入沙盘">
                 <svg class="ui-icon" aria-hidden="true"><use href="src/assets/ui-icons.svg#close"></use></svg>
               </a>
             </div>
@@ -120,7 +120,7 @@
           <h2>教程完成</h2>
           <p>你已经走完部署、运行、判读与保存的完整闭环。进入沙盘，打一场属于自己的推演吧。</p>
           <div class="completion-actions">
-            <a class="primary" href="/sandbox">进入沙盘</a>
+            <a class="primary" href="sandbox.html">进入沙盘</a>
             <button id="restart-tutorial" type="button">再学一遍</button>
           </div>
           <p class="completion-note">正式沙盘中可自由缩放、平移地图，并随时重置推演。</p>
@@ -141,7 +141,7 @@
             <div><dt><kbd>.</kbd></dt><dd><b>单步推进</b><span>暂停并推进一个短时间片。</span></dd></div>
             <div><dt><kbd>R</kbd></dt><dd><b>测距</b><span>切换地图测距工具，再按一次退出。</span></dd></div>
             <div><dt><kbd>Esc</kbd></dt><dd><b>结束部署</b><span>取消连续部署，退出装备库。</span></dd></div>
-            <div><dt><kbd>Tab</kbd></dt><dd><b>循环选择单位</b><span>地图获得焦点时，按序切换单位。</span></dd></div>
+            <div><dt><kbd>N</kbd></dt><dd><b>循环选择单位</b><span>地图获得焦点时，按序切换单位。</span></dd></div>
             <div><dt><kbd>Delete</kbd></dt><dd><b>删除选中单位</b><span>仅部署阶段可用。</span></dd></div>
             <div><dt><kbd>滚轮</kbd></dt><dd><b>缩放地图</b><span>以光标位置为中心缩放。</span></dd></div>
             <div><dt><kbd>中键拖动</kbd></dt><dd><b>平移地图</b><span>按住中键或 Alt 拖动，不改变单位位置。</span></dd></div>
@@ -173,9 +173,15 @@
         <i aria-hidden="true"></i>
         <span>沙盘启动中…</span>
       </div>
+      <div id="stage-size-notice" class="layer stage-fallback" hidden>
+        <b>当前窗口太小，无法开始互动教程</b>
+        <p>请在宽度至少 960 像素、高度至少 560 像素的窗口中继续。</p>
+        <button id="stage-size-reference" type="button">查看快捷键</button>
+        <a href="index.html">返回首页</a>
+      </div>
       <div id="stage-fallback" class="layer stage-fallback" hidden>
         <b>沙盘加载失败</b>
-        <p>请确认通过本地服务器访问（<code>npm start</code>），然后重试。</p>
+        <p>请重新加载沙盘。若问题持续，请刷新页面。</p>
         <button id="stage-retry" type="button">重新加载</button>
       </div>
     </div>

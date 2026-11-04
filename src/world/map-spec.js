@@ -18,6 +18,15 @@ export function projectLonLat(lon, lat, center = EAST_CHINA_SEA_CENTER) {
   };
 }
 
+export function geographicDistanceM(a, b) {
+  const latA = -a.y / EARTH_RADIUS_M;
+  const latB = -b.y / EARTH_RADIUS_M;
+  const latitude = Math.sin((latB - latA) / 2);
+  const longitude = Math.sin((b.x - a.x) / (2 * EARTH_RADIUS_M));
+  const h = latitude * latitude + Math.cos(latA) * Math.cos(latB) * longitude * longitude;
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(Math.max(0, Math.min(1, h))));
+}
+
 export function inverseProjectLonLat(x, y, center = EAST_CHINA_SEA_CENTER) {
   const toRad = Math.PI / 180;
   return {
